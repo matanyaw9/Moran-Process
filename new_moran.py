@@ -18,10 +18,13 @@ from __future__ import annotations
 import argparse
 import math
 import random
+import logging
 import numpy as np
 from numpy.typing import NDArray
 from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional, Tuple
+
+logger = logging.getLogger("moran")
 
 
 def make_well_mixed_adjacency(n: int) -> NDArray[np.int_]:
@@ -40,7 +43,7 @@ class MoranProcess:
     """
     Birth-death Moran process on a general directed graph.
 
-    - Population of N individuals, each with a discrete 'type' (0, 1, 2, ...).
+    - blobs is an array of N individuals, each with a discrete 'type' ('A', 'B', ...).
     - fitness[type] gives the relative reproductive rate of that type.
     - adjacency[i,j] != 0 means individual i is allowed to replace j.
 
@@ -51,19 +54,15 @@ class MoranProcess:
     3. Set type_j = type_i (j is replaced by offspring of i).
     """
 
-    N: int
     blobs: NDArray[np.str_]
     fitness: Dict[str, float]
     adjacency: Optional[NDArray[np.int_]] = None
     rng: random.Random = field(default_factory=random.Random)
 
     def __post_init__(self) -> None:
-        if self.N <= 0:
-            raise ValueError("Population size N must be positive.")
-        if len(self.blobs) != self.N:
-            raise ValueError("Length of 'blobs' must equal N.")
 
         # Fill in default fitness 1.0 for any unseen type
+        self.N = self.blobs.size
         unique_types = set(self.blobs)
         for t in unique_types:
             self.fitness.setdefault(t, 1.0)
@@ -119,11 +118,14 @@ class MoranProcess:
         self.blobs[replacee] = self.blobs[reproducer]
         return reproducer, replacee
 
-    # ---- Convenience methods for analysis / non-GUI usage -----------------
+    # ---- Convenience methods for analysis -----------------
 
     def counts(self) -> Dict[str, int]:
         """Return a dictionary mapping type -> number of individuals of that type."""
-        arr = np.asarray(self.blobs)
+        if type(self.blobs) is not np.ndarray:
+            arr = np.asarray(self.blobs)
+        else:
+            arr = self.blobs
         unique, counts = np.unique(arr, return_counts=True)
         return {u.item(): int(c) for u, c in zip(unique, counts)}
 
@@ -156,71 +158,63 @@ class MoranProcess:
             if callback is not None:
                 callback(step_index, self)
             if self.is_fixated():
-                return step_index, True
-        return max_steps, self.is_fixated()
-
-
-# # ---------------------------------------------------------------------------
-# # GUI wrapper (optional)
-# # ---------------------------------------------------------------------------
-
-
-
-# ---------------------------------------------------------------------------
-# Command-line interface (headless + GUI switch)
-# ---------------------------------------------------------------------------
-
+                return step_index, self.blobs[0]  # all same type
+        return max_steps, 0  # not fixated
 
 def run_headless(
     N: int,
-    mutant_fitness: float,
     initial_mutants: int,
-    max_steps: int,
+    mutant_fitness: float=1.0,
+    max_steps: int=10_000,
     seed: Optional[int] = None,
 ) -> None:
-    rng = random.Random(seed)
+    rng = random.Random(seed)   # if seed is None, uses system time or entropy source
     if initial_mutants <= 0 or initial_mutants > N:
         raise ValueError("initial_mutants must be between 1 and N.")
 
-    blobs = [0 for _ in range(N)]
-    indices = list(range(N))
-    rng.shuffle(indices)
-    for idx in indices[:initial_mutants]:
-        blobs[idx] = 1
+    blobs = np.full(N, 'A', dtype='<U1')  # all 'A' initially
+    # pick initial_mutants distinct indices and mark them as 'B'
+    mutant_indices = rng.sample(range(N), initial_mutants)
+    blobs[mutant_indices] = 'B'
+    fitness = {'A': 1.0, 'B': mutant_fitness}
+    process = MoranProcess(blobs=blobs, fitness=fitness, rng=rng)
 
-    fitness = {0: 1.0, 1: mutant_fitness}
-    process = MoranProcess(N=N, blobs=blobs, fitness=fitness, rng=rng)
-
-    print(f"Starting headless Moran process with N={N}, initial_mutants={initial_mutants}, "
+    logger.info(f"Starting headless Moran process with N={N}, initial_mutants={initial_mutants}, "
           f"mutant_fitness={mutant_fitness}, max_steps={max_steps}")
-    print(f"Initial counts: {process.counts()}")
+    logger.info(f"Initial counts: {process.counts()}")
 
-    def cb(step_index: int, proc: MoranProcess) -> None:
-        if step_index % max(1, max_steps // 10) == 0:
-            print(f"Step {step_index}: counts={proc.counts()}")
+    def basic_callback(step_index: int, proc: MoranProcess) -> None:
+        pass
+        # if step_index % 10 == 0:
+        #     logger.info(f"Step {step_index}: counts={proc.counts()}")
 
-    steps_run, fixated = process.run(max_steps=max_steps, callback=cb)
+    steps_run, fixated = process.run(max_steps=max_steps, callback=basic_callback)
 
-    print(f"Finished after {steps_run} steps. Fixated={fixated}")
-    print(f"Final counts: {process.counts()}")
+    logger.info(f"Finished after {steps_run} steps. Fixated={fixated}")
+    logger.info(f"Final counts: {process.counts()}")
     if fixated:
-        t = next(iter(process.counts().keys()))
-        print(f"Fixated type: {t}")
+        logger.info(f"Fixated type: {fixated}")
+    return fixated
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Moran process simulator with optional GUI.")
-    parser.add_argument("--N", type=int, default=100, help="Population size.")
-    parser.add_argument("--mutant-fitness", type=float, default=1.5, help="Fitness of mutant type (wild-type=1.0).")
-    parser.add_argument("--initial-mutants", type=int, default=1, help="Number of mutants in the initial population.")
+    parser.add_argument("--N", type=int, default=20, help="Population size.")
+    parser.add_argument("--mutant-fitness", type=float, default=1, help="Fitness of mutant type (wild-type=1.0).")
+    parser.add_argument("--initial-mutants", type=int, default=10, help="Number of mutants in the initial population.")
     parser.add_argument("--max-steps", type=int, default=10000, help="Maximum number of steps for headless run.")
     parser.add_argument("--seed", type=int, default=None, help="Random seed.")
+    parser.add_argument("--verbose", action="store_true", help="Enable detailed output.")
     args = parser.parse_args()
+    logging.basicConfig(
+            level=logging.INFO if args.verbose else logging.WARNING,
+            format="%(message)s",
+        )
 
     run_headless(
         N=args.N,
-        mutant_fitness=args.mutant_fitness,
         initial_mutants=args.initial_mutants,
+        mutant_fitness=args.mutant_fitness,
         max_steps=args.max_steps,
         seed=args.seed,
     )

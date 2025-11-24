@@ -1,0 +1,67 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            // 1) Run whatever Python file is open (no args)
+            "name": "Python: Current file (no args)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal"
+        },
+        {
+            // 2) Moran, using defaults from argparse (debug)
+            "name": "Moran: defaults (debug)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/new_moran.py",
+            "console": "integratedTerminal"
+        },
+        {
+            // 3) Moran, custom parameters (debug)
+            "name": "Moran: N=100, B fitter (debug)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/new_moran.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--N", "100",
+                "--mutant-fitness", "1.5",
+                "--initial-mutants", "10",
+                "--max-steps", "10000",
+                "--seed", "123"
+            ]
+        },
+        {
+            // 4) Moran, custom parameters (run without debugger)
+            //    Use Ctrl+F5 on this configuration.
+            "name": "Moran: N=100, B fitter (no debug)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/new_moran.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--N", "100",
+                "--mutant-fitness", "1.5",
+                "--initial-mutants", "10",
+                "--max-steps", "10000",
+                "--seed", "123"
+            ]
+        },
+        {
+            // 5) Moran, small test run for quick debugging
+            "name": "Moran: tiny test (debug)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/new_moran.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--N", "20",
+                "--mutant-fitness", "2.0",
+                "--initial-mutants", "5",
+                "--max-steps", "200",
+                "--seed", "1"
+            ]
+        }
+    ]
+}
