@@ -20,3 +20,28 @@ class EvoGraph:
         self.adjacency_matrix = np.ones((num_nodes, num_nodes), dtype=int)
 
 # TODO: Implement different types of graphs (e.g., cycle, star, lungs, etc.)
+
+class Node: 
+    """
+    This class represents a node in the evolutionary graph. Each node corresponds to an individual in the population.
+    It will be eventually represented in a matrix form within the EvoGraph class.
+    """
+    def __init__(self):
+        self._value = None
+        self._edges = [] # a list of nodes
+
+    def get_value(self):
+        return self._value
+    def set_value(self, value):
+        self._value = value
+    def get_edges(self):
+        return self._edges
+    def add_edge(self, node):
+        self._edges.append(node)
+    def remove_edge(self, node):
+        self._edges.remove(node)
+    def clear_edges(self):
+        self._edges = []
+    def num_edges(self):
+        return len(self._edges)
+    
