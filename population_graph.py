@@ -1,6 +1,8 @@
 import networkx as nx
 import numpy as np
 import matplotlib.pyplot as plt
+import pydot
+from networkx.drawing.nx_pydot import graphviz_layout
 
 class PopulationGraph:
     """This class is a container of a networkx graph. Used for Evolutionary Graph Theory"""
@@ -15,21 +17,21 @@ class PopulationGraph:
     
     # --- GENERATORS ---
 
-    def generate_complete_graph(self, n):
+    def generate_complete_graph(self, n:int):
         """
         Creates a fully connected graph (everyone connected to everyone). 
         """
         self.n_nodes = n
         self.graph = nx.complete_graph(n)
 
-    def generate_cycle_graph(self, n):
+    def generate_cycle_graph(self, n:int):
         """
         Creates a ring graph.
         """
         self.n_nodes = n
         self.graph = nx.cycle_graph(n)
     
-    def generate_mammalian_lung_graph(self, branching_factor=2, depth=3):
+    def generate_mammalian_lung_graph(self, branching_factor:int=2, depth:int=3):
         self.graph = nx.balanced_tree(branching_factor, depth)
         self.n_nodes = self.graph.number_of_nodes()
 
@@ -46,13 +48,14 @@ class PopulationGraph:
         """Quick visualization helper"""
         if self.graph is None:
             return
-        nx.draw(self.graph, with_labels=True)
+        pos = graphviz_layout(self.graph, prog="twopi")
+        nx.draw(self.graph, with_labels=True, pos=pos)
         plt.show()
 
 if __name__ == "__main__":
     print("--- Testing Population Graph Class")
     pop = PopulationGraph()
-    pop.generate_complete_graph(8)
+    pop.generate_mammalian_lung_graph(branching_factor=2, depth=3)
     pop.draw()
 
 
