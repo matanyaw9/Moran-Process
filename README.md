@@ -1,0 +1,2 @@
+Written by Matanya Wiener
+This project intends to research evolutionary graphs, in particular respiratory organ shaped graphs, to see whether they have special properties that interfere with inner evolutionary processes (like pathogene processes).
