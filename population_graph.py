@@ -1,7 +1,7 @@
 import networkx as nx
 import numpy as np
 import matplotlib.pyplot as plt
-import pydot
+# import pydot
 from networkx.drawing.nx_pydot import graphviz_layout
 
 class PopulationGraph:
@@ -48,8 +48,8 @@ class PopulationGraph:
         """Quick visualization helper"""
         if self.graph is None:
             return
-        pos = graphviz_layout(self.graph, prog="twopi")
-        nx.draw(self.graph, with_labels=True, pos=pos)
+        # pos = graphviz_layout(self.graph, prog="twopi")
+        nx.draw(self.graph, with_labels=True)
         plt.show()
 
 if __name__ == "__main__":
