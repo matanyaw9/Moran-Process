@@ -52,10 +52,16 @@ class PopulationGraph:
         nx.draw(self.graph, with_labels=True)
         plt.show()
 
+
+
+
 if __name__ == "__main__":
     print("--- Testing Population Graph Class")
     pop = PopulationGraph()
-    pop.generate_mammalian_lung_graph(branching_factor=2, depth=3)
+    pop.generate_mammalian_lung_graph(branching_factor=2, depth=4)
+    centrality = nx.eigenvector_centrality(pop.graph)
+    print("Centrality: ", centrality)
+    # print(pop.degree)
     pop.draw()
 
 
