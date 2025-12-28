@@ -52,9 +52,19 @@ class PopulationGraph:
         nx.draw(self.graph, with_labels=True)
         plt.show()
 
+    # --- Getters ---
+    def get_as_numpy(self):
+        """Returns the graph as a numpy adjacency matrix."""
+        return nx.to_numpy_array(self.graph)
+    
+    def get_neighbors(self, node):
+        return list(self.graph.neighbors(node))
+    
+    def get_nodes(self):
+        return list(self.graph.nodes)
 
 
-
+# --- TEST BLOCK ---
 if __name__ == "__main__":
     print("--- Testing Population Graph Class")
     pop = PopulationGraph()
