@@ -11,13 +11,10 @@ class PopulationGraph:
         Initialize an empty graph contaner 
         :param n_nodes: Optional Initial size (used if we want ot pre-allocate, though usually handled by generators).
         """
-        self.graph_type = None
         self.graph = graph if graph is not None else nx.Graph()
         self.title = title
 
-
-    
-    # --- FACTORY METHODS
+    # --- FACTORY METHODS ---
     @classmethod
     def complete_graph(cls, n:int):
         """
@@ -35,7 +32,23 @@ class PopulationGraph:
     @classmethod
     def mammalian_lung_graph(cls, branching_factor:int=2, depth:int=3):
         """Generates a tree shaped population graph mimicking mammalian lung topology."""
-        return cls(nx.balanced_tree(branching_factor, depth), 'mammalian')
+        G = nx.balanced_tree(branching_factor, depth)
+        
+        pos = {}
+        def assign_pos(node, x_min, x_max, cur_depth):
+            x = (x_min + x_max) / 2
+            y = -cur_depth
+            pos[node] = np.array([x, y])
+
+            children = [n for n in G.neighbors(node) if n > node]
+            if not children: return
+
+            width = x_max - x_min / len(children)
+            for i, child in enumerate(children):
+                assign_pos(child, x_min + i * width, x_min+ (i+1)* width, cur_depth+1)
+            
+        assign_pos(0, 0, 100, 0)
+        return cls(G, 'mammalian')
 
     @classmethod
     def avian_graph(cls, n_rods: int, rod_length: int, directed: bool = False):
@@ -145,17 +158,17 @@ class PopulationGraph:
 # --- TEST BLOCK ---
 if __name__ == "__main__":
     print("--- Testing Population Graph Class")
-    # mammalian = PopulationGraph.mammalian_lung_graph(branching_factor=2, depth=3)
-    # avian = PopulationGraph.avian_graph(n_rods=5, rod_length=8)
+    mammalian = PopulationGraph.mammalian_lung_graph(branching_factor=2, depth=3)
+    avian = PopulationGraph.avian_graph(n_rods=5, rod_length=8)
     fish = PopulationGraph.fish_graph(n_rods=3, rod_length=5)
-    # complete = PopulationGraph.complete_graph(10)
-    # cyrcular = PopulationGraph.cycle_graph(10)
+    complete = PopulationGraph.complete_graph(10)
+    cyrcular = PopulationGraph.cycle_graph(10)
 
     # Now let's draw all of them: 
-    # mammalian.draw()
-    # avian.draw()
+    mammalian.draw()
+    avian.draw()
     fish.draw()
-    # complete.draw()
-    # cyrcular.draw()
+    complete.draw()
+    cyrcular.draw()
 
         
