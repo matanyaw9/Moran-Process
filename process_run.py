@@ -15,7 +15,7 @@ class ProcessRun:
         
         # Current state: 0 = Wild Type, 1 = Mutant
         # We use a simple list/array mapped to node indices
-        self.n_nodes = self.pop_graph.n_nodes
+        self.n_nodes = self.pop_graph.number_of_nodes()
         self.state = np.zeros(self.n_nodes, dtype=int)
 
         # Converts NetworkX graph to a list of lists: adj_list[0] = [neighbors of 0]
@@ -95,7 +95,7 @@ if __name__ == "__main__":
     N = 15
     experiments = 100
     # graph.generate_mammalian_lung_graph()
-    graph.generate_complete_graph(N)
+    graph.complete_graph(N)
     
     # 2. Setup Process (Neutral drift, r=1.0)
     # Theory: Probability of fixation should be 1/N = 1/20 = 0.05 (5%)

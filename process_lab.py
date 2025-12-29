@@ -15,7 +15,7 @@ class ProcessLab:
         os.makedirs(self.output_dir, exist_ok=True)
         self.results_buffer = []
 
-    def run_experiment(self, graph_type, n_nodes, r_values, n_repeats=100, max_steps=1_000_000):
+    def run_experiment(self, graph_factory_func, r_values, n_repeats=100, max_steps=1_000_000):
         """
         Runs a batch of simulations across different selection coefficients (r).
         
@@ -24,17 +24,9 @@ class ProcessLab:
         r_values: List of fitness values to test (e.g., [1.0, 1.1, 1.2])
         replicates: How many times to repeat the simulation for each r
         """
-        print(f"--- Starting Experiment: {graph_type} (N={n_nodes}) ---")
-        graph = PopulationGraph()
-        if graph_type == 'complete':
-            graph.generate_complete_graph(n_nodes)
-        elif graph_type == 'cycle':
-            graph.generate_cycle_graph(n_nodes)
-        elif graph_type == 'respiratory':
-            graph.generate_mammalian_lung_graph()
-        else:
-            raise ValueError(f"Unknown graph type: {graph_type}")
         
+        print(f"--- Starting Experiment ---")        
+        graph = graph_factory_func()
         for r in r_values:
             print(f' Running simulations for r={r} ({n_repeats} repeats)...')
             for i in range(n_repeats):
@@ -44,8 +36,6 @@ class ProcessLab:
 
                 # Log Data
                 record = {
-                    "graph_type": graph_type,
-                    "n_nodes": n_nodes,
                     "r": r,
                     "replicate_id": i,
                     "fixation": result["fixation"],
@@ -88,8 +78,7 @@ if __name__ == "__main__":
     
     # Run Batch
     lab.run_experiment(
-        graph_type="complete", 
-        n_nodes=20, 
+        graph_factory_func = (lambda: PopulationGraph.avian_graph(n_rods=5, rod_length=10)), 
         r_values=selection_values, 
         n_repeats=50
     )
