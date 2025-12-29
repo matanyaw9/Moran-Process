@@ -6,13 +6,14 @@ from networkx.drawing.nx_pydot import graphviz_layout
 
 class PopulationGraph:
     """This class is a container of a networkx graph. Used for Evolutionary Graph Theory"""
-    def __init__(self, graph: nx.Graph | None = None):
+    def __init__(self, graph: nx.Graph | None = None, title: str | None = None):
         """
         Initialize an empty graph contaner 
         :param n_nodes: Optional Initial size (used if we want ot pre-allocate, though usually handled by generators).
         """
         self.graph_type = None
         self.graph = graph if graph is not None else nx.Graph()
+        self.title = title
 
 
     
@@ -22,19 +23,19 @@ class PopulationGraph:
         """
         Creates a fully connected graph (everyone connected to everyone). 
         """
-        return cls(nx.complete_graph(n))
+        return cls(nx.complete_graph(n), title='complete')
 
     @classmethod
     def cycle_graph(cls, n:int):
         """
         Creates a ring graph.
         """
-        return cls(nx.cycle_graph(n))
+        return cls(nx.cycle_graph(n), title='cycle')
     
     @classmethod
     def mammalian_lung_graph(cls, branching_factor:int=2, depth:int=3):
         """Generates a tree shaped population graph mimicking mammalian lung topology."""
-        return cls(nx.balanced_tree(branching_factor, depth))
+        return cls(nx.balanced_tree(branching_factor, depth), 'mammalian')
 
     @classmethod
     def avian_graph(cls, n_rods: int, rod_length: int, directed: bool = False):
@@ -75,7 +76,31 @@ class PopulationGraph:
         # Convert string labels ('Inlet', (0,1)) to integers (0, 1, 2...)
         # This speeds up your ProcessRun matrix lookups significantly.
         G = nx.convert_node_labels_to_integers(G)
-        return cls(G)
+        return cls(G, title='avian')
+    
+    @classmethod
+    def fish_graph(cls, n_rods: int, rod_length: int):
+        """Generates a graph mimicking Fish Gills topology. """
+        G = nx.Graph()
+        main_rod = list(range(n_rods))
+        G.add_edges_from(list(zip(main_rod[:-1], main_rod[1:])))
+        G.add_nodes_from(main_rod)
+        for i in range(n_rods):
+            c_rod = [f"r{i}c{j}" for j in range(rod_length)]
+            r_rod = [f"r{i}r{j}" for j in range(rod_length)]
+            l_rod = [f"r{i}l{j}" for j in range(rod_length)]
+            G.add_nodes_from(c_rod)
+            G.add_nodes_from(r_rod)
+            G.add_nodes_from(l_rod)
+            G.add_edges_from(list(zip(c_rod[:-1], c_rod[1:])))
+            G.add_edges_from(list(zip(c_rod, r_rod)))
+            G.add_edges_from(list(zip(c_rod, l_rod)))
+            G.add_edge(c_rod[0], main_rod[i])
+        G = nx.convert_node_labels_to_integers(G)
+        
+
+        return cls(G, title='fish')
+
 
     # --- UTULITIES ---
     def to_adjacency_matrix(self):
@@ -91,7 +116,14 @@ class PopulationGraph:
         if self.graph is None:
             return
         # pos = graphviz_layout(self.graph, prog="twopi")
-        nx.draw(self.graph, with_labels=True)
+        plt.title(self.title if self.title else "Population Graph")
+        
+        # Also set the window (figure) title to match
+        manager = getattr(plt.gcf().canvas, "manager", None)
+        if manager is not None and hasattr(manager, "set_window_title"):
+            manager.set_window_title(self.title if self.title else "Population Graph")
+        
+        nx.draw_spring(self.graph, with_labels=True)
         plt.show()
 
     # --- Getters ---
@@ -113,12 +145,17 @@ class PopulationGraph:
 # --- TEST BLOCK ---
 if __name__ == "__main__":
     print("--- Testing Population Graph Class")
-    pop = PopulationGraph()
-    pop.mammalian_lung_graph(branching_factor=2, depth=4)
-    centrality = nx.eigenvector_centrality(pop.graph)
-    print("Centrality: ", centrality)
-    # print(pop.degree)
-    pop.draw()
+    # mammalian = PopulationGraph.mammalian_lung_graph(branching_factor=2, depth=3)
+    # avian = PopulationGraph.avian_graph(n_rods=5, rod_length=8)
+    fish = PopulationGraph.fish_graph(n_rods=3, rod_length=5)
+    # complete = PopulationGraph.complete_graph(10)
+    # cyrcular = PopulationGraph.cycle_graph(10)
 
+    # Now let's draw all of them: 
+    # mammalian.draw()
+    # avian.draw()
+    fish.draw()
+    # complete.draw()
+    # cyrcular.draw()
 
         
