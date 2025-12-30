@@ -6,7 +6,7 @@ from networkx.drawing.nx_pydot import graphviz_layout
 
 class PopulationGraph:
     """This class is a container of a networkx graph. Used for Evolutionary Graph Theory"""
-    def __init__(self, graph: nx.Graph | None = None, title: str | None = None):
+    def __init__(self, graph: nx.Graph | None = None, title: str = ''):
         """
         Initialize an empty graph contaner 
         :param n_nodes: Optional Initial size (used if we want ot pre-allocate, though usually handled by generators).
@@ -43,11 +43,12 @@ class PopulationGraph:
             children = [n for n in G.neighbors(node) if n > node]
             if not children: return
 
-            width = x_max - x_min / len(children)
+            width = (x_max - x_min) / len(children)
             for i, child in enumerate(children):
                 assign_pos(child, x_min + i * width, x_min+ (i+1)* width, cur_depth+1)
             
         assign_pos(0, 0, 100, 0)
+        nx.set_node_attributes(G, pos, 'pos')
         return cls(G, 'mammalian')
 
     @classmethod
@@ -124,20 +125,40 @@ class PopulationGraph:
             raise ValueError("Graph not initialized.")
         return nx.to_numpy_array(self.graph)
     
-    def draw(self):
-        """Quick visualization helper"""
-        if self.graph is None:
-            return
-        # pos = graphviz_layout(self.graph, prog="twopi")
-        plt.title(self.title if self.title else "Population Graph")
+    # --- Visualisation ---
+    def draw(self, ax=None):
+        """Draws the graph using its stored biological layout."""
+        if self.graph is None: return
+
+        pos = nx.get_node_attributes(self.graph, 'pos')
+        if not pos: 
+            pos = nx.spring_layout(self.graph, seed=42)
         
-        # Also set the window (figure) title to match
-        manager = getattr(plt.gcf().canvas, "manager", None)
-        if manager is not None and hasattr(manager, "set_window_title"):
-            manager.set_window_title(self.title if self.title else "Population Graph")
+        if ax is None:
+            plt.figure(figsize=(10, 8))
+            ax = plt.gca()
         
-        nx.draw_spring(self.graph, with_labels=True)
+        nx.draw(self.graph, pos=pos, ax=ax, 
+                with_labels=False,
+                node_size=50,
+                node_color='skyblue', 
+                edge_color='#555555',
+                width=1.5)
+        ax.set_title(self.title, fontsize=14)
+        # Turn off axis for cleaner look
+        ax.axis('off')
+        # plt.title(self.title if self.title else "Population Graph")
         plt.show()
+
+
+        
+        # # Also set the window (figure) title to match
+        # manager = getattr(plt.gcf().canvas, "manager", None)
+        # if manager is not None and hasattr(manager, "set_window_title"):
+        #     manager.set_window_title(self.title if self.title else "Population Graph")
+        
+        # nx.draw_spring(self.graph, with_labels=True)
+        # plt.show()
 
     # --- Getters ---
     def get_as_numpy(self):
@@ -158,17 +179,17 @@ class PopulationGraph:
 # --- TEST BLOCK ---
 if __name__ == "__main__":
     print("--- Testing Population Graph Class")
-    mammalian = PopulationGraph.mammalian_lung_graph(branching_factor=2, depth=3)
-    avian = PopulationGraph.avian_graph(n_rods=5, rod_length=8)
-    fish = PopulationGraph.fish_graph(n_rods=3, rod_length=5)
-    complete = PopulationGraph.complete_graph(10)
-    cyrcular = PopulationGraph.cycle_graph(10)
-
-    # Now let's draw all of them: 
+    mammalian = PopulationGraph.mammalian_lung_graph(branching_factor=2, depth=8)
     mammalian.draw()
-    avian.draw()
-    fish.draw()
-    complete.draw()
-    cyrcular.draw()
+    # avian = PopulationGraph.avian_graph(n_rods=5, rod_length=8)
+    # fish = PopulationGraph.fish_graph(n_rods=3, rod_length=5)
+    # complete = PopulationGraph.complete_graph(10)
+    # cyrcular = PopulationGraph.cycle_graph(10)
+
+    # # Now let's draw all of them: 
+    # avian.draw()
+    # fish.draw()
+    # complete.draw()
+    # cyrcular.draw()
 
         
