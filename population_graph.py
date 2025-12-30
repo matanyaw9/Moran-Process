@@ -170,31 +170,56 @@ class PopulationGraph:
             raise ValueError("Graph not initialized.")
         return nx.to_numpy_array(self.graph)
     
-    # --- Visualisation ---
-    def draw(self, ax=None):
+# --- VISUALIZATION ---
+    def draw(self, ax=None, filename=''):
         """Draws the graph using its stored biological layout."""
         if self.graph is None: return
 
+        # 1. Coordinate Retrieval
         pos = nx.get_node_attributes(self.graph, 'pos')
         if not pos: 
             pos = nx.spring_layout(self.graph, seed=42)
         
+        # 2. Canvas Setup
+        created_internally = False  # Track if we created the figure
         if ax is None:
-            plt.figure(figsize=(10, 8))
+            fig = plt.figure(figsize=(10, 8))
             ax = plt.gca()
+            created_internally = True
         
+        # 3. Drawing
         nx.draw(self.graph, pos=pos, ax=ax, 
                 with_labels=False,
                 node_size=50,
                 node_color='skyblue', 
                 edge_color='#555555',
                 width=1.5)
+        
         ax.set_title(self.title, fontsize=14)
-        # Turn off axis for cleaner look
         ax.axis('off')
-        # plt.title(self.title if self.title else "Population Graph")
-        plt.show()
 
+        # 4. Saving Logic (Robust)
+        if filename:
+            # Retrieve the immediate parent
+            root_fig = ax.get_figure()
+            
+            # CHECK: If it's a SubFigure (which has no savefig), get the REAL parent
+            # SubFigures have a .figure attribute pointing to the top-level Figure
+            if not hasattr(root_fig, 'savefig') and hasattr(root_fig, 'figure'):
+                root_fig = root_fig.figure
+
+            # Save
+            if root_fig is not None:
+                root_fig.savefig(filename, dpi=300, bbox_inches='tight')
+                print(f"Saved graph to {filename}")
+            
+            # CLEANUP: Only close if WE created the figure. 
+            # If the user passed 'ax', they manage the lifecycle.
+            if created_internally:
+                plt.close(root_fig)
+        elif created_internally:
+            # Only show if we created it; otherwise let caller control show()
+            plt.show()
 
         
         # # Also set the window (figure) title to match
@@ -225,15 +250,15 @@ class PopulationGraph:
 if __name__ == "__main__":
     print("--- Testing Population Graph Class")
     mammalian = PopulationGraph.mammalian_lung_graph(branching_factor=2, depth=8)
-    mammalian.draw()
+    mammalian.draw(filename="./simulation_data/mammal.png")
     avian = PopulationGraph.avian_graph(n_rods=5, rod_length=8)
-    avian.draw()
+    avian.draw(filename="./simulation_data/avian.png")
     fish = PopulationGraph.fish_graph(n_rods=8, rod_length=16)
-    fish.draw()
+    fish.draw(filename="./simulation_data/fish.png")
     complete = PopulationGraph.complete_graph(10)
-    complete.draw()
+    complete.draw(filename="./simulation_data/complete.png")
     cyrcular = PopulationGraph.cycle_graph(10)
-    cyrcular.draw()
+    cyrcular.draw(filename="./simulation_data/cycle.png")
 
 
         
