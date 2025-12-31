@@ -2,7 +2,6 @@ import networkx as nx
 import numpy as np
 import matplotlib.pyplot as plt
 # import pydot
-from networkx.drawing.nx_pydot import graphviz_layout
 
 class PopulationGraph:
     """This class is a container of a networkx graph. Used for Evolutionary Graph Theory"""
