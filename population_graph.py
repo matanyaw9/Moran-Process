@@ -5,31 +5,44 @@ import matplotlib.pyplot as plt
 
 class PopulationGraph:
     """This class is a container of a networkx graph. Used for Evolutionary Graph Theory"""
-    def __init__(self, graph: nx.Graph | None = None, title: str = ''):
-        """
-        Initialize an empty graph contaner 
-        :param n_nodes: Optional Initial size (used if we want ot pre-allocate, though usually handled by generators).
-        """
-        self.graph = graph if graph is not None else nx.Graph()
-        self.title = title
-
+    def __init__(self, graph: nx.Graph, name: str, graph_type: str, params: dict = None):
+        self.graph = graph
+        self.name = name  # e.g., "Mammalian_Depth4"
+        self.graph_type = graph_type  # e.g., "Tree", "Complete"
+        self.params = params or {}  # Store {depth: 4, branching: 2} for reproducibility
+        
+        # Pre-calculate static metrics (Vital for analysis later)
+        self.N = self.graph.number_of_nodes()
+        self.is_directed = self.graph.is_directed()
+        
+    @property
+    def metadata(self):
+        """Returns a flat dictionary of graph properties for the dataframe."""
+        return {
+            "graph_name": self.name,
+            "graph_type": self.graph_type,
+            "N": self.N,
+            **self.params  # Unpack specific params like 'depth' or 'n_rods'
+        }
     # --- FACTORY METHODS ---
     @classmethod
-    def complete_graph(cls, n:int):
+    def complete_graph(cls, N:int):
         """
         Creates a fully connected graph (everyone connected to everyone). 
         """
-        return cls(nx.complete_graph(n), title='complete')
+        name=f'complete_n{N}'
+        return cls(nx.complete_graph(N), name=name, graph_type="Complete")
 
     @classmethod
-    def cycle_graph(cls, n:int):
+    def cycle_graph(cls, N:int):
         """
         Creates a ring graph.
         """
-        return cls(nx.cycle_graph(n), title='cycle')
+        name=f'cycle_n{N}'
+        return cls(nx.cycle_graph(N), name=name, graph_type='Cycle')
     
     @classmethod
-    def mammalian_lung_graph(cls, branching_factor:int=2, depth:int=3):
+    def mammalian_lung_graph(cls, branching_factor:int=2, depth:int=3, name='mammalian'):
         """Generates a tree shaped population graph mimicking mammalian lung topology."""
         G = nx.balanced_tree(branching_factor, depth)
         
@@ -48,10 +61,12 @@ class PopulationGraph:
             
         assign_pos(0, 0, 100, 0)
         nx.set_node_attributes(G, pos, 'pos')
-        return cls(G, 'mammalian')
+        name = f"mammalian_b{branching_factor}_d{depth}"
+        return cls(G, name=name, graph_type="Mammalian", 
+                   params={"branching": branching_factor, "depth": depth})
 
     @classmethod
-    def avian_graph(cls, n_rods: int, rod_length: int, directed: bool = False):
+    def avian_graph(cls, n_rods: int, rod_length: int, directed: bool = False, name="avian"):
         """
         Generates a graph mimicking Avian Lungs topology. 
 
@@ -110,10 +125,11 @@ class PopulationGraph:
         # 3. Store pos & Convert labels
         nx.set_node_attributes(G, pos, 'pos')
         G = nx.convert_node_labels_to_integers(G)
-        return cls(G, 'Avian Lung (Parabronchi)')
+        name = f'avian_r{n_rods}_l{rod_length}'
+        return cls(G, name, graph_type='Avian', params={"n_rods": n_rods, "rods_length": rod_length} )
     
     @classmethod
-    def fish_graph(cls, n_rods: int, rod_length: int):
+    def fish_graph(cls, n_rods: int, rod_length: int, name='fish'):
         """Generates a 'Comb' structure: Vertical arch, horizontal filaments."""
         G = nx.Graph()
         pos = {}
@@ -157,7 +173,8 @@ class PopulationGraph:
 
         nx.set_node_attributes(G, pos, 'pos')
         G = nx.convert_node_labels_to_integers(G)
-        return cls(G, 'Fish Gills')
+        name = f'fish_r{n_rods}_l{rod_length}'
+        return cls(G, name, graph_type='Fish', params={'n_rods': n_rods, 'rod_length': rod_length})
 
 
     # --- UTULITIES ---
@@ -194,7 +211,7 @@ class PopulationGraph:
                 edge_color='#555555',
                 width=1.5)
         
-        ax.set_title(self.title, fontsize=14)
+        ax.set_title(self.name, fontsize=14)
         ax.axis('off')
 
         # 4. Saving Logic (Robust)
@@ -219,16 +236,7 @@ class PopulationGraph:
         elif created_internally:
             # Only show if we created it; otherwise let caller control show()
             plt.show()
-
         
-        # # Also set the window (figure) title to match
-        # manager = getattr(plt.gcf().canvas, "manager", None)
-        # if manager is not None and hasattr(manager, "set_window_title"):
-        #     manager.set_window_title(self.title if self.title else "Population Graph")
-        
-        # nx.draw_spring(self.graph, with_labels=True)
-        # plt.show()
-
     # --- Getters ---
     def get_as_numpy(self):
         """Returns the graph as a numpy adjacency matrix."""

@@ -1,72 +1,40 @@
-import pandas as pd
-import seaborn as sns
-import matplotlib.pyplot as plt
+# main.py
 from population_graph import PopulationGraph
 from process_lab import ProcessLab
+import pandas as pd
+import os
 
-# 1. SETUP EXPERIMENT SUITE
-# Define a list of dictionaries. Each entry is one "Configuration"
-experiments = [
-    {
-        "name": "Complete (Control)",
-        "factory": lambda: PopulationGraph.complete_graph(30)
-    },
-    {
-        "name": "Cycle",
-        "factory": lambda: PopulationGraph.cycle_graph(30)
-    },
-    {
-        "name": "Mammalian Lung",
-        "factory": lambda: PopulationGraph.mammalian_lung_graph(branching_factor=2, depth=4) 
-    },
-    {
-        "name": "Avian Lung",
-        "factory": lambda: PopulationGraph.avian_graph(n_rods=3, rod_length=8)
-    },
-    {
-        "name": "Fish Gills",
-        # Custom params to keep N ~ 30
-        "factory": lambda: PopulationGraph.fish_graph(n_rods=3, rod_length=3) 
-    }
+    # 1. DEFINE THE GRAPH ZOO
+    # We instantiate them here so we can inspect them before running
+graph_zoo = [
+    PopulationGraph.complete_graph(N=31),
+    PopulationGraph.cycle_graph(N=31),
+    PopulationGraph.mammalian_lung_graph(branching_factor=2, depth=4), # N ~ 30
+    PopulationGraph.avian_graph(n_rods=4, rod_length=7),
+    PopulationGraph.fish_graph(n_rods=3, rod_length=3)
+    
 ]
 
-# 2. RUN BATCHES
-lab = ProcessLab()
-r_values = [1.0, 1.05, 1.1, 1.2]
-all_data = []
+def main():
+    # 2. DEFINE PARAMETERS
+    r_values = [1.0, 1.1, 1.2, 2.0]
+    # r_values = [1.1]
 
-print("--- Starting Comparative Study ---")
-for exp in experiments:
-    print(f"Running: {exp['name']}")
+    repeats = 1000  # Higher repeats for smoother stats
     
-    # 1. Run the Simulations
-    # (Note: You might need to add a 'clear_buffer' method to ProcessLab or access .results_buffer directly)
-    lab.results_buffer = [] 
-    lab.run_experiment(exp['factory'], r_values, n_repeats=100)
+    # 3. RUN EXPERIMENT
+    lab = ProcessLab()
+    df = lab.run_comparative_study(graph_zoo, r_values, n_repeats=repeats)
     
-    # 2. Convert to DataFrame
-    df = pd.DataFrame(lab.results_buffer)
+    # 4. SAVE & ANALYZE
+    # The dataframe now automatically contains 'N', 'depth', 'graph_type', etc.
+    filename = "comparative_study_results.csv"
+    data_dir = "simulation_data"
+    df.to_csv(os.path.join(data_dir, filename), index=False)
     
-    # 3. TAG THE DATA (Crucial Step!)
-    df['Graph_Type'] = exp['name']
+if __name__ == "__main__":
+    # main()
     
-    # 4. Add Graph Metrics (N is critical for 1/N comparison)
-    temp_graph = exp['factory']()
-    df['N'] = temp_graph.number_of_nodes()
-    
-    all_data.append(df)
 
-# 3. COMBINE & SAVE
-master_df = pd.concat(all_data, ignore_index=True)
-master_df.to_csv("master_simulation_results.csv", index=False)
-print("Saved master_simulation_results.csv")
-
-# 4. INSTANT ANALYSIS (Optional Check)
-# Calculate Relative Fixation Prob (rho = P_fix * N)
-stats = master_df.groupby(['Graph_Type', 'r', 'N']).agg(
-    P_fix=('fixation', 'mean')
-).reset_index()
-stats['rho'] = stats['P_fix'] * stats['N']
-
-print("\nRelative Fixation Probabilities (rho):")
-print(stats.pivot(index='Graph_Type', columns='r', values='rho'))
+    for graph in graph_zoo:
+        graph.draw()

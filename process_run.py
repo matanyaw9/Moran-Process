@@ -21,15 +21,17 @@ class ProcessRun:
         # Converts NetworkX graph to a list of lists: adj_list[0] = [neighbors of 0]
         self.adj_list = [list(self.pop_graph.graph.neighbors(n)) for n in range(self.n_nodes)]
     
-    def initialize_random_mutant(self, seed=None):
+    def initialize_random_mutant(self, n_mutants=1, seed=None):
         """Places a single mutant at a random node."""
         self.state.fill(0) # Reset to all wild type
         if seed is not None:
             random.seed(seed)
         
-        random_node = random.randint(0, self.n_nodes - 1)
-        self.state[random_node] = 1
-        return random_node
+        if n_mutants > self.n_nodes:
+            raise ValueError("Number of mutants exceeds number of nodes in the graph.")        
+        random_nodes = random.sample(range(self.n_nodes), k=n_mutants)
+        self.state[random_nodes] = 1
+        return random_nodes
 
     def step(self):
         """
@@ -62,6 +64,7 @@ class ProcessRun:
         """
         steps = 0
         fixation = False
+        initial_mutants = np.sum(self.state)
         
         while steps < self.max_steps:
             # Check current counts
@@ -82,7 +85,7 @@ class ProcessRun:
         return {
             "fixation": fixation,
             "steps": steps,
-            "mutant_count": int(np.sum(self.state)),
+            "initial_mutants": initial_mutants,
             "selection_coeff": self.r
         }
 
@@ -91,22 +94,19 @@ if __name__ == "__main__":
     print("--- Testing ProcessRun Class ---")
     
     # 1. Setup Graph (Complete Graph to test 1/N theory)
-    graph = PopulationGraph()
-    N = 15
     experiments = 100
-    # graph.generate_mammalian_lung_graph()
-    graph.complete_graph(N)
+    N = 10
+    graph = PopulationGraph.complete_graph(N=N)
     
     # 2. Setup Process (Neutral drift, r=1.0)
     # Theory: Probability of fixation should be 1/N = 1/20 = 0.05 (5%)
     sim = ProcessRun(graph, selection_coefficient=1.1)
     
-    print(f"\nRunning {experiments} simulations on Complete Graph (N={sim.n_nodes})...")
-    # print(f'\nRunning {experiments} simulations on Mammalian Lung Graph (N={sim.n_nodes})...')
+    print(f"\nRunning {experiments} simulations on {graph.name} (N={sim.n_nodes})...")
     fixation_count = 0
     
     for i in range(experiments):
-        sim.initialize_random_mutant()
+        sim.initialize_random_mutant(n_mutants=5)
         result = sim.run()
         if result["fixation"]:
             fixation_count += 1
