@@ -10,7 +10,7 @@ class ProcessLab:
     def __init__(self):
         """
         """
-    def run_comparative_study(self, graphs, r_values, n_repeats=100):
+    def run_comparative_study(self, graphs, r_values, n_repeats=100, print_time=False):
         """
         :param graphs: List of instantiated PopulationGraph objects
         :param r_values: List of floats
@@ -45,5 +45,8 @@ class ProcessLab:
                         **raw_result          # Expands: fixation, steps...
                     }
                     all_results.append(record)
+                    if print_time: 
+                        seconds = raw_result['duration']
+                        print(f"Graph: {graph_obj.name}, r: {r}, Fixation: {raw_result['fixation']}, N: {graph_obj.number_of_nodes()}, Steps: {raw_result['steps']}, Time: {seconds:.4f}s")
         print('Done.')
         return pd.DataFrame(all_results)

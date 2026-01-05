@@ -1,5 +1,6 @@
 import numpy as np
 import random
+import time
 from population_graph import PopulationGraph
 
 class ProcessRun:
@@ -57,19 +58,25 @@ class ProcessRun:
             # The victim takes the state of the reproducer
             self.state[victim_idx] = self.state[reproducer_idx]
 
-    def run(self):
+    def run(self, track_history=False):
         """
         Runs the simulation until fixation or extinction.
         Returns: Dictionary with result details.
         """
+        start_time = time.perf_counter()  # <--- Start Timer
         steps = 0
         fixation = False
         initial_mutants = np.sum(self.state)
+        history = []
         
         while steps < self.max_steps:
+
             # Check current counts
             mutant_count = np.sum(self.state)
             
+            if track_history:
+                history.append(mutant_count)
+
             # EXTINCTION CHECK
             if mutant_count == 0:
                 break # Extinction
@@ -82,35 +89,17 @@ class ProcessRun:
             # Run one step
             self.step()
             steps += 1
-        return {
+        end_time = time.perf_counter()  # <--- Stop Timer
+        
+        result = {
             "fixation": fixation,
             "steps": steps,
             "initial_mutants": initial_mutants,
-            "selection_coeff": self.r
+            "selection_coeff": self.r,
+            'duration': end_time - start_time
         }
+        if track_history: result['history'] = np.array(history)
+        return result
 
-# --- TEST BLOCK ---
-if __name__ == "__main__":
-    print("--- Testing ProcessRun Class ---")
     
-    # 1. Setup Graph (Complete Graph to test 1/N theory)
-    experiments = 100
-    N = 10
-    graph = PopulationGraph.complete_graph(N=N)
-    
-    # 2. Setup Process (Neutral drift, r=1.0)
-    # Theory: Probability of fixation should be 1/N = 1/20 = 0.05 (5%)
-    sim = ProcessRun(graph, selection_coefficient=1.1)
-    
-    print(f"\nRunning {experiments} simulations on {graph.name} (N={sim.n_nodes})...")
-    fixation_count = 0
-    
-    for i in range(experiments):
-        sim.initialize_random_mutant(n_mutants=5)
-        result = sim.run()
-        if result["fixation"]:
-            fixation_count += 1
-            
-    print(f"Fixations: {fixation_count}/{experiments}")
-    print(f"Theoretical Probability: {1/sim.n_nodes:.2f} ({100/sim.n_nodes:.3f}%)")
-    
+
