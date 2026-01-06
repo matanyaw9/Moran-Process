@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 
 class PopulationGraph:
     """This class is a container of a networkx graph. Used for Evolutionary Graph Theory"""
-    def __init__(self, graph: nx.Graph, name: str, graph_type: str, params: dict = None):
+    def __init__(self, graph: nx.Graph, name: str, graph_type: str, params: dict|None = None):
         self.graph = graph
         self.name = name  # e.g., "Mammalian_Depth4"
         self.graph_type = graph_type  # e.g., "Tree", "Complete"
@@ -176,6 +176,75 @@ class PopulationGraph:
         name = f'fish_r{n_rods}_l{rod_length}'
         return cls(G, name, graph_type='Fish', params={'n_rods': n_rods, 'rod_length': rod_length})
 
+    @classmethod
+    def random_connected_graph(cls, n_nodes: int, n_edges: int|None = None, seed: int|None = None):
+        """
+        Creates a random connected graph with specified nodes and edges.
+        
+        Args:
+            n_nodes (int): Number of nodes in the graph
+            n_edges (int, optional): Number of edges. If None, generates random number
+                                   between n_nodes-1 (minimum for connectivity) and 
+                                   n_nodes*(n_nodes-1)/2 (complete graph)
+            seed (int, optional): Random seed for reproducibility
+            
+        Returns:
+            PopulationGraph: Random connected graph
+        """
+        if seed is not None:
+            np.random.seed(seed)
+        
+        if n_nodes < 1:
+            raise ValueError("Number of nodes must be at least 1")
+        
+        # Calculate edge bounds
+        min_edges = n_nodes - 1  # Minimum for connectivity (spanning tree)
+        max_edges = n_nodes * (n_nodes - 1) // 2  # Complete graph
+        
+        # Generate random number of edges if not specified
+        if n_edges is None:
+            n_edges = np.random.randint(min_edges, max_edges + 1)
+        
+        # Validate edge count
+        if n_edges < min_edges:
+            raise ValueError(f"Need at least {min_edges} edges for connectivity with {n_nodes} nodes")
+        if n_edges > max_edges:
+            raise ValueError(f"Maximum {max_edges} edges possible with {n_nodes} nodes")
+        
+        # Start with a random spanning tree to ensure connectivity
+        G = nx.random_labeled_tree(n_nodes, seed=seed)
+        
+        # Add additional random edges if needed
+        current_edges = G.number_of_edges()
+        edges_to_add = n_edges - current_edges
+        
+        if edges_to_add > 0:
+            # Get all possible edges not already in graph
+            all_possible_edges = set()
+            for i in range(n_nodes):
+                for j in range(i + 1, n_nodes):
+                    all_possible_edges.add((i, j))
+            
+            existing_edges = set(G.edges())
+            available_edges = list(all_possible_edges - existing_edges)
+            
+            # Randomly select additional edges
+            if len(available_edges) >= edges_to_add:
+                additional_edges = np.random.choice(
+                    len(available_edges), 
+                    size=edges_to_add, 
+                    replace=False
+                )
+                for idx in additional_edges:
+                    G.add_edge(*available_edges[idx])
+        
+        name = f'random_n{n_nodes}_e{n_edges}'
+        if seed is not None:
+            name += f'_s{seed}'
+            
+        return cls(G, name, graph_type='Random', 
+                   params={'n_nodes': n_nodes, 'n_edges': n_edges, 'seed': seed})
+
 
     # --- UTULITIES ---
     def to_adjacency_matrix(self):
@@ -255,17 +324,27 @@ class PopulationGraph:
 
 # --- TEST BLOCK ---
 if __name__ == "__main__":
-    print("--- Testing Population Graph Class")
-    mammalian = PopulationGraph.mammalian_lung_graph(branching_factor=2, depth=8)
-    mammalian.draw(filename="./simulation_data/mammal.png")
-    avian = PopulationGraph.avian_graph(n_rods=5, rod_length=8)
-    avian.draw(filename="./simulation_data/avian.png")
-    fish = PopulationGraph.fish_graph(n_rods=8, rod_length=16)
-    fish.draw(filename="./simulation_data/fish.png")
-    complete = PopulationGraph.complete_graph(10)
-    complete.draw(filename="./simulation_data/complete.png")
-    cyrcular = PopulationGraph.cycle_graph(10)
-    cyrcular.draw(filename="./simulation_data/cycle.png")
+    # print("--- Testing Population Graph Class")
+    # mammalian = PopulationGraph.mammalian_lung_graph(branching_factor=2, depth=8)
+    # mammalian.draw(filename="./simulation_data/mammal.png")
+    # avian = PopulationGraph.avian_graph(n_rods=5, rod_length=8)
+    # avian.draw(filename="./simulation_data/avian.png")
+    # fish = PopulationGraph.fish_graph(n_rods=8, rod_length=16)
+    # fish.draw(filename="./simulation_data/fish.png")
+    # complete = PopulationGraph.complete_graph(10)
+    # complete.draw(filename="./simulation_data/complete.png")
+    # cyrcular = PopulationGraph.cycle_graph(10)
+    # cyrcular.draw(filename="./simulation_data/cycle.png")
+    
+    # Test random connected graphs
+    random_graph1 = PopulationGraph.random_connected_graph(15, 25)
+    random_graph1.draw(filename="./simulation_data/random1.png")
+    
+    random_graph2 = PopulationGraph.random_connected_graph(20)  # Random edges
+    random_graph2.draw(filename="./simulation_data/random2.png")
+    
+    print(f"Random graph 1: {random_graph1.N} nodes, {random_graph1.graph.number_of_edges()} edges")
+    print(f"Random graph 2: {random_graph2.N} nodes, {random_graph2.graph.number_of_edges()} edges")
 
 
         
