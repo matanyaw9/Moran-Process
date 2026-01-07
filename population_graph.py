@@ -219,23 +219,30 @@ class PopulationGraph:
         edges_to_add = n_edges - current_edges
         
         if edges_to_add > 0:
-            # Get all possible edges not already in graph
-            all_possible_edges = set()
-            for i in range(n_nodes):
-                for j in range(i + 1, n_nodes):
-                    all_possible_edges.add((i, j))
+            # Generate all possible edges using numpy - much more efficient
+            i_indices, j_indices = np.triu_indices(n_nodes, k=1)
+            all_possible_edges = np.column_stack((i_indices, j_indices))
             
-            existing_edges = set(G.edges())
-            available_edges = list(all_possible_edges - existing_edges)
+            # Convert existing edges to numpy array for efficient comparison
+            existing_edges = np.array(list(G.edges()))
+            
+            # Find available edges using numpy set operations
+            # Create a view for efficient comparison
+            all_edges_view = all_possible_edges.view([('', all_possible_edges.dtype)] * 2).ravel()
+            existing_edges_view = existing_edges.view([('', existing_edges.dtype)] * 2).ravel()
+            
+            # Get mask of available edges
+            available_mask = ~np.isin(all_edges_view, existing_edges_view)
+            available_edges = all_possible_edges[available_mask]
             
             # Randomly select additional edges
             if len(available_edges) >= edges_to_add:
-                additional_edges = np.random.choice(
+                selected_indices = np.random.choice(
                     len(available_edges), 
                     size=edges_to_add, 
                     replace=False
                 )
-                for idx in additional_edges:
+                for idx in selected_indices:
                     G.add_edge(*available_edges[idx])
         
         name = f'random_n{n_nodes}_e{n_edges}'
@@ -337,14 +344,14 @@ if __name__ == "__main__":
     # cyrcular.draw(filename="./simulation_data/cycle.png")
     
     # Test random connected graphs
-    random_graph1 = PopulationGraph.random_connected_graph(15, 25)
-    random_graph1.draw(filename="./simulation_data/random1.png")
+    random_graph1 = PopulationGraph.random_connected_graph(n_nodes=15, n_edges=25)
     
-    random_graph2 = PopulationGraph.random_connected_graph(20)  # Random edges
-    random_graph2.draw(filename="./simulation_data/random2.png")
+    random_graph2 = PopulationGraph.random_connected_graph(n_nodes=20)  # Random edges
     
     print(f"Random graph 1: {random_graph1.N} nodes, {random_graph1.graph.number_of_edges()} edges")
     print(f"Random graph 2: {random_graph2.N} nodes, {random_graph2.graph.number_of_edges()} edges")
+    random_graph1.draw()
+    random_graph2.draw()
 
 
         
