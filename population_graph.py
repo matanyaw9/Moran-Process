@@ -1,10 +1,18 @@
 import networkx as nx
 import numpy as np
 import matplotlib.pyplot as plt
+import pandas as pd
+import os
+from pathlib import Path
 # import pydot
 
 class PopulationGraph:
     """This class is a container of a networkx graph. Used for Evolutionary Graph Theory"""
+    
+    # Class-level database
+    _database_path = "simulation_data/graph_database.csv"
+    _database = None
+    
     def __init__(self, graph: nx.Graph, name: str, graph_type: str, params: dict|None = None):
         self.graph = graph
         self.name = name  # e.g., "Mammalian_Depth4"
@@ -14,6 +22,156 @@ class PopulationGraph:
         # Pre-calculate static metrics (Vital for analysis later)
         self.N = self.graph.number_of_nodes()
         self.is_directed = self.graph.is_directed()
+        
+        # Calculate WL hash and check database
+        self.wl_hash = self._calculate_wl_hash()
+        self._register_in_database()
+        
+    def _calculate_wl_hash(self):
+        """Calculate Weisfeiler-Lehman hash for graph isomorphism detection."""
+        return nx.weisfeiler_lehman_graph_hash(self.graph)
+    
+    def _calculate_graph_properties(self):
+        """Calculate comprehensive graph properties for database storage."""
+        G = self.graph
+        
+        # Basic properties
+        properties = {
+            'wl_hash': self.wl_hash,
+            'name': self.name,
+            'graph_type': self.graph_type,
+            'n_nodes': self.N,
+            'n_edges': G.number_of_edges(),
+            'is_directed': self.is_directed,
+            'density': nx.density(G),
+            'is_connected': nx.is_connected(G) if not self.is_directed else nx.is_weakly_connected(G),
+        }
+        
+        # Add parameters
+        properties.update(self.params)
+        
+        # Only calculate expensive metrics for connected graphs
+        if properties['is_connected']:
+            try:
+                # Centrality measures (sample a few nodes for large graphs)
+                nodes_sample = list(G.nodes())[:min(100, self.N)]  # Limit for performance
+                
+                # Degree centrality
+                degree_cent = nx.degree_centrality(G)
+                properties['avg_degree_centrality'] = np.mean(list(degree_cent.values()))
+                properties['max_degree_centrality'] = max(degree_cent.values())
+                
+                # Betweenness centrality (sample for large graphs)
+                if self.N <= 100:
+                    between_cent = nx.betweenness_centrality(G)
+                    properties['avg_betweenness_centrality'] = np.mean(list(between_cent.values()))
+                    properties['max_betweenness_centrality'] = max(between_cent.values())
+                else:
+                    between_cent = nx.betweenness_centrality(G, k=min(50, self.N))
+                    properties['avg_betweenness_centrality'] = np.mean(list(between_cent.values()))
+                    properties['max_betweenness_centrality'] = max(between_cent.values())
+                
+                # Closeness centrality
+                if self.N <= 100:
+                    close_cent = nx.closeness_centrality(G)
+                    properties['avg_closeness_centrality'] = np.mean(list(close_cent.values()))
+                    properties['max_closeness_centrality'] = max(close_cent.values())
+                
+                # Structural properties
+                properties['diameter'] = nx.diameter(G)
+                properties['radius'] = nx.radius(G)
+                properties['average_shortest_path_length'] = nx.average_shortest_path_length(G)
+                
+                # Clustering
+                properties['average_clustering'] = nx.average_clustering(G)
+                properties['transitivity'] = nx.transitivity(G)
+                
+                # Degree statistics
+                degrees = [d for n, d in G.degree()]
+                properties['avg_degree'] = np.mean(degrees)
+                properties['max_degree'] = max(degrees)
+                properties['min_degree'] = min(degrees)
+                properties['degree_std'] = np.std(degrees)
+                
+                # Assortativity
+                properties['degree_assortativity'] = nx.degree_assortativity_coefficient(G)
+                
+            except (nx.NetworkXError, ZeroDivisionError) as e:
+                # Handle cases where metrics can't be calculated
+                print(f"Warning: Could not calculate some properties for {self.name}: {e}")
+        
+        return properties
+    
+    @classmethod
+    def _load_database(cls):
+        """Load the graph database from CSV file."""
+        if cls._database is None:
+            # Ensure directory exists
+            Path(cls._database_path).parent.mkdir(parents=True, exist_ok=True)
+            
+            if os.path.exists(cls._database_path):
+                cls._database = pd.read_csv(cls._database_path)
+            else:
+                cls._database = pd.DataFrame()
+        return cls._database
+    
+    @classmethod
+    def _save_database(cls):
+        """Save the graph database to CSV file."""
+        if cls._database is not None:
+            cls._database.to_csv(cls._database_path, index=False)
+    
+    def _register_in_database(self):
+        """Register this graph in the database if not already present."""
+        PopulationGraph._load_database()
+        
+        # Check if graph already exists
+        if not PopulationGraph._database.empty and self.wl_hash in PopulationGraph._database['wl_hash'].values:
+            print(f"Graph with WL hash {self.wl_hash} already exists in database")
+            return
+        
+        # Calculate properties and add to database
+        properties = self._calculate_graph_properties()
+        
+        # Convert to DataFrame row and append
+        new_row = pd.DataFrame([properties])
+        if PopulationGraph._database.empty:
+            PopulationGraph._database = new_row
+        else:
+            PopulationGraph._database = pd.concat([PopulationGraph._database, new_row], ignore_index=True)
+        
+        # Save to file
+        PopulationGraph._save_database()
+        print(f"Added graph {self.name} (WL hash: {self.wl_hash}) to database")
+    
+    @classmethod
+    def get_database(cls):
+        """Get the current graph database."""
+        return cls._load_database().copy()
+    
+    @classmethod
+    def find_similar_graphs(cls, wl_hash):
+        """Find graphs with the same WL hash (isomorphic graphs)."""
+        db = cls._load_database()
+        if db.empty:
+            return pd.DataFrame()
+        return db[db['wl_hash'] == wl_hash]
+    
+    @classmethod
+    def get_graph_stats(cls):
+        """Get summary statistics of the graph database."""
+        db = cls._load_database()
+        if db.empty:
+            return "Database is empty"
+        
+        stats = {
+            'total_graphs': len(db),
+            'unique_topologies': db['wl_hash'].nunique(),
+            'graph_types': db['graph_type'].value_counts().to_dict(),
+            'size_range': f"{db['n_nodes'].min()}-{db['n_nodes'].max()} nodes",
+            'avg_density': db['density'].mean() if 'density' in db.columns else None
+        }
+        return stats
         
     @property
     def metadata(self):
@@ -326,32 +484,65 @@ class PopulationGraph:
     
     def number_of_nodes(self):
         return self.graph.number_of_nodes()
+
+    def get_wl_hash(self):
+        return nx.weisfeiler_lehman_graph_hash(self.graph)
     
 
 
 # --- TEST BLOCK ---
 if __name__ == "__main__":
-    # print("--- Testing Population Graph Class")
-    # mammalian = PopulationGraph.mammalian_lung_graph(branching_factor=2, depth=8)
-    # mammalian.draw(filename="./simulation_data/mammal.png")
-    # avian = PopulationGraph.avian_graph(n_rods=5, rod_length=8)
-    # avian.draw(filename="./simulation_data/avian.png")
-    # fish = PopulationGraph.fish_graph(n_rods=8, rod_length=16)
-    # fish.draw(filename="./simulation_data/fish.png")
-    # complete = PopulationGraph.complete_graph(10)
-    # complete.draw(filename="./simulation_data/complete.png")
-    # cyrcular = PopulationGraph.cycle_graph(10)
-    # cyrcular.draw(filename="./simulation_data/cycle.png")
+    print("--- Testing Population Graph Class with Database")
     
+    # Clear any existing database for fresh test
+    if os.path.exists("simulation_data/graph_database.csv"):
+        os.remove("simulation_data/graph_database.csv")
+    
+    print("\n1. Creating biological graphs...")
+    mammalian = PopulationGraph.mammalian_lung_graph(branching_factor=2, depth=4)
+    mammalian.draw(filename="./simulation_data/mammal.png")
+    
+    avian = PopulationGraph.avian_graph(n_rods=5, rod_length=8)
+    avian.draw(filename="./simulation_data/avian.png")
+    
+    fish = PopulationGraph.fish_graph(n_rods=4, rod_length=6)
+    fish.draw(filename="./simulation_data/fish.png")
+    
+    complete = PopulationGraph.complete_graph(10)
+    complete.draw(filename="./simulation_data/complete.png")
+    
+    cyrcular = PopulationGraph.cycle_graph(10)
+    cyrcular.draw(filename="./simulation_data/cycle.png")
+    
+    print("\n2. Creating random graphs...")
     # Test random connected graphs
-    random_graph1 = PopulationGraph.random_connected_graph(n_nodes=15, n_edges=25)
+    random_graph1 = PopulationGraph.random_connected_graph(15, 25, seed=42)
+    random_graph1.draw(filename="./simulation_data/random1.png")
     
-    random_graph2 = PopulationGraph.random_connected_graph(n_nodes=20)  # Random edges
+    random_graph2 = PopulationGraph.random_connected_graph(20, seed=123)  # Random edges
+    random_graph2.draw(filename="./simulation_data/random2.png")
     
     print(f"Random graph 1: {random_graph1.N} nodes, {random_graph1.graph.number_of_edges()} edges")
     print(f"Random graph 2: {random_graph2.N} nodes, {random_graph2.graph.number_of_edges()} edges")
-    random_graph1.draw()
-    random_graph2.draw()
+    
+    print("\n3. Testing duplicate detection...")
+    # Create another complete graph with same size - should detect duplicate
+    complete_duplicate = PopulationGraph.complete_graph(10)
+    
+    # Create another random graph with same seed - should detect duplicate
+    random_duplicate = PopulationGraph.random_connected_graph(15, 25, seed=42)
+    
+    print("\n4. Database statistics:")
+    stats = PopulationGraph.get_graph_stats()
+    for key, value in stats.items():
+        print(f"  {key}: {value}")
+    
+    print("\n5. Sample database entries:")
+    db = PopulationGraph.get_database()
+    if not db.empty:
+        print(db[['name', 'graph_type', 'wl_hash', 'n_nodes', 'n_edges', 'density']].head())
+        
+    print(f"\nDatabase saved to: {PopulationGraph._database_path}")
 
 
         
