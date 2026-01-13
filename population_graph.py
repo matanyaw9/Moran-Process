@@ -34,7 +34,7 @@ class PopulationGraph:
         if register_in_db:
             self._register_in_database()
         
-    def _calculate_graph_properties(self, save_graph6=True):
+    def calculate_graph_properties(self, save_graph6=True):
         """Calculate comprehensive graph properties for database storage."""
         G = self.graph
         
@@ -42,7 +42,7 @@ class PopulationGraph:
         # Basic properties
         properties = {
             'wl_hash': self.wl_hash,
-            'name': self.name,
+            'graph_name': self.name,
             'graph_type': self.graph_type,
             'n_nodes': self.N,
             'n_edges': G.number_of_edges(),
@@ -165,7 +165,7 @@ class PopulationGraph:
             return
         
         # Calculate properties and add to database
-        properties = self._calculate_graph_properties()
+        properties = self.calculate_graph_properties()
         
         # Convert to DataFrame row and append
         new_row = pd.DataFrame([properties])
@@ -216,10 +216,8 @@ class PopulationGraph:
     def metadata(self):
         """Returns a flat dictionary of graph properties for the dataframe."""
         return {
-            "graph_name": self.name,
-            "graph_type": self.graph_type,
-            "N": self.N,
-            **self.params  # Unpack specific params like 'depth' or 'n_rods'
+            "wl_hash": self.wl_hash,
+            "graph_name": self.name
         }
     # --- FACTORY METHODS ---
     @classmethod
