@@ -452,6 +452,7 @@ class PopulationGraph:
         if filename:
             # Retrieve the immediate parent
             root_fig = ax.get_figure()
+            if root_fig is None: raise RuntimeError("Could not retrieve figure from axis.")
             
             # CHECK: If it's a SubFigure (which has no savefig), get the REAL parent
             # SubFigures have a .figure attribute pointing to the top-level Figure
@@ -459,9 +460,8 @@ class PopulationGraph:
                 root_fig = root_fig.figure
 
             # Save
-            if root_fig is not None:
-                root_fig.savefig(filename, dpi=300, bbox_inches='tight')
-                print(f"Saved graph to {filename}")
+            root_fig.savefig(filename, dpi=300, bbox_inches='tight')
+            print(f"Saved graph to {filename}")
             
             # CLEANUP: Only close if WE created the figure. 
             # If the user passed 'ax', they manage the lifecycle.
