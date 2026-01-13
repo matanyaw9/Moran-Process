@@ -4,7 +4,9 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import os
 from pathlib import Path
+import warnings
 # import pydot
+warnings.filterwarnings("ignore", message="The hashes produced for graphs")
 
 class PopulationGraph:
     """This class is a container of a networkx graph. Used for Evolutionary Graph Theory"""
@@ -13,7 +15,11 @@ class PopulationGraph:
     _database_path = "simulation_data/graph_database.csv"
     _database = None
     
-    def __init__(self, graph: nx.Graph, name: str, graph_type: str, params: dict|None = None):
+    def __init__(self, graph: nx.Graph, 
+                 name: str, 
+                 graph_type: str, 
+                 params: dict|None = None,
+                 register_in_db=True,):
         self.graph = graph
         self.name = name  # e.g., "Mammalian_Depth4"
         self.graph_type = graph_type  # e.g., "Tree", "Complete"
@@ -24,17 +30,15 @@ class PopulationGraph:
         self.is_directed = self.graph.is_directed()
         
         # Calculate WL hash and check database
-        self.wl_hash = self._calculate_wl_hash()
-        self._register_in_database()
+        self.wl_hash = nx.weisfeiler_lehman_graph_hash(self.graph)
+        if register_in_db:
+            self._register_in_database()
         
-    def _calculate_wl_hash(self):
-        """Calculate Weisfeiler-Lehman hash for graph isomorphism detection."""
-        return nx.weisfeiler_lehman_graph_hash(self.graph)
-    
-    def _calculate_graph_properties(self):
+    def _calculate_graph_properties(self, save_graph6=True):
         """Calculate comprehensive graph properties for database storage."""
         G = self.graph
         
+
         # Basic properties
         properties = {
             'wl_hash': self.wl_hash,
@@ -46,45 +50,23 @@ class PopulationGraph:
             'density': nx.density(G),
             'is_connected': nx.is_connected(G) if not self.is_directed else nx.is_weakly_connected(G),
         }
-        
-        # Add parameters
+
+        # 1. Graph6 Generation (Added as requested)
+        # header=False strips the '>>graph6<<' prefix to save CSV space
+        if save_graph6:
+            try:
+                graph6_str = nx.to_graph6_bytes(G, header=False).decode('ascii').strip()
+            except Exception:
+                graph6_str = None
+            properties['graph6_string'] = graph6_str
+
+        # Add parameters (like rods in avian lungs)
         properties.update(self.params)
         
         # Only calculate expensive metrics for connected graphs
         if properties['is_connected']:
             try:
-                # Centrality measures (sample a few nodes for large graphs)
-                nodes_sample = list(G.nodes())[:min(100, self.N)]  # Limit for performance
-                
-                # Degree centrality
-                degree_cent = nx.degree_centrality(G)
-                properties['avg_degree_centrality'] = np.mean(list(degree_cent.values()))
-                properties['max_degree_centrality'] = max(degree_cent.values())
-                
-                # Betweenness centrality (sample for large graphs)
-                if self.N <= 100:
-                    between_cent = nx.betweenness_centrality(G)
-                    properties['avg_betweenness_centrality'] = np.mean(list(between_cent.values()))
-                    properties['max_betweenness_centrality'] = max(between_cent.values())
-                else:
-                    between_cent = nx.betweenness_centrality(G, k=min(50, self.N))
-                    properties['avg_betweenness_centrality'] = np.mean(list(between_cent.values()))
-                    properties['max_betweenness_centrality'] = max(between_cent.values())
-                
-                # Closeness centrality
-                if self.N <= 100:
-                    close_cent = nx.closeness_centrality(G)
-                    properties['avg_closeness_centrality'] = np.mean(list(close_cent.values()))
-                    properties['max_closeness_centrality'] = max(close_cent.values())
-                
-                # Structural properties
-                properties['diameter'] = nx.diameter(G)
-                properties['radius'] = nx.radius(G)
-                properties['average_shortest_path_length'] = nx.average_shortest_path_length(G)
-                
-                # Clustering
-                properties['average_clustering'] = nx.average_clustering(G)
-                properties['transitivity'] = nx.transitivity(G)
+                # --- FAST METRICS (Always run) ---
                 
                 # Degree statistics
                 degrees = [d for n, d in G.degree()]
@@ -93,11 +75,63 @@ class PopulationGraph:
                 properties['min_degree'] = min(degrees)
                 properties['degree_std'] = np.std(degrees)
                 
-                # Assortativity
-                properties['degree_assortativity'] = nx.degree_assortativity_coefficient(G)
+                # Assortativity (Caught separately to handle division-by-zero warnings)
+                try:
+                    properties['degree_assortativity'] = nx.degree_assortativity_coefficient(G)
+                except Exception:
+                    properties['degree_assortativity'] = None
+
+                # Clustering & Transitivity (Usually fast enough)
+                properties['average_clustering'] = nx.average_clustering(G)
+                properties['transitivity'] = nx.transitivity(G)
+
+                # --- SLOW METRICS (Guarded by N) ---
                 
+                # CRITICAL FIX: Diameter is O(N^2). It will freeze your computer for N > 1000.
+                if self.N <= 500:
+                    properties['diameter'] = nx.diameter(G)
+                    properties['radius'] = nx.radius(G)
+                    properties['average_shortest_path_length'] = nx.average_shortest_path_length(G)
+                else:
+                    properties['diameter'] = None 
+                    properties['radius'] = None
+                    properties['average_shortest_path_length'] = None
+
+                # --- CENTRALITIES ---
+                
+                # Degree Centrality (Fast)
+                degree_cent = nx.degree_centrality(G)
+                properties['avg_degree_centrality'] = np.mean(list(degree_cent.values()))
+                properties['max_degree_centrality'] = max(degree_cent.values())
+
+                # Betweenness Centrality (Slow - O(NM))
+                # Use built-in approximation 'k' for large graphs
+                if self.N <= 100:
+                    between_cent = nx.betweenness_centrality(G)
+                else:
+                    between_cent = nx.betweenness_centrality(G, k=50) # Sample 50 nodes
+                
+                properties['avg_betweenness_centrality'] = np.mean(list(between_cent.values()))
+                properties['max_betweenness_centrality'] = max(between_cent.values())
+
+                # Closeness Centrality (Slow - O(NM))
+                # NetworkX does NOT support 'k' sampling for closeness automatically!
+                # We must implement manual sampling.
+                if self.N <= 200:
+                    close_cent = nx.closeness_centrality(G)
+                    properties['avg_closeness_centrality'] = np.mean(list(close_cent.values()))
+                    properties['max_closeness_centrality'] = max(close_cent.values())
+                else:
+                    # Manual sampling: pick 50 random nodes and compute closeness for them
+                    sample_nodes = list(G.nodes())
+                    np.random.shuffle(sample_nodes)
+                    sample_nodes = sample_nodes[:50]
+                    
+                    close_vals = [nx.closeness_centrality(G, u=n) for n in sample_nodes]
+                    properties['avg_closeness_centrality'] = np.mean(close_vals)
+                    properties['max_closeness_centrality'] = max(close_vals)
+
             except (nx.NetworkXError, ZeroDivisionError) as e:
-                # Handle cases where metrics can't be calculated
                 print(f"Warning: Could not calculate some properties for {self.name}: {e}")
         
         return properties
@@ -125,7 +159,7 @@ class PopulationGraph:
         """Register this graph in the database if not already present."""
         PopulationGraph._load_database()
         
-        # Check if graph already exists
+        # Check if graph already exists - if it does, no need to calc properties
         if not PopulationGraph._database.empty and self.wl_hash in PopulationGraph._database['wl_hash'].values:
             print(f"Graph with WL hash {self.wl_hash} already exists in database")
             return
@@ -158,11 +192,12 @@ class PopulationGraph:
         return db[db['wl_hash'] == wl_hash]
     
     @classmethod
-    def get_graph_stats(cls):
+    def get_graph_stats(cls)->dict: 
         """Get summary statistics of the graph database."""
         db = cls._load_database()
         if db.empty:
-            return "Database is empty"
+            print("Database is empty")
+            return {}
         
         stats = {
             'total_graphs': len(db),
@@ -172,6 +207,10 @@ class PopulationGraph:
             'avg_density': db['density'].mean() if 'density' in db.columns else None
         }
         return stats
+    
+    def register_in_database(self):
+        """Manually register this graph in the database (useful if created with register_in_db=False)."""
+        self._register_in_database()
         
     @property
     def metadata(self):
@@ -184,23 +223,23 @@ class PopulationGraph:
         }
     # --- FACTORY METHODS ---
     @classmethod
-    def complete_graph(cls, N:int):
+    def complete_graph(cls, N:int, register_in_db: bool = True):
         """
         Creates a fully connected graph (everyone connected to everyone). 
         """
         name=f'complete_n{N}'
-        return cls(nx.complete_graph(N), name=name, graph_type="Complete")
+        return cls(nx.complete_graph(N), name=name, graph_type="Complete", register_in_db=register_in_db)
 
     @classmethod
-    def cycle_graph(cls, N:int):
+    def cycle_graph(cls, N:int, register_in_db: bool = True):
         """
         Creates a ring graph.
         """
         name=f'cycle_n{N}'
-        return cls(nx.cycle_graph(N), name=name, graph_type='Cycle')
+        return cls(nx.cycle_graph(N), name=name, graph_type='Cycle', register_in_db=register_in_db)
     
     @classmethod
-    def mammalian_lung_graph(cls, branching_factor:int=2, depth:int=3, name='mammalian'):
+    def mammalian_lung_graph(cls, branching_factor:int=2, depth:int=3, name='mammalian', register_in_db: bool = True):
         """Generates a tree shaped population graph mimicking mammalian lung topology."""
         G = nx.balanced_tree(branching_factor, depth)
         
@@ -221,10 +260,10 @@ class PopulationGraph:
         nx.set_node_attributes(G, pos, 'pos')
         name = f"mammalian_b{branching_factor}_d{depth}"
         return cls(G, name=name, graph_type="Mammalian", 
-                   params={"branching": branching_factor, "depth": depth})
+                   params={"branching": branching_factor, "depth": depth}, register_in_db=register_in_db)
 
     @classmethod
-    def avian_graph(cls, n_rods: int, rod_length: int, directed: bool = False, name="avian"):
+    def avian_graph(cls, n_rods: int, rod_length: int, directed: bool = False, name="avian", register_in_db: bool = True):
         """
         Generates a graph mimicking Avian Lungs topology. 
 
@@ -284,10 +323,10 @@ class PopulationGraph:
         nx.set_node_attributes(G, pos, 'pos')
         G = nx.convert_node_labels_to_integers(G)
         name = f'avian_r{n_rods}_l{rod_length}'
-        return cls(G, name, graph_type='Avian', params={"n_rods": n_rods, "rods_length": rod_length} )
+        return cls(G, name, graph_type='Avian', params={"n_rods": n_rods, "rods_length": rod_length}, register_in_db=register_in_db)
     
     @classmethod
-    def fish_graph(cls, n_rods: int, rod_length: int, name='fish'):
+    def fish_graph(cls, n_rods: int, rod_length: int, name='fish', register_in_db: bool = True):
         """Generates a 'Comb' structure: Vertical arch, horizontal filaments."""
         G = nx.Graph()
         pos = {}
@@ -332,10 +371,10 @@ class PopulationGraph:
         nx.set_node_attributes(G, pos, 'pos')
         G = nx.convert_node_labels_to_integers(G)
         name = f'fish_r{n_rods}_l{rod_length}'
-        return cls(G, name, graph_type='Fish', params={'n_rods': n_rods, 'rod_length': rod_length})
+        return cls(G, name, graph_type='Fish', params={'n_rods': n_rods, 'rod_length': rod_length}, register_in_db=register_in_db)
 
     @classmethod
-    def random_connected_graph(cls, n_nodes: int, n_edges: int|None = None, seed: int|None = None):
+    def random_connected_graph(cls, n_nodes: int, n_edges: int|None = None, seed: int|None = None, register_in_db: bool = True):
         """
         Creates a random connected graph with specified nodes and edges.
         
@@ -345,6 +384,7 @@ class PopulationGraph:
                                    between n_nodes-1 (minimum for connectivity) and 
                                    n_nodes*(n_nodes-1)/2 (complete graph)
             seed (int, optional): Random seed for reproducibility
+            register_in_db (bool): Whether to register this graph in the database
             
         Returns:
             PopulationGraph: Random connected graph
@@ -408,7 +448,7 @@ class PopulationGraph:
             name += f'_s{seed}'
             
         return cls(G, name, graph_type='Random', 
-                   params={'n_nodes': n_nodes, 'n_edges': n_edges, 'seed': seed})
+                   params={'n_nodes': n_nodes, 'n_edges': n_edges, 'seed': seed}, register_in_db=register_in_db)
 
 
     # --- UTULITIES ---
@@ -492,55 +532,47 @@ class PopulationGraph:
 
 # --- TEST BLOCK ---
 if __name__ == "__main__":
-    print("--- Testing Population Graph Class with Database")
+    print("--- Testing Population Graph Class with Database and register_in_db parameter")
     
     # Clear any existing database for fresh test
     if os.path.exists("simulation_data/graph_database.csv"):
         os.remove("simulation_data/graph_database.csv")
     
-    print("\n1. Creating biological graphs...")
+    print("\n1. Creating graphs with database registration...")
     mammalian = PopulationGraph.mammalian_lung_graph(branching_factor=2, depth=4)
-    mammalian.draw(filename="./simulation_data/mammal.png")
-    
-    avian = PopulationGraph.avian_graph(n_rods=5, rod_length=8)
-    avian.draw(filename="./simulation_data/avian.png")
-    
-    fish = PopulationGraph.fish_graph(n_rods=4, rod_length=6)
-    fish.draw(filename="./simulation_data/fish.png")
-    
     complete = PopulationGraph.complete_graph(10)
-    complete.draw(filename="./simulation_data/complete.png")
     
-    cyrcular = PopulationGraph.cycle_graph(10)
-    cyrcular.draw(filename="./simulation_data/cycle.png")
+    print("\n2. Creating graphs WITHOUT database registration...")
+    # These won't be added to database initially
+    temp_cycle = PopulationGraph.cycle_graph(8, register_in_db=False)
+    temp_random = PopulationGraph.random_connected_graph(12, 20, seed=42, register_in_db=False)
     
-    print("\n2. Creating random graphs...")
-    # Test random connected graphs
-    random_graph1 = PopulationGraph.random_connected_graph(15, 25, seed=42)
-    random_graph1.draw(filename="./simulation_data/random1.png")
+    print(f"Temp cycle WL hash: {temp_cycle.wl_hash}")
+    print(f"Temp random WL hash: {temp_random.wl_hash}")
     
-    random_graph2 = PopulationGraph.random_connected_graph(20, seed=123)  # Random edges
-    random_graph2.draw(filename="./simulation_data/random2.png")
-    
-    print(f"Random graph 1: {random_graph1.N} nodes, {random_graph1.graph.number_of_edges()} edges")
-    print(f"Random graph 2: {random_graph2.N} nodes, {random_graph2.graph.number_of_edges()} edges")
-    
-    print("\n3. Testing duplicate detection...")
-    # Create another complete graph with same size - should detect duplicate
-    complete_duplicate = PopulationGraph.complete_graph(10)
-    
-    # Create another random graph with same seed - should detect duplicate
-    random_duplicate = PopulationGraph.random_connected_graph(15, 25, seed=42)
-    
-    print("\n4. Database statistics:")
+    print("\n3. Database stats after initial creation:")
     stats = PopulationGraph.get_graph_stats()
     for key, value in stats.items():
         print(f"  {key}: {value}")
     
-    print("\n5. Sample database entries:")
+    print("\n4. Manually registering temp graphs...")
+    temp_cycle.register_in_database()
+    temp_random.register_in_database()
+    
+    print("\n5. Final database stats:")
+    stats = PopulationGraph.get_graph_stats()
+    for key, value in stats.items():
+        print(f"  {key}: {value}")
+    
+    print("\n6. Testing duplicate detection with register_in_db=False...")
+    # This should still detect the duplicate even without registering
+    duplicate_complete = PopulationGraph.complete_graph(10, register_in_db=False)
+    print(f"Duplicate complete graph WL hash: {duplicate_complete.wl_hash}")
+    
+    print("\n7. Sample database entries:")
     db = PopulationGraph.get_database()
     if not db.empty:
-        print(db[['name', 'graph_type', 'wl_hash', 'n_nodes', 'n_edges', 'density']].head())
+        print(db[['name', 'graph_type', 'wl_hash', 'n_nodes', 'n_edges']].head())
         
     print(f"\nDatabase saved to: {PopulationGraph._database_path}")
 
