@@ -7,7 +7,7 @@ import pandas as pd
 import os
 import time
 
-EXPERIMENTS_CSV = 'version_check.csv'
+EXPERIMENTS_CSV = 'respiratory_runs.csv'
 
 
 
@@ -40,27 +40,24 @@ def main():
     repeats = 1000  # Higher repeats for smoother stats
     
 
-    # 2. RUN EXPERIMENT
+    # 2. RUN EXPERIMENT AND SAVE RESULTS
 
     lab = ProcessLab()
-
-    df = lab.run_comparative_study(graph_zoo, r_values, n_repeats=repeats, print_time=True)
+    output_path = os.path.join("simulation_data", EXPERIMENTS_CSV)
     
-
-    # 3. SAVE & ANALYZE
-
-    # The dataframe now automatically contains 'N', 'depth', 'graph_type', etc.
-
-    data_dir = "simulation_data"
-
-    df.to_csv(os.path.join(data_dir, EXPERIMENTS_CSV), index=False)
+    df = lab.run_comparative_study(
+        graph_zoo, 
+        r_values, 
+        n_repeats=repeats, 
+        print_time=True,
+        output_path=output_path
+    )
     
 
 if __name__ == "__main__":
     start_time = time.perf_counter()
 
     for graph in graph_zoo:
-
         print(f"Graph Name: {graph.name}\t\tGraph Size: {graph.number_of_nodes()}")
     
     main()

@@ -10,10 +10,18 @@ class ProcessLab:
     def __init__(self):
         """
         """
-    def run_comparative_study(self, graphs, r_values, n_repeats=100, print_time=False):
+    def run_comparative_study(self, graphs, r_values, n_repeats=100, print_time=True, output_path=None):
         """
+        Run comparative study across multiple graphs and selection coefficients.
+        
         :param graphs: List of instantiated PopulationGraph objects
-        :param r_values: List of floats
+        :param r_values: List of floats (selection coefficients)
+        :param n_repeats: Number of repetitions per configuration
+        :param print_time: Whether to print timing information for each run
+        :param output_path: Optional path to save results CSV. If provided, results will be 
+                           appended to existing file or create new file. Can be absolute or 
+                           relative path (e.g., 'simulation_data/results.csv')
+        :return: DataFrame with all results
         """
         all_results = []
         
@@ -48,5 +56,38 @@ class ProcessLab:
                     if print_time: 
                         seconds = raw_result['duration']
                         print(f"Graph: {graph_obj.name}, r: {r}, Fixation: {raw_result['fixation']}, N: {graph_obj.number_of_nodes()}, Steps: {raw_result['steps']}, Time: {seconds:.4f}s")
+        
         print('Done.')
-        return pd.DataFrame(all_results)
+        df = pd.DataFrame(all_results)
+        
+        # Save to CSV if output_path is provided
+        if output_path:
+            save_results(df, output_path)
+        
+        return df
+    
+    @staticmethod
+    def save_results(df, output_path):
+        """
+        Save results to CSV file, appending to existing file if it exists.
+        
+        :param df: DataFrame with results to save
+        :param output_path: Path to CSV file
+        """
+        # Ensure directory exists
+        output_dir = os.path.dirname(output_path)
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
+        
+        # Append to existing CSV if it exists, otherwise create new
+        if os.path.exists(output_path):
+            existing_df = pd.read_csv(output_path)
+            combined_df = pd.concat([existing_df, df], ignore_index=True)
+            print(f"Appending {len(df)} new rows to existing CSV with {len(existing_df)} rows")
+            combined_df.to_csv(output_path, index=False)
+            print(f"Total rows in CSV: {len(combined_df)}")
+        else:
+            df.to_csv(output_path, index=False)
+            print(f"Created new CSV file with {len(df)} rows")
+        
+        print(f"Results saved to: {output_path}")

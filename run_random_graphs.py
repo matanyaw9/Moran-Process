@@ -3,12 +3,10 @@
 
 from population_graph import PopulationGraph
 from process_lab import ProcessLab
-import pandas as pd
 import os
 import time
-import numpy as np
 
-EXPERIMENTS_CSV = 'random_graphs_experiments.csv'
+EXPERIMENTS_CSV = 'random_graphs_grand_experiments.csv'
 GRAPH_DATABASE_CSV = 'simulation_data/graph_database.csv'
 
 def generate_random_graphs(n_nodes=31, edge_counts=[30, 31, 32], n_graphs_per_edge_count=10):
@@ -96,28 +94,28 @@ def main():
     for graph in graph_zoo:
         print(f"Graph: {graph.name:30s} | Nodes: {graph.N:3d} | Edges: {graph.graph.number_of_edges():3d} | Density: {graph.graph.number_of_edges() / (graph.N * (graph.N - 1) / 2):.3f}")
     
-    # 4. RUN EXPERIMENT
+    # 4. RUN EXPERIMENT AND SAVE RESULTS
     print("\n" + "="*60)
     print("RUNNING EXPERIMENTS")
     print("="*60)
     
     lab = ProcessLab()
-    df = lab.run_comparative_study(graph_zoo, r_values, n_repeats=repeats, print_time=False)
-    
-    # 5. SAVE RESULTS
-    data_dir = "simulation_data"
-    os.makedirs(data_dir, exist_ok=True)
-    
     output_path = os.path.join(data_dir, EXPERIMENTS_CSV)
-    df.to_csv(output_path, index=False)
+    
+    df = lab.run_comparative_study(
+        graph_zoo, 
+        r_values, 
+        n_repeats=repeats, 
+        print_time=False,
+        output_path=output_path
+    )
     
     print("\n" + "="*60)
     print("RESULTS SAVED")
     print("="*60)
-    print(f"Experiment results: {output_path}")
     print(f"Graph database: {GRAPH_DATABASE_CSV}")
     
-    # 6. DISPLAY SUMMARY STATISTICS
+    # 5. DISPLAY SUMMARY STATISTICS
     print("\n" + "="*60)
     print("SUMMARY STATISTICS")
     print("="*60)

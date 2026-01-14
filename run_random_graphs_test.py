@@ -60,27 +60,23 @@ def main():
     
     print(f"\nGenerated {len(graph_zoo)} graphs")
     
-    # 3. RUN EXPERIMENT
+    # 3. RUN EXPERIMENT AND SAVE RESULTS
     print("\n" + "="*60)
     print("RUNNING EXPERIMENTS")
     print("="*60)
     
     lab = ProcessLab()
-    df = lab.run_comparative_study(graph_zoo, r_values, n_repeats=repeats, print_time=True)
-    
-    # 4. SAVE RESULTS
-    data_dir = "simulation_data"
-    os.makedirs(data_dir, exist_ok=True)
-    
     output_path = os.path.join(data_dir, EXPERIMENTS_CSV)
-    df.to_csv(output_path, index=False)
     
-    print("\n" + "="*60)
-    print("RESULTS SAVED")
-    print("="*60)
-    print(f"Experiment results: {output_path}")
+    df = lab.run_comparative_study(
+        graph_zoo, 
+        r_values, 
+        n_repeats=repeats, 
+        print_time=True,
+        output_path=output_path
+    )
     
-    # 5. SUMMARY
+    # 4. SUMMARY
     print("\n" + "="*60)
     print("SUMMARY")
     print("="*60)

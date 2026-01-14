@@ -8,6 +8,28 @@ import warnings
 # import pydot
 warnings.filterwarnings("ignore", message="The hashes produced for graphs")
 
+
+# COLOR_DICT = {
+#     'Random': 'lightgray',          # The Baseline
+#     'Mammalian': '#d62728',         # Red
+#     'Avian': '#1f77b4',             # Blue
+#     'Fish': '#2ca02c',              # Green
+#     'Complete': 'black',            # Fully Connected
+#     'Other': '#9467bd'               # Purple
+# }
+COLOR_DICT = {
+    'Random': 'lightgray',     
+    'Avian': "#2DB806",       
+    'Fish': '#1f77b4',        
+    'Mammalian': "#833105",   
+    'Complete': 'black',       
+    'Other': 'yellow'          
+}
+
+GRAPH_PROPS = ['n_nodes', 'n_edges', 'density', 'diameter', 'avg_degree', 
+     'average_clustering', 'average_shortest_path_length', 
+     'degree_assortativity', 'avg_betweenness_centrality', 'max_degree', 'min_degree', 'degree_std', 'transitivity', 'radius', 'avg_degree_centrality', 'max_degree_centrality', 'max_betweenness_centrality', 'avg_closeness_centrality', 'max_closeness_centrality']
+
 class PopulationGraph:
     """This class is a container of a networkx graph. Used for Evolutionary Graph Theory"""
     
@@ -17,12 +39,12 @@ class PopulationGraph:
     
     def __init__(self, graph: nx.Graph, 
                  name: str, 
-                 graph_type: str, 
+                 category: str, 
                  params: dict|None = None,
                  register_in_db=True,):
         self.graph = graph
         self.name = name  # e.g., "Mammalian_Depth4"
-        self.graph_type = graph_type  # e.g., "Tree", "Complete"
+        self.category = category  # e.g., "Tree", "Complete"
         self.params = params or {}  # Store {depth: 4, branching: 2} for reproducibility
         
         # Pre-calculate static metrics (Vital for analysis later)
@@ -43,7 +65,7 @@ class PopulationGraph:
         properties = {
             'wl_hash': self.wl_hash,
             'graph_name': self.name,
-            'graph_type': self.graph_type,
+            'category': self.category,
             'n_nodes': self.N,
             'n_edges': G.number_of_edges(),
             'is_directed': self.is_directed,
@@ -202,7 +224,7 @@ class PopulationGraph:
         stats = {
             'total_graphs': len(db),
             'unique_topologies': db['wl_hash'].nunique(),
-            'graph_types': db['graph_type'].value_counts().to_dict(),
+            'graph_types': db['category'].value_counts().to_dict(),
             'size_range': f"{db['n_nodes'].min()}-{db['n_nodes'].max()} nodes",
             'avg_density': db['density'].mean() if 'density' in db.columns else None
         }
@@ -226,7 +248,7 @@ class PopulationGraph:
         Creates a fully connected graph (everyone connected to everyone). 
         """
         name=f'complete_n{N}'
-        return cls(nx.complete_graph(N), name=name, graph_type="Complete", register_in_db=register_in_db)
+        return cls(nx.complete_graph(N), name=name, category="Complete", register_in_db=register_in_db)
 
     @classmethod
     def cycle_graph(cls, N:int, register_in_db: bool = True):
@@ -234,7 +256,7 @@ class PopulationGraph:
         Creates a ring graph.
         """
         name=f'cycle_n{N}'
-        return cls(nx.cycle_graph(N), name=name, graph_type='Cycle', register_in_db=register_in_db)
+        return cls(nx.cycle_graph(N), name=name, category='Cycle', register_in_db=register_in_db)
     
     @classmethod
     def mammalian_lung_graph(cls, branching_factor:int=2, depth:int=3, name='mammalian', register_in_db: bool = True):
@@ -257,7 +279,7 @@ class PopulationGraph:
         assign_pos(0, 0, 100, 0)
         nx.set_node_attributes(G, pos, 'pos')
         name = f"mammalian_b{branching_factor}_d{depth}"
-        return cls(G, name=name, graph_type="Mammalian", 
+        return cls(G, name=name, category="Mammalian", 
                    params={"branching": branching_factor, "depth": depth}, register_in_db=register_in_db)
 
     @classmethod
@@ -321,7 +343,7 @@ class PopulationGraph:
         nx.set_node_attributes(G, pos, 'pos')
         G = nx.convert_node_labels_to_integers(G)
         name = f'avian_r{n_rods}_l{rod_length}'
-        return cls(G, name, graph_type='Avian', params={"n_rods": n_rods, "rods_length": rod_length}, register_in_db=register_in_db)
+        return cls(G, name, category='Avian', params={"n_rods": n_rods, "rods_length": rod_length}, register_in_db=register_in_db)
     
     @classmethod
     def fish_graph(cls, n_rods: int, rod_length: int, name='fish', register_in_db: bool = True):
@@ -369,7 +391,7 @@ class PopulationGraph:
         nx.set_node_attributes(G, pos, 'pos')
         G = nx.convert_node_labels_to_integers(G)
         name = f'fish_r{n_rods}_l{rod_length}'
-        return cls(G, name, graph_type='Fish', params={'n_rods': n_rods, 'rod_length': rod_length}, register_in_db=register_in_db)
+        return cls(G, name, category='Fish', params={'n_rods': n_rods, 'rod_length': rod_length}, register_in_db=register_in_db)
 
     @classmethod
     def random_connected_graph(cls, n_nodes: int, 
@@ -450,7 +472,7 @@ class PopulationGraph:
             if seed is not None:
                 name += f'_s{seed}'
             
-        return cls(G, name, graph_type='Random', 
+        return cls(G, name, category='Random', 
                    params={'n_nodes': n_nodes, 'n_edges': n_edges, 'seed': seed}, register_in_db=register_in_db)
 
 
@@ -591,7 +613,7 @@ if __name__ == "__main__":
     print("\n7. Sample database entries:")
     db = PopulationGraph.get_database()
     if not db.empty:
-        print(db[['name', 'graph_type', 'wl_hash', 'n_nodes', 'n_edges']].head())
+        print(db[['name', 'category', 'wl_hash', 'n_nodes', 'n_edges']].head())
         
     print(f"\nDatabase saved to: {PopulationGraph._database_path}")
 
