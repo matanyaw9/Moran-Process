@@ -372,7 +372,11 @@ class PopulationGraph:
         return cls(G, name, graph_type='Fish', params={'n_rods': n_rods, 'rod_length': rod_length}, register_in_db=register_in_db)
 
     @classmethod
-    def random_connected_graph(cls, n_nodes: int, n_edges: int|None = None, seed: int|None = None, register_in_db: bool = True):
+    def random_connected_graph(cls, n_nodes: int, 
+                                n_edges: int|None = None, 
+                                name: str|None = None, 
+                                seed: int|None = None, 
+                                register_in_db: bool = True):
         """
         Creates a random connected graph with specified nodes and edges.
         
@@ -441,9 +445,10 @@ class PopulationGraph:
                 for idx in selected_indices:
                     G.add_edge(*available_edges[idx])
         
-        name = f'random_n{n_nodes}_e{n_edges}'
-        if seed is not None:
-            name += f'_s{seed}'
+        if not name: 
+            name = f'random_n{n_nodes}_e{n_edges}'
+            if seed is not None:
+                name += f'_s{seed}'
             
         return cls(G, name, graph_type='Random', 
                    params={'n_nodes': n_nodes, 'n_edges': n_edges, 'seed': seed}, register_in_db=register_in_db)
@@ -459,7 +464,7 @@ class PopulationGraph:
         return nx.to_numpy_array(self.graph)
     
 # --- VISUALIZATION ---
-    def draw(self, ax=None, filename=''):
+    def draw(self, ax=None, filename='', descriptive=True):
         """Draws the graph using its stored biological layout."""
         if self.graph is None: return
 
@@ -484,6 +489,22 @@ class PopulationGraph:
                 width=1.5)
         
         ax.set_title(self.name, fontsize=14)
+
+        # --- ADDED: Descriptive Stats ---
+        if descriptive:
+            N = self.graph.number_of_nodes()
+            E = self.graph.number_of_edges()
+            stats_text = f"Nodes (N): {N}\nEdges (E): {E}"
+            
+            # Place text in bottom-right corner (0.98, 0.02) relative to axes
+            ax.text(0.98, 0.02, stats_text, 
+                    transform=ax.transAxes, 
+                    horizontalalignment='right',
+                    verticalalignment='bottom',
+                    fontsize=10,
+                    bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="gray", alpha=0.9))
+        # --------------------------------
+
         ax.axis('off')
 
         # 4. Saving Logic (Robust)
