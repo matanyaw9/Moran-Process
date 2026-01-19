@@ -60,7 +60,7 @@ def main():
     
     # 1. DEFINE PARAMETERS
     n_nodes = 31
-    edge_counts = [30, 31, 32]  # Sparse, balanced, slightly denser
+    edge_counts = [33, 34]  # Sparse, balanced, slightly denser
     n_graphs_per_edge_count = 10  # Number of random graphs per edge count
     r_values = [1.0, 1.1, 1.2, 2.0]  # Same r values as main.py
     repeats = 1000  # Same as main.py for consistency
