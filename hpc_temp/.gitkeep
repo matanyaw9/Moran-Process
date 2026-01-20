@@ -1,0 +1,2 @@
+# This directory is used for temporary HPC files during job execution
+# It will contain serialized graphs, intermediate results, and worker outputs

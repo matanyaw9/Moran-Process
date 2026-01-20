@@ -4,6 +4,7 @@ import os
 from datetime import datetime
 from population_graph import PopulationGraph
 from process_run import ProcessRun
+from hpc.serialization import GraphSerializer, SerializationError
 
 class ProcessLab:
     """ Manages multiple process runs and stores their results"""
@@ -91,3 +92,44 @@ class ProcessLab:
             print(f"Created new CSV file with {len(df)} rows")
         
         print(f"Results saved to: {output_path}")
+
+    # --- HPC EXECUTION METHODS ---
+    
+    def _serialize_graphs(self, graphs, filepath):
+        """
+        Serialize graph zoo to pickle file with metadata preservation.
+        
+        :param graphs: List of PopulationGraph objects
+        :param filepath: Output pickle file path
+        :raises: SerializationError if graphs cannot be serialized
+        :return: Serialization metadata dictionary
+        """
+        try:
+            metadata = GraphSerializer.serialize_graphs(graphs, filepath)
+            print(f"Successfully serialized {len(graphs)} graphs to {filepath}")
+            return metadata
+        except SerializationError as e:
+            print(f"ERROR: Failed to serialize graphs: {e}")
+            raise
+        except Exception as e:
+            print(f"ERROR: Unexpected error during graph serialization: {e}")
+            raise SerializationError(f"Unexpected serialization error: {e}")
+    
+    def _deserialize_graphs(self, filepath):
+        """
+        Deserialize graph zoo from pickle file.
+        
+        :param filepath: Path to pickle file containing serialized graphs
+        :return: Tuple of (graphs_list, metadata_dict)
+        :raises: SerializationError if deserialization fails
+        """
+        try:
+            graphs, metadata = GraphSerializer.deserialize_graphs(filepath)
+            print(f"Successfully deserialized {len(graphs)} graphs from {filepath}")
+            return graphs, metadata
+        except SerializationError as e:
+            print(f"ERROR: Failed to deserialize graphs: {e}")
+            raise
+        except Exception as e:
+            print(f"ERROR: Unexpected error during graph deserialization: {e}")
+            raise SerializationError(f"Unexpected deserialization error: {e}")
