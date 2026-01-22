@@ -56,7 +56,7 @@ class PopulationGraph:
         if register_in_db:
             self._register_in_database()
         
-    def calculate_graph_properties(self, save_graph6=True):
+    def calculate_graph_properties(self, save_graph6=False):
         """Calculate comprehensive graph properties for database storage."""
         G = self.graph
         
