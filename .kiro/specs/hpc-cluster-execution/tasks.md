@@ -16,8 +16,8 @@ This implementation plan converts the HPC cluster execution design into discrete
   - **Property 1: Graph Serialization Round-trip Consistency**
   - **Validates: Requirements 1.2, 1.4**
 
-- [ ] 2. Implement job distribution and work assignment algorithms
-  - [ ] 2.1 Create job count calculation method
+- [x] 2. Implement job distribution and work assignment algorithms
+  - [x] 2.1 Create job count calculation method
     - Implement algorithm to calculate total jobs needed based on graphs, r_values, and repeats
     - Handle edge cases like single job or single graph scenarios
     - _Requirements: 2.1_
@@ -26,7 +26,7 @@ This implementation plan converts the HPC cluster execution design into discrete
     - **Property 2: Job Count Calculation Accuracy**
     - **Validates: Requirements 2.1**
   
-  - [ ] 2.3 Implement work distribution algorithm
+  - [x] 2.3 Implement work distribution algorithm
     - Create method to distribute repeats across jobs optimally
     - Implement round-robin assignment of (graph, r_value) combinations
     - _Requirements: 2.5_
@@ -35,7 +35,7 @@ This implementation plan converts the HPC cluster execution design into discrete
     - **Property 3: Work Distribution Correctness**
     - **Validates: Requirements 2.5**
   
-  - [ ] 2.5 Implement work assignment calculation for workers
+  - [x] 2.5 Implement work assignment calculation for workers
     - Create algorithm to map job index to specific (graph, r_value, repeat_range)
     - Handle boundary conditions and validate assignments
     - _Requirements: 3.3_
