@@ -94,24 +94,132 @@ class ProcessLab:
         print(f"Results saved to: {output_path}")
      
      
-    def _serialize_graphs(self, graphs, filepath):
-        """
-        Serialize graph zoo to pickle file with metadata preservation.
+    def submit_jobs(self, graphs: list[PopulationGraph], r_values: list[float], 
+                   n_repeats: int, n_jobs: int | None = None, 
+                   output_path: str | None = None, repeats_per_job: int | None = None,
+                   queue: str | None = None, memory: str = "4GB", walltime: str = "2:00",
+                   temp_dir: str | None = None) -> dict[str, Any]:
+        """Submit comparative study as LSF job array using CSV task list."""
         
-        :param graphs: List of PopulationGraph objects
-        :param filepath: Output pickle file path
-        :raises: SerializationError if graphs cannot be serialized
-        :return: Serialization metadata dictionary
-        """
-        return GraphSerializer.serialize_graphs(graphs, filepath)
+        # Calculate total simulations and job distribution
+        total_simulations = len(graphs) * len(r_values) * n_repeats
+        
+        if repeats_per_job is None:
+            repeats_per_job = max(1, total_simulations // (n_jobs or 10))
+        if n_jobs is None:
+            n_jobs = math.ceil(total_simulations / repeats_per_job)
+        
+        # Create temp directory
+        if temp_dir is None:
+            temp_dir = tempfile.mkdtemp(prefix="processlab_hpc_")
+        else:
+            os.makedirs(temp_dir, exist_ok=True)
+        
+        temp_path = Path(temp_dir)
+        
+        try:
+            # Create task list CSV
+            task_list = self._create_task_list(graphs, r_values, n_repeats)
+            task_file = temp_path / "task_list.csv"
+            task_list.to_csv(task_file, index=False)
+            
+            # Serialize graphs for reference
+            graph_file = temp_path / "graphs.pkl"
+            with open(graph_file, 'wb') as f:
+                pickle.dump(graphs, f)
+            
+            # Generate and execute LSF command
+            job_command = self._build_lsf_command(
+                n_jobs, str(task_file), str(graph_file), repeats_per_job,
+                str(temp_path / "results"), queue, memory, walltime, temp_dir
+            )
+            
+            result = subprocess.run(job_command, shell=True, capture_output=True, text=True)
+            if result.returncode != 0:
+                raise RuntimeError(f"LSF command failed: {result.stderr}")
+            
+            # Parse job ID
+            import re
+            job_id_match = re.search(r'Job <(\d+)>', result.stdout)
+            job_id = job_id_match.group(1) if job_id_match else None
+            
+            tracking_info = {
+                'job_id': job_id,
+                'job_array_size': n_jobs,
+                'total_simulations': total_simulations,
+                'repeats_per_job': repeats_per_job,
+                'temp_dir': temp_dir,
+                'task_file': str(task_file),
+                'graph_file': str(graph_file),
+                'output_path': output_path,
+                'submission_time': datetime.now().isoformat()
+            }
+            
+            print(f"Successfully submitted LSF job array:")
+            print(f"  Job ID: {job_id}")
+            print(f"  Array size: {n_jobs} jobs")
+            print(f"  Total simulations: {total_simulations}")
+            print(f"  Simulations per job: ~{repeats_per_job}")
+            print(f"  Task list: {task_file}")
+            print(f"  Temporary directory: {temp_dir}")
+            
+            return tracking_info
+            
+        except Exception as e:
+            print(f"ERROR: Job submission failed: {e}")
+            if temp_dir and os.path.exists(temp_dir):
+                import shutil
+                shutil.rmtree(temp_dir, ignore_errors=True)
+            raise
     
-    def _deserialize_graphs(self, filepath):
-        """
-        Deserialize graph zoo from pickle file.
+    def _create_task_list(graphs, r_values, n_repeats):
+        """Create CSV task list for job array execution."""
+        tasks = []
+        task_id = 0
         
-        :param filepath: Path to pickle file containing serialized graphs
-        :return: Tuple of (graphs_list, metadata_dict)
-        :raises: SerializationError if deserialization fails
-        """
-        graphs, metadata = GraphSerializer.deserialize_graphs(filepath)
-        return graphs, metadata
+        for graph_idx, graph_obj in enumerate(graphs):
+            for r in r_values:
+                for repeat in range(n_repeats):
+                    tasks.append({
+                        'task_id': task_id,
+                        'graph_idx': graph_idx,
+                        'r_value': r,
+                        'repeat': repeat
+                    })
+                    task_id += 1
+        
+        return pd.DataFrame(tasks)
+        
+
+    
+    def _build_lsf_command(self, n_jobs, graph_file, r_values, repeats_per_job, 
+                          output_dir, queue, memory, walltime, temp_dir):
+        """Generate LSF bsub command string."""
+        os.makedirs(output_dir, exist_ok=True)
+        logs_dir = Path(temp_dir) / "logs"
+        logs_dir.mkdir(exist_ok=True)
+        
+        cmd_parts = [
+            "bsub",
+            "-J", f"processlab[1-{n_jobs}]",
+            "-n", "1",
+            "-M", memory,
+            "-W", walltime,
+            "-o", str(logs_dir / "job_%J_%I.out"),
+            "-e", str(logs_dir / "job_%J_%I.err")
+        ]
+        
+        if queue:
+            cmd_parts.extend(["-q", queue])
+        
+        r_values_str = " ".join(map(str, r_values))
+        worker_cmd = (
+            f"python worker_wrapper.py "
+            f"--graph-file {graph_file} "
+            f"--r-values {r_values_str} "
+            f"--repeats-per-job {repeats_per_job} "
+            f"--output-dir {output_dir}"
+        )
+        
+        cmd_parts.append(worker_cmd)
+        return " ".join(cmd_parts)
