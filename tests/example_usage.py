@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-Example demonstrating the new ProcessLab output_path feature
+Example demonstrating the simplified ProcessLab usage
 """
 
 from population_graph import PopulationGraph
@@ -45,3 +45,19 @@ df3 = lab.run_comparative_study(
 )
 print(f"Returned DataFrame with {len(df3)} rows")
 print("Results appended to existing CSV")
+
+# Example 4: HPC job submission (simplified)
+print("\nExample 4: HPC job submission")
+try:
+    tracking_info = lab.submit_jobs(
+        graphs=graphs,
+        r_values=[1.0, 1.2, 1.5],
+        n_repeats=100,
+        n_jobs=5,
+        memory="2GB",  # Use less memory for test
+        walltime="4:00"
+    )
+    print(f"Submitted job array: {tracking_info['job_id']}")
+except Exception as e:
+    print(f"Job submission test (expected to fail in test environment): {type(e).__name__}")
+    print("This would work in a real LSF environment")
