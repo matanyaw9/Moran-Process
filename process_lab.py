@@ -4,6 +4,7 @@ import os
 from datetime import datetime
 from population_graph import PopulationGraph
 from process_run import ProcessRun
+from hpc.serialization import GraphSerializer, SerializationError
 
 class ProcessLab:
     """ Manages multiple process runs and stores their results"""
@@ -91,3 +92,26 @@ class ProcessLab:
             print(f"Created new CSV file with {len(df)} rows")
         
         print(f"Results saved to: {output_path}")
+     
+     
+    def _serialize_graphs(self, graphs, filepath):
+        """
+        Serialize graph zoo to pickle file with metadata preservation.
+        
+        :param graphs: List of PopulationGraph objects
+        :param filepath: Output pickle file path
+        :raises: SerializationError if graphs cannot be serialized
+        :return: Serialization metadata dictionary
+        """
+        return GraphSerializer.serialize_graphs(graphs, filepath)
+    
+    def _deserialize_graphs(self, filepath):
+        """
+        Deserialize graph zoo from pickle file.
+        
+        :param filepath: Path to pickle file containing serialized graphs
+        :return: Tuple of (graphs_list, metadata_dict)
+        :raises: SerializationError if deserialization fails
+        """
+        graphs, metadata = GraphSerializer.deserialize_graphs(filepath)
+        return graphs, metadata
