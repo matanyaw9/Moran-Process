@@ -5,6 +5,7 @@ import pandas as pd
 import os
 from pathlib import Path
 import warnings
+import pickle
 # import pydot
 warnings.filterwarnings("ignore", message="The hashes produced for graphs")
 
@@ -59,7 +60,6 @@ class PopulationGraph:
     def calculate_graph_properties(self, save_graph6=True):
         """Calculate comprehensive graph properties for database storage."""
         G = self.graph
-        
 
         # Basic properties
         properties = {
@@ -241,6 +241,7 @@ class PopulationGraph:
             "wl_hash": self.wl_hash,
             "graph_name": self.name
         }
+    
     # --- FACTORY METHODS ---
     @classmethod
     def complete_graph(cls, N:int, register_in_db: bool = True):
@@ -569,6 +570,37 @@ class PopulationGraph:
     def get_wl_hash(self):
         return nx.weisfeiler_lehman_graph_hash(self.graph)
     
+
+    # --- HPC SERIALIZATION ---
+    def save(self, filepath: str):
+        """
+        Serializes the entire PopulationGraph object to a file.
+        Used to send the graph topology to HPC worker nodes.
+        """
+        # Ensure the directory exists
+        Path(filepath).parent.mkdir(parents=True, exist_ok=True)
+        
+        with open(filepath, 'wb') as f:
+            pickle.dump(self, f)
+        # print(f"Graph serialized to: {filepath}") # Optional logging
+
+    @staticmethod
+    def load(filepath: str):
+        """
+        Static method to load a PopulationGraph object from a file.
+        Usage: graph = PopulationGraph.load('graphs/avian_1.pkl')
+        """
+        if not os.path.exists(filepath):
+            raise FileNotFoundError(f"Graph file not found: {filepath}")
+            
+        with open(filepath, 'rb') as f:
+            graph_obj = pickle.load(f)
+            
+        if not isinstance(graph_obj, PopulationGraph):
+            raise TypeError(f"Loaded object is not a PopulationGraph. Got: {type(graph_obj)}")
+            
+        return graph_obj
+
 
 
 # --- TEST BLOCK ---

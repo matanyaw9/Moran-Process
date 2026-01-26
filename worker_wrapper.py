@@ -1,91 +1,133 @@
-#!/usr/bin/env python3
-"""
-Simple LSF worker script for ProcessLab distributed execution.
-"""
-
 import argparse
 import os
 import sys
 import pickle
 import pandas as pd
-import math
 from datetime import datetime
-from pathlib import Path
-
-# Add current directory to Python path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
 from population_graph import PopulationGraph
 from process_run import ProcessRun
 
+def load_data(batch_dir):
+    """Loads the Graph Zoo and the Task Manifest."""
+    
+    # 1. Load the Graph Zoo (The "Frozen" Graphs)
+    zoo_path = os.path.join(batch_dir, "graphs.pkl")
+    if not os.path.exists(zoo_path):
+        raise FileNotFoundError(f"Could not find graphs.pkl at {zoo_path}")
+    
+    with open(zoo_path, "rb") as f:
+        graph_zoo = pickle.load(f)
+    print(f"[Worker] Loaded {len(graph_zoo)} graphs from Zoo.")
 
-def main():
-    parser = argparse.ArgumentParser(description="ProcessLab HPC worker")
-    parser.add_argument('--graph-file', required=True, help='Path to serialized graphs')
-    parser.add_argument('--r-values', required=True, nargs='+', type=float, help='Selection coefficients')
-    parser.add_argument('--repeats-per-job', required=True, type=int, help='Repeats per job')
-    parser.add_argument('--output-dir', required=True, help='Output directory')
+    # 2. Load the Task Manifest (The "Huge Table")
+    manifest_path = os.path.join(batch_dir, "task_manifest.csv")
+    if not os.path.exists(manifest_path):
+        raise FileNotFoundError(f"Could not find task_manifest.csv at {manifest_path}")
+        
+    manifest_df = pd.read_csv(manifest_path)
+    print(f"[Worker] Loaded Manifest with {len(manifest_df)} total tasks.")
+    
+    return graph_zoo, manifest_df
+
+def run_worker_slice(batch_dir, chunk_size, job_index):
+    """
+    Main Logic:
+    1. Calculate which rows of the CSV belong to this job.
+    2. Run simulations for those rows.
+    3. Save a unique CSV file.
+    """
+    print(f"--- Worker Started | Job Index: {job_index} ---")
+    
+    # 1. Load Data
+    graph_zoo, manifest_df = load_data(batch_dir)
+    
+    # 2. Calculate My Slice
+    # LSF Job Indices are 1-based (1, 2, 3...)
+    # We convert to 0-based for array slicing
+    start_idx = (job_index - 1) * chunk_size
+    end_idx = start_idx + chunk_size
+    
+    # Handle the last job (which might not have a full chunk)
+    my_tasks = manifest_df.iloc[start_idx:end_idx]
+    
+    if my_tasks.empty:
+        print(f"[Worker] No tasks found for indices {start_idx} to {end_idx}. Exiting.")
+        return
+
+    print(f"[Worker] Processing {len(my_tasks)} tasks (Rows {start_idx} to {end_idx})")
+    
+    # 3. Run The Simulations
+    results_buffer = []
+    
+    # Iterate over the rows in my slice
+    # iterrows is slow, but fine for 500 tasks. itertuples is faster.
+    for row in my_tasks.itertuples():
+        try:
+            # A. Get Parameters from the Table
+            # row.graph_idx corresponds to the list index in graphs.pkl
+            target_graph = graph_zoo[row.graph_idx]
+            r_val = row.r
+            
+            # B. Initialize Simulation
+            sim = ProcessRun(population_graph=target_graph, selection_coefficient=r_val)
+            sim.initialize_random_mutant()
+            
+            # C. Run
+            raw_result = sim.run()
+            
+            # D. Save Record
+            record = {
+                "task_id": row.task_id,
+                "job_id": job_index,
+                "graph_name": target_graph.name,
+                "r": r_val,
+                "fixation": raw_result["fixation"],
+                "steps": raw_result["steps"],
+                "mutant_count": raw_result["mutant_count"],
+                # Add any other graph properties you need for analysis
+                "N": target_graph.number_of_nodes(),
+                **target_graph.metadata # (Optional) expands WL hash, etc.
+            }
+            results_buffer.append(record)
+            
+        except Exception as e:
+            print(f"ERROR in Task {row.task_id}: {e}")
+            # Continue to next task so one failure doesn't kill the job
+            continue
+
+    # 4. Save My Results
+    if results_buffer:
+        results_df = pd.DataFrame(results_buffer)
+        
+        # Save to: batch_dir/results/result_job_5.csv
+        filename = f"result_job_{job_index}.csv"
+        save_path = os.path.join(batch_dir, "results", filename)
+        
+        results_df.to_csv(save_path, index=False)
+        print(f"--- Worker Finished. Saved {len(results_df)} rows to {filename} ---")
+    else:
+        print("--- Worker Finished. No results generated. ---")
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--batch-dir", required=True, help="Path to the batch directory (containing graphs.pkl)")
+    parser.add_argument("--chunk-size", required=True, type=int, help="How many rows this worker should process")
+    
+    # Optional: Allow manually passing job-index for testing locally
+    # On the cluster, we will look at the env variable LSB_JOBINDEX
+    parser.add_argument("--job-index", type=int, default=None)
     
     args = parser.parse_args()
     
-    # Get job index from LSF environment
-    job_index = int(os.environ['LSB_JOBINDEX'])
-    
-    print(f"Job {job_index}: Loading graphs from {args.graph_file}")
-    
-    # Load graphs
-    with open(args.graph_file, 'rb') as f:
-        graphs = pickle.load(f)
-    
-    # Calculate work assignment using simple round-robin
-    n_graphs = len(graphs)
-    n_r_values = len(args.r_values)
-    total_combinations = n_graphs * n_r_values
-    
-    # Map job to (graph, r_value) combination
-    combination_index = (job_index - 1) % total_combinations
-    graph_index = combination_index // n_r_values
-    r_index = combination_index % n_r_values
-    
-    assigned_graph = graphs[graph_index]
-    assigned_r_value = args.r_values[r_index]
-    
-    print(f"Job {job_index}: Processing {assigned_graph.name} with r={assigned_r_value}")
-    
-    # Run simulations
-    results = []
-    for repeat_idx in range(args.repeats_per_job):
-        try:
-            sim = ProcessRun(population_graph=assigned_graph, selection_coefficient=assigned_r_value)
-            sim.initialize_random_mutant()
-            raw_result = sim.run()
+    # Get Job Index
+    job_idx = args.job_index
+    if job_idx is None:
+        # Try to get from LSF Environment
+        env_idx = os.environ.get("LSB_JOBINDEX")
+        if env_idx:
+            job_idx = int(env_idx)
+        else:
+            print("ERROR: Could not find job index! (Set --job-index or run via bsub)")
+            sys.exit(1)
             
-            record = {
-                **assigned_graph.metadata,
-                "r": assigned_r_value,
-                **raw_result,
-                "job_id": job_index,
-                "repeat_id": repeat_idx
-            }
-            results.append(record)
-            
-        except Exception as e:
-            print(f"Job {job_index}: Error in repeat {repeat_idx}: {e}")
-    
-    # Save results
-    if results:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"results_job_{job_index}_{timestamp}.csv"
-        output_path = Path(args.output_dir) / filename
-        
-        os.makedirs(args.output_dir, exist_ok=True)
-        df = pd.DataFrame(results)
-        df.to_csv(output_path, index=False)
-        
-        print(f"Job {job_index}: Saved {len(results)} results to {output_path}")
-    else:
-        print(f"Job {job_index}: No results to save")
-
-
-if __name__ == "__main__":
-    main()
+    run_worker_slice(args.batch_dir, args.chunk_size, job_idx)
