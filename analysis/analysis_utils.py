@@ -7,6 +7,7 @@ import pandas as pd
 import glob
 import matplotlib.pyplot as plt
 import seaborn as sns
+import shutil
 
 
 
@@ -127,7 +128,6 @@ def aggregate_results(batch_dir, save_to_dir, delete_temp=False):
     Returns:
         pd.DataFrame: Aggregated results, or None if no files found
     """
-    
     batch_name = os.path.basename(batch_dir).removeprefix("batch_")
     output_file = os.path.join(save_to_dir, f"{batch_name}_results.csv")
     if os.path.exists(output_file):

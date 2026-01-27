@@ -35,7 +35,7 @@ class PopulationGraph:
                  name: str, 
                  category: str, 
                  params: dict|None = None,
-                 register_in_db=True,):
+                 register_in_graph_props=True,):
         self.graph = graph
         self.name = name  # e.g., "Mammalian_Depth4"
         self.category = category  # e.g., "Tree", "Complete"
@@ -47,8 +47,8 @@ class PopulationGraph:
         
         # Calculate WL hash and check database
         self.wl_hash = nx.weisfeiler_lehman_graph_hash(self.graph)
-        if register_in_db:
-            self._register_in_database()
+        if register_in_graph_props:
+            self._register_in_graph_props()
         
     def calculate_graph_properties(self, save_graph6=True):
         """Calculate comprehensive graph properties for database storage."""
@@ -152,7 +152,7 @@ class PopulationGraph:
         return properties
     
     @classmethod
-    def _load_database(cls):
+    def _load_graph_props(cls):
         """Load the graph database from CSV file."""
         if cls._database is None:
             # Ensure directory exists
@@ -165,14 +165,14 @@ class PopulationGraph:
         return cls._database
     
     @classmethod
-    def _save_database(cls):
+    def _save_graph_props(cls):
         """Save the graph database to CSV file."""
         if cls._database is not None:
             cls._database.to_csv(cls._database_path, index=False)
     
-    def _register_in_database(self):
+    def _register_in_graph_props(self):
         """Register this graph in the database if not already present."""
-        PopulationGraph._load_database()
+        PopulationGraph._load_graph_props()
         
         # Check if graph already exists - if it does, no need to calc properties
         if not PopulationGraph._database.empty and self.wl_hash in PopulationGraph._database['wl_hash'].values:
@@ -185,23 +185,23 @@ class PopulationGraph:
         # Convert to DataFrame row and append
         new_row = pd.DataFrame([properties])
         if PopulationGraph._database.empty:
-            PopulationGraph._database = new_row
+            PopulationGraph._database = new_row.copy()
         else:
             PopulationGraph._database = pd.concat([PopulationGraph._database, new_row], ignore_index=True)
         
         # Save to file
-        PopulationGraph._save_database()
+        PopulationGraph._save_graph_props()
         print(f"Added graph {self.name} (WL hash: {self.wl_hash}) to database")
     
     @classmethod
     def get_database(cls):
         """Get the current graph database."""
-        return cls._load_database().copy()
+        return cls._load_graph_props().copy()
     
     @classmethod
     def find_similar_graphs(cls, wl_hash):
         """Find graphs with the same WL hash (isomorphic graphs)."""
-        db = cls._load_database()
+        db = cls._load_graph_props()
         if db.empty:
             return pd.DataFrame()
         return db[db['wl_hash'] == wl_hash]
@@ -209,7 +209,7 @@ class PopulationGraph:
     @classmethod
     def get_graph_stats(cls)->dict: 
         """Get summary statistics of the graph database."""
-        db = cls._load_database()
+        db = cls._load_graph_props()
         if db.empty:
             print("Database is empty")
             return {}
@@ -225,7 +225,7 @@ class PopulationGraph:
     
     def register_in_database(self):
         """Manually register this graph in the database (useful if created with register_in_db=False)."""
-        self._register_in_database()
+        self._register_in_graph_props()
         
     @property
     def metadata(self):
@@ -242,7 +242,7 @@ class PopulationGraph:
         Creates a fully connected graph (everyone connected to everyone). 
         """
         name=f'complete_n{N}'
-        return cls(nx.complete_graph(N), name=name, category="Complete", register_in_db=register_in_db)
+        return cls(nx.complete_graph(N), name=name, category="Complete", register_in_graph_props=register_in_db)
 
     @classmethod
     def cycle_graph(cls, N:int, register_in_db: bool = True):
@@ -250,7 +250,7 @@ class PopulationGraph:
         Creates a ring graph.
         """
         name=f'cycle_n{N}'
-        return cls(nx.cycle_graph(N), name=name, category='Cycle', register_in_db=register_in_db)
+        return cls(nx.cycle_graph(N), name=name, category='Cycle', register_in_graph_props=register_in_db)
     
     @classmethod
     def mammalian_lung_graph(cls, branching_factor:int=2, depth:int=3, name='mammalian', register_in_db: bool = True):
@@ -274,7 +274,7 @@ class PopulationGraph:
         nx.set_node_attributes(G, pos, 'pos')
         name = f"mammalian_b{branching_factor}_d{depth}"
         return cls(G, name=name, category="Mammalian", 
-                   params={"branching": branching_factor, "depth": depth}, register_in_db=register_in_db)
+                   params={"branching": branching_factor, "depth": depth}, register_in_graph_props=register_in_db)
 
     @classmethod
     def avian_graph(cls, n_rods: int, rod_length: int, directed: bool = False, name="avian", register_in_db: bool = True):
@@ -337,7 +337,7 @@ class PopulationGraph:
         nx.set_node_attributes(G, pos, 'pos')
         G = nx.convert_node_labels_to_integers(G)
         name = f'avian_r{n_rods}_l{rod_length}'
-        return cls(G, name, category='Avian', params={"n_rods": n_rods, "rods_length": rod_length}, register_in_db=register_in_db)
+        return cls(G, name, category='Avian', params={"n_rods": n_rods, "rods_length": rod_length}, register_in_graph_props=register_in_db)
     
     @classmethod
     def fish_graph(cls, n_rods: int, rod_length: int, name='fish', register_in_db: bool = True):
@@ -385,7 +385,7 @@ class PopulationGraph:
         nx.set_node_attributes(G, pos, 'pos')
         G = nx.convert_node_labels_to_integers(G)
         name = f'fish_r{n_rods}_l{rod_length}'
-        return cls(G, name, category='Fish', params={'n_rods': n_rods, 'rod_length': rod_length}, register_in_db=register_in_db)
+        return cls(G, name, category='Fish', params={'n_rods': n_rods, 'rod_length': rod_length}, register_in_graph_props=register_in_db)
 
     @classmethod
     def random_connected_graph(cls, n_nodes: int, 
@@ -467,7 +467,7 @@ class PopulationGraph:
                 name += f'_s{seed}'
             
         return cls(G, name, category='Random', 
-                   params={'n_nodes': n_nodes, 'n_edges': n_edges, 'seed': seed}, register_in_db=register_in_db)
+                   params={'n_nodes': n_nodes, 'n_edges': n_edges, 'seed': seed}, register_in_graph_props=register_in_db)
 
 
     # --- UTULITIES ---
