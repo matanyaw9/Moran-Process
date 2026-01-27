@@ -144,17 +144,22 @@ class ProcessLab:
         
         worker_script = "worker_wrapper.py" # Must be in current dir
         
-        cmd = [
+        cmd_job = [
             "bsub",
             "-q", queue,
             "-J", f"batch_{timestamp}[1-{n_jobs}]", # Array 1..N
             "-o", os.path.join(logs_dir, "job_%J_%I.out"), # Log stdout
             "-e", os.path.join(logs_dir, "job_%J_%I.err"), # Log stderr
             "-R", f"rusage[mem={memory}]",
+        ]
+
+        cmd_process = [
             "python", worker_script,
             "--batch-dir", batch_dir,
             "--chunk-size", str(chunk_size)
         ]
+        # cmd = cmd_job + cmd_process
+        cmd = cmd_process
 
         print(f"Submitting: {' '.join(cmd)}")
         subprocess.run(cmd)
