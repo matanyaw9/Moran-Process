@@ -83,7 +83,7 @@ def run_worker_slice(batch_dir, chunk_size, job_index):
                 "r": r_val,
                 "fixation": raw_result["fixation"],
                 "steps": raw_result["steps"],
-                "mutant_count": raw_result["mutant_count"],
+                "initial_mutants": raw_result["initial_mutants"],
                 # Add any other graph properties you need for analysis
                 "N": target_graph.number_of_nodes(),
                 **target_graph.metadata # (Optional) expands WL hash, etc.

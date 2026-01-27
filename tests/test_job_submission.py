@@ -1,4 +1,10 @@
 
+import sys
+import os
+parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if parent_dir not in sys.path:
+    sys.path.insert(0, parent_dir)
+
 from process_lab import ProcessLab
 from population_graph import PopulationGraph
 
@@ -6,6 +12,9 @@ from population_graph import PopulationGraph
 
 
 if __name__ == "__main__":
+
+
+
     graph_zoo = [
     PopulationGraph.complete_graph(N=10),
     # PopulationGraph.cycle_graph(N=31),
@@ -15,8 +24,8 @@ if __name__ == "__main__":
 ]
 
     r_values = [1.0]
-    repeats = 2
+    repeats = 100
     
     lab = ProcessLab()
-    lab.submit_jobs(graphs_zoo=graph_zoo, r_values=r_values, n_repeats=2, n_jobs=1)
+    lab.submit_jobs(graphs_zoo=graph_zoo, r_values=r_values, n_repeats=repeats, n_jobs=1)
     

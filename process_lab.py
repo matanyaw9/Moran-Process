@@ -98,15 +98,18 @@ class ProcessLab:
      
 
     # --- HPC SUBMISSION ENGINE ---
-    def submit_jobs(self, graphs_zoo, r_values, n_repeats=1000, n_jobs=50, queue="new-short", memory="2048"):
+    def submit_jobs(self, graphs_zoo, r_values, n_repeats=1000, n_jobs=50, queue="new-short", memory="2048", output_dir=None):
         """
         1. Dumps all graphs to 'graphs.pkl'
         2. Creates 'task_manifest.csv' (The Huge Table)
         3. Submits an LSF Job Array where each worker takes a 'chunk' of the table.
         """
+
+        output_dir = output_dir or os.path.join('simulation_data','tmp')
+        os.makedirs(output_dir, exist_ok=True)
         # 1. Prepare Batch Directory
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        batch_dir = os.path.join(self.output_dir, f"batch_{timestamp}")
+        batch_dir = os.path.join(output_dir, f"batch_{timestamp}")
         
         # Create subdirs for logs and results
         logs_dir = os.path.join(batch_dir, "logs")
@@ -125,7 +128,7 @@ class ProcessLab:
 
         # 3. Generate Task Manifest (The Huge Table)
         # We expand the loops into a list of rows
-        manifest_df = _create_task_list(graphs_zoo, r_values, n_repeats)
+        manifest_df = ProcessLab._create_task_list(graphs_zoo, r_values, n_repeats)
         
         manifest_path = os.path.join(batch_dir, "task_manifest.csv")
         manifest_df.to_csv(manifest_path, index=False)
@@ -154,12 +157,12 @@ class ProcessLab:
         ]
 
         cmd_process = [
-            "python", worker_script,
+            "uv", "run", worker_script,
             "--batch-dir", batch_dir,
             "--chunk-size", str(chunk_size)
         ]
         # cmd = cmd_job + cmd_process
-        cmd = cmd_process
+        cmd = cmd_process + ['--job-index', '1']
 
         print(f"Submitting: {' '.join(cmd)}")
         subprocess.run(cmd)
@@ -178,7 +181,7 @@ class ProcessLab:
                     tasks.append({
                         'task_id': task_id,
                         'graph_idx': graph_idx,
-                        'r_value': r,
+                        'r': r,
                         'repeat': repeat
                     })
                     task_id += 1
