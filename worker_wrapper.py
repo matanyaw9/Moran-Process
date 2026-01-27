@@ -109,18 +109,15 @@ def run_worker_slice(batch_dir, chunk_size, job_index):
         print("--- Worker Finished. No results generated. ---")
 
 if __name__ == "__main__":
-    print("Checkpoint 1")
     parser = argparse.ArgumentParser()
     parser.add_argument("--batch-dir", required=True, help="Path to the batch directory (containing graphs.pkl)")
     parser.add_argument("--chunk-size", required=True, type=int, help="How many rows this worker should process")
-    print("Checkpoint 2")
     
     # Optional: Allow manually passing job-index for testing locally
     # On the cluster, we will look at the env variable LSB_JOBINDEX
     parser.add_argument("--job-index", type=int, default=None)
     
     args = parser.parse_args()
-    print("Checkpoint 3")
     
     # Get Job Index
     job_idx = args.job_index

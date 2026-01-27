@@ -16,16 +16,16 @@ if __name__ == "__main__":
 
 
     graph_zoo = [
-    PopulationGraph.complete_graph(N=10),
+    # PopulationGraph.complete_graph(N=10),
     # PopulationGraph.cycle_graph(N=31),
-    # PopulationGraph.mammalian_lung_graph(branching_factor=2, depth=4), # N = 511
-    # PopulationGraph.avian_graph(n_rods=4, rod_length=7),
-    # PopulationGraph.fish_graph(n_rods=3, rod_length=3)
+    PopulationGraph.mammalian_lung_graph(branching_factor=2, depth=4), # N = 511
+    PopulationGraph.avian_graph(n_rods=4, rod_length=7),
+    PopulationGraph.fish_graph(n_rods=3, rod_length=3)
 ]
 
-    r_values = [1.0]
+    r_values = [1.0, 1.2, 1.3, 1.4]
     repeats = 100
     
     lab = ProcessLab()
-    lab.submit_jobs(graphs_zoo=graph_zoo, r_values=r_values, n_repeats=repeats, n_jobs=1)
+    lab.submit_jobs(graphs_zoo=graph_zoo, r_values=r_values, n_repeats=repeats, n_jobs=50)
     

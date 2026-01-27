@@ -1,6 +1,8 @@
 import pandas as pd
 import time
 import os 
+import glob
+import shutil
 import pickle
 import math
 import subprocess
@@ -98,7 +100,9 @@ class ProcessLab:
      
 
     # --- HPC SUBMISSION ENGINE ---
-    def submit_jobs(self, graphs_zoo, r_values, n_repeats=1000, n_jobs=50, queue="new-short", memory="2048", output_dir=None):
+    def submit_jobs(self, graphs_zoo, r_values, n_repeats=1000, 
+                    n_jobs=50, queue="short", memory="2048", 
+                    output_dir=None, batch_name=None):
         """
         1. Dumps all graphs to 'graphs.pkl'
         2. Creates 'task_manifest.csv' (The Huge Table)
@@ -108,16 +112,22 @@ class ProcessLab:
         output_dir = output_dir or os.path.join('simulation_data','tmp')
         os.makedirs(output_dir, exist_ok=True)
         # 1. Prepare Batch Directory
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        batch_dir = os.path.join(output_dir, f"batch_{timestamp}")
+        batch_name = batch_name or datetime.now().strftime("%Y%m%d_%H%M%S")
+        batch_dir = os.path.join(output_dir, f"batch_{batch_name}")
+        
         
         # Create subdirs for logs and results
+        if os.path.exists(batch_dir):
+            # Optional: only delete if you really want a fresh start
+            # shutil.rmtree(batch_dir) 
+            print(f"Warning: Batch directory {batch_name} already exists. Appending/Overwriting.")
+
         logs_dir = os.path.join(batch_dir, "logs")
         results_dir = os.path.join(batch_dir, "results")
         os.makedirs(logs_dir, exist_ok=True)
         os.makedirs(results_dir, exist_ok=True)
         
-        print(f"--- Preparing Batch {timestamp} ---")
+        print(f"--- Preparing Batch {batch_name} ---")
 
         # 2. Serialize Graphs (The Zoo)
         # We save the LIST of graphs to one file. It's faster for the cluster to read.
@@ -150,7 +160,7 @@ class ProcessLab:
         cmd_job = [
             "bsub",
             "-q", queue,
-            "-J", f"batch_{timestamp}[1-{n_jobs}]", # Array 1..N
+            "-J", f"batch_{batch_name}[1-{n_jobs}]", # Array 1..N
             "-o", os.path.join(logs_dir, "job_%J_%I.out"), # Log stdout
             "-e", os.path.join(logs_dir, "job_%J_%I.err"), # Log stderr
             "-R", f"rusage[mem={memory}]",
@@ -161,8 +171,8 @@ class ProcessLab:
             "--batch-dir", batch_dir,
             "--chunk-size", str(chunk_size)
         ]
-        # cmd = cmd_job + cmd_process
-        cmd = cmd_process + ['--job-index', '1']
+        cmd = cmd_job + cmd_process
+        # cmd = cmd_process + ['--job-index', '1']
 
         print(f"Submitting: {' '.join(cmd)}")
         subprocess.run(cmd)
@@ -189,34 +199,9 @@ class ProcessLab:
         return pd.DataFrame(tasks)
         
     
-    # def _build_lsf_command(self, n_jobs, graph_file, r_values, repeats_per_job, 
-    #                       output_dir, queue, memory, walltime, temp_dir):
-    #     """Generate LSF bsub command string."""
-    #     os.makedirs(output_dir, exist_ok=True)
-    #     logs_dir = Path(temp_dir) / "logs"
-    #     logs_dir.mkdir(exist_ok=True)
-        
-    #     cmd_parts = [
-    #         "bsub",
-    #         "-J", f"processlab[1-{n_jobs}]",
-    #         "-n", "1",
-    #         "-M", memory,
-    #         "-W", walltime,
-    #         "-o", str(logs_dir / "job_%J_%I.out"),
-    #         "-e", str(logs_dir / "job_%J_%I.err")
-    #     ]
-        
-    #     if queue:
-    #         cmd_parts.extend(["-q", queue])
-        
-    #     r_values_str = " ".join(map(str, r_values))
-    #     worker_cmd = (
-    #         f"python worker_wrapper.py "
-    #         f"--graph-file {graph_file} "
-    #         f"--r-values {r_values_str} "
-    #         f"--repeats-per-job {repeats_per_job} "
-    #         f"--output-dir {output_dir}"
-    #     )
-        
-    #     cmd_parts.append(worker_cmd)
-    #     return " ".join(cmd_parts)
+
+
+
+    # Usage:
+    # batch_path = r'.\simulation_data\tmp\batch_20260127_151215'
+    # df = aggregate_results(batch_path)

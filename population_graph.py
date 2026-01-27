@@ -18,14 +18,7 @@ warnings.filterwarnings("ignore", message="The hashes produced for graphs")
 #     'Complete': 'black',            # Fully Connected
 #     'Other': '#9467bd'               # Purple
 # }
-COLOR_DICT = {
-    'Random': 'lightgray',     
-    'Avian': "#2DB806",       
-    'Fish': '#1f77b4',        
-    'Mammalian': "#833105",   
-    'Complete': 'black',       
-    'Other': 'yellow'          
-}
+
 
 GRAPH_PROPS = ['n_nodes', 'n_edges', 'density', 'diameter', 'avg_degree', 
      'average_clustering', 'average_shortest_path_length', 
