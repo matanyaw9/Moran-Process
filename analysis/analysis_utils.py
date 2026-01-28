@@ -4,11 +4,11 @@ Utility functions for analysis notebooks
 import os
 import sys
 import pandas as pd
+import numpy as np
 import glob
 import matplotlib.pyplot as plt
 import seaborn as sns
 import shutil
-
 
 
 COLOR_DICT = {
@@ -202,5 +202,118 @@ def plot_property_effect(df, x_prop, y_outcome='prob_fixation', color_dict=COLOR
     # Legend handling: Place outside
     plt.legend(bbox_to_anchor=(1.02, 1), loc='upper left', borderaxespad=0.)
     
+    plt.tight_layout()
+    plt.show()
+
+
+
+def plot_hybrid_density(df, x_prop, y_outcome='prob_fixation', color_dict=COLOR_DICT, density_threshold=100):
+    """
+    Hybrid Plot with Smart Widths:
+    - Prevents 'thin line' violins by ignoring tiny gaps in X-axis.
+    """
+    plt.figure(figsize=(11, 8))
+    
+    # --- 1. Labeling & Setup ---
+    is_prob = (y_outcome == 'prob_fixation')
+    ylabel = "Probability of Fixation ($P_{fix}$)" if is_prob else "Median Steps (Time)"
+    
+    plot_df = df.copy()
+    
+    # --- 2. X-Axis Processing ---
+    is_numeric_x = pd.api.types.is_numeric_dtype(plot_df[x_prop])
+    
+    if is_numeric_x:
+        # Rounding helps, but doesn't fix "almost duplicate" clusters perfectly
+        plot_df['x_plot'] = plot_df[x_prop].round(3)
+    else:
+        unique_cats = sorted(plot_df[x_prop].unique())
+        cat_map = {val: i for i, val in enumerate(unique_cats)}
+        plot_df['x_plot'] = plot_df[x_prop].map(cat_map)
+
+    # --- 3. Identify Dense Locations ---
+    counts = plot_df['x_plot'].value_counts()
+    dense_x_values = counts[counts > density_threshold].index.tolist()
+    
+    # === SMART WIDTH CALCULATION ===
+    unique_x_sorted = sorted(plot_df['x_plot'].unique())
+    
+    if len(unique_x_sorted) > 1:
+        # Calculate all distances between neighbor X values
+        diffs = np.diff(unique_x_sorted)
+        
+        # Filter out "micro-gaps" (noise < 1% of the total range)
+        total_span = unique_x_sorted[-1] - unique_x_sorted[0]
+        min_valid_gap = total_span * 0.01 
+        valid_diffs = diffs[diffs > min_valid_gap]
+        
+        if len(valid_diffs) > 0:
+            # Use the smallest *real* gap
+            dist_basis = np.min(valid_diffs)
+        else:
+            # Fallback if all points are bunched up
+            dist_basis = total_span
+            
+        violin_width = dist_basis * 0.7  # Use 70% of the available space
+    else:
+        violin_width = 0.5
+
+    # --- 4. Draw Violins (Background Layer) ---
+    for x_val in dense_x_values:
+        subset = plot_df[plot_df['x_plot'] == x_val]
+        
+        # Draw violin
+        parts = plt.violinplot(
+            dataset=subset[y_outcome],
+            positions=[x_val],
+            widths=violin_width,
+            showmeans=False,
+            showextrema=False
+        )
+        
+        for pc in parts['bodies']:
+            pc.set_facecolor('whitesmoke')
+            pc.set_edgecolor('lightgray')
+            pc.set_alpha(1) 
+
+    # --- 5. Prepare Scatter Data (Jitter Layer) ---
+    def apply_jitter(row):
+        if row['x_plot'] in dense_x_values:
+            # Scale jitter relative to the new robust width
+            noise = np.random.uniform(-violin_width * 0.15, violin_width * 0.15)
+            return row['x_plot'] + noise
+        else:
+            return row['x_plot']
+
+    plot_df['x_jittered'] = plot_df.apply(apply_jitter, axis=1)
+
+    # --- 6. Draw Main Scatter Plot (Top Layer) ---
+    sns.scatterplot(
+        data=plot_df,
+        x='x_jittered',
+        y=y_outcome,
+        hue='category',
+        style='r',
+        palette=color_dict,
+        s=80 if len(plot_df) > 1000 else 120,
+        alpha=0.85,
+        edgecolor='w',
+        linewidth=0.5,
+        zorder=2
+    )
+
+    # --- 7. Final Formatting ---
+    if not is_numeric_x:
+        plt.xticks(ticks=range(len(unique_cats)), labels=unique_cats)
+    
+    if is_prob:
+        avg_n = df['n_nodes'].mean()
+        plt.axhline(1/avg_n, color='black', linestyle=':', label=f'Neutral (1/N)')
+
+    plt.title(f'Effect of {x_prop.replace("_", " ").title()} on {ylabel}', fontsize=16)
+    plt.xlabel(x_prop.replace('_', ' ').title())
+    plt.ylabel(ylabel)
+    plt.grid(True, linestyle='--', alpha=0.4)
+    plt.legend(bbox_to_anchor=(1.02, 1), loc='upper left', borderaxespad=0.)
     plt.tight_layout()
     plt.show()
