@@ -26,11 +26,13 @@ def main():
     """
     
     # 1. DEFINE PARAMETERS
+    BATCH_NAME = "big_batch_test"
     n_nodes = 31
-    edge_counts = list(range(30, 32))  
-    n_graphs_per_edge_count = 10  # Number of random graphs per edge count
-    r_values = [1.0, 1.1, ]  # Same r values as main.py
-    n_repeats = 100  # Same as main.py for consistency
+    edge_counts = list(range(30, 35))  
+    n_graphs_per_edge_count = 50  # Number of random graphs per edge count
+    r_values = [1.0, 1.1, 1.2, 1.3, 2 ]  # Same r values as main.py
+    n_repeats = 10_000  # Same as main.py for consistency
+    n_jobs = 1000
     
     # 2. GENERATE RANDOM GRAPHS
     print("="*60)
@@ -69,8 +71,8 @@ def main():
         graph_zoo, 
         r_values, 
         n_repeats=n_repeats, 
-        batch_name="big_batch_test",
-        n_jobs=100
+        batch_name=BATCH_NAME,
+        n_jobs=n_jobs
     )
     
 if __name__ == "__main__":

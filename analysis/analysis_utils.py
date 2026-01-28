@@ -204,9 +204,3 @@ def plot_property_effect(df, x_prop, y_outcome='prob_fixation', color_dict=COLOR
     
     plt.tight_layout()
     plt.show()
-
-# print(len(GRAPH_PROPS))
-# plot_property_effect(analysis_df, 'median_steps', 'prob_fixation')
-# # --- EXAMPLES OF USAGE ---
-# for prop in GRAPH_PROPS:
-#     plot_property_effect(analysis_df, prop, 'median_steps')
