@@ -206,11 +206,11 @@ def plot_property_effect(df, x_prop, y_outcome='prob_fixation', color_dict=COLOR
     plt.show()
 
 
-
 def plot_hybrid_density(df, x_prop, y_outcome='prob_fixation', color_dict=COLOR_DICT, density_threshold=100):
     """
-    Hybrid Plot with Smart Widths:
-    - Prevents 'thin line' violins by ignoring tiny gaps in X-axis.
+    Hybrid Plot:
+    - Standard Scatter for sparse X-values.
+    - Violin + Jittered Scatter for dense X-values (> density_threshold points).
     """
     plt.figure(figsize=(11, 8))
     
@@ -218,68 +218,66 @@ def plot_hybrid_density(df, x_prop, y_outcome='prob_fixation', color_dict=COLOR_
     is_prob = (y_outcome == 'prob_fixation')
     ylabel = "Probability of Fixation ($P_{fix}$)" if is_prob else "Median Steps (Time)"
     
+    # Copy data to avoid warnings
     plot_df = df.copy()
     
     # --- 2. X-Axis Processing ---
+    # We need numeric positions for the violins. 
+    # If X is strings/categories, we map them to integers 0, 1, 2...
     is_numeric_x = pd.api.types.is_numeric_dtype(plot_df[x_prop])
     
     if is_numeric_x:
-        # Rounding helps, but doesn't fix "almost duplicate" clusters perfectly
+        # Round numeric data to group nearby points (e.g., 0.1 and 0.10001 become 0.1)
         plot_df['x_plot'] = plot_df[x_prop].round(3)
     else:
+        # Map categories to integers
         unique_cats = sorted(plot_df[x_prop].unique())
         cat_map = {val: i for i, val in enumerate(unique_cats)}
         plot_df['x_plot'] = plot_df[x_prop].map(cat_map)
 
     # --- 3. Identify Dense Locations ---
+    # Count points for each unique X value
     counts = plot_df['x_plot'].value_counts()
     dense_x_values = counts[counts > density_threshold].index.tolist()
     
-    # === SMART WIDTH CALCULATION ===
+    # Calculate an appropriate width for violins (avoid overlapping)
     unique_x_sorted = sorted(plot_df['x_plot'].unique())
-    
     if len(unique_x_sorted) > 1:
-        # Calculate all distances between neighbor X values
-        diffs = np.diff(unique_x_sorted)
-        
-        # Filter out "micro-gaps" (noise < 1% of the total range)
-        total_span = unique_x_sorted[-1] - unique_x_sorted[0]
-        min_valid_gap = total_span * 0.01 
-        valid_diffs = diffs[diffs > min_valid_gap]
-        
-        if len(valid_diffs) > 0:
-            # Use the smallest *real* gap
-            dist_basis = np.min(valid_diffs)
-        else:
-            # Fallback if all points are bunched up
-            dist_basis = total_span
-            
-        violin_width = dist_basis * 0.7  # Use 70% of the available space
+        # Find minimum distance between neighbors to set width safely
+        min_dist = min(np.diff(unique_x_sorted))
+        violin_width = min_dist * 0.8
     else:
         violin_width = 0.5
 
     # --- 4. Draw Violins (Background Layer) ---
+    # We loop ONLY through the dense X values and plant a violin there
     for x_val in dense_x_values:
         subset = plot_df[plot_df['x_plot'] == x_val]
         
-        # Draw violin
+        # plt.violinplot allows placing a violin at a specific 'positions'
         parts = plt.violinplot(
             dataset=subset[y_outcome],
             positions=[x_val],
             widths=violin_width,
+            # native_scale=True,
             showmeans=False,
-            showextrema=False
+            showextrema=False # Hide the min/max lines, just show the blob
         )
         
+        # Style the violin body to be neutral gray
         for pc in parts['bodies']:
             pc.set_facecolor('whitesmoke')
             pc.set_edgecolor('lightgray')
             pc.set_alpha(1) 
 
     # --- 5. Prepare Scatter Data (Jitter Layer) ---
+    # For dense columns -> Add Jitter
+    # For sparse columns -> Keep exact X
+    
+    # Define jitter function
     def apply_jitter(row):
         if row['x_plot'] in dense_x_values:
-            # Scale jitter relative to the new robust width
+            # Jitter width should be relative to the violin width
             noise = np.random.uniform(-violin_width * 0.15, violin_width * 0.15)
             return row['x_plot'] + noise
         else:
@@ -295,7 +293,7 @@ def plot_hybrid_density(df, x_prop, y_outcome='prob_fixation', color_dict=COLOR_
         hue='category',
         style='r',
         palette=color_dict,
-        s=80 if len(plot_df) > 1000 else 120,
+        s=80 if len(plot_df) > 1000 else 120, # Adjust size slightly if huge data
         alpha=0.85,
         edgecolor='w',
         linewidth=0.5,
@@ -303,9 +301,12 @@ def plot_hybrid_density(df, x_prop, y_outcome='prob_fixation', color_dict=COLOR_
     )
 
     # --- 7. Final Formatting ---
+    
+    # If we mapped categories to integers, restore the labels
     if not is_numeric_x:
         plt.xticks(ticks=range(len(unique_cats)), labels=unique_cats)
     
+    # Add Neutral Limit Line
     if is_prob:
         avg_n = df['n_nodes'].mean()
         plt.axhline(1/avg_n, color='black', linestyle=':', label=f'Neutral (1/N)')
@@ -314,6 +315,76 @@ def plot_hybrid_density(df, x_prop, y_outcome='prob_fixation', color_dict=COLOR_
     plt.xlabel(x_prop.replace('_', ' ').title())
     plt.ylabel(ylabel)
     plt.grid(True, linestyle='--', alpha=0.4)
+    
+    # Legend
     plt.legend(bbox_to_anchor=(1.02, 1), loc='upper left', borderaxespad=0.)
+    
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_hexbin_property_effect(df, x_prop, y_outcome='prob_fixation', color_dict=COLOR_DICT, gridsize=30, cmap='Greys'):
+    """
+    Plots a hexbin density map for 'Random' graphs, overlaid with specific 'Animal' data points.
+    - Random graphs -> Hexbin Density (Background)
+    - Simulated Animals -> Scatter Points (Foreground)
+    """
+    plt.figure(figsize=(11, 8))
+    
+    # 1. Setup Labels
+    is_prob = (y_outcome == 'prob_fixation')
+    ylabel = "Probability of Fixation ($P_{fix}$)" if is_prob else "Median Steps (Time)"
+    
+    # 2. Split Data: Background (Random) vs Foreground (Animals)
+    # Adjust 'Random' string if your category names are different
+    random_mask = df['category'].str.contains('Random', case=False, na=False)
+    random_df = df[random_mask]
+    animal_df = df[~random_mask]
+    
+    # 3. Plot Hexbin (The Density Cloud) - ONLY for Random data
+    # mincnt=1 ensures we don't plot hexagons for empty space
+    hb = plt.hexbin(
+        x=random_df[x_prop], 
+        y=random_df[y_outcome], 
+        gridsize=gridsize, 
+        cmap=cmap, 
+        mincnt=1,
+        edgecolors='none',
+        alpha=0.6,
+        label='Random Density'
+    )
+    
+    # Add a colorbar for the density
+    cb = plt.colorbar(hb, label='Count of Random Graphs')
+    
+    # 4. Plot Scatter Overlay (The Specific Animals)
+    sns.scatterplot(
+        data=animal_df,
+        x=x_prop,
+        y=y_outcome,
+        hue='category',     # Keep your color logic
+        style='r',          # Keep your shape logic
+        palette=color_dict,
+        s=120,              # Make them big and visible
+        alpha=1.0,          # No transparency for animals
+        edgecolor='w',      # White edge to make them pop against the hexbins
+        linewidth=1,
+        zorder=10           # Force on top of everything
+    )
+
+    # 5. Shared Elements (Lines, Grid, Labels)
+    if is_prob:
+        avg_n = df['n_nodes'].mean()
+        plt.axhline(1/avg_n, color='black', linestyle=':', linewidth=2, label='Neutral (1/N)')
+
+    plt.title(f'Effect of {x_prop.replace("_", " ").title()} on {ylabel}', fontsize=16)
+    plt.xlabel(x_prop.replace('_', ' ').title())
+    plt.ylabel(ylabel)
+    plt.grid(True, linestyle='--', alpha=0.3)
+    
+    # 6. Legend Handling
+    # We want the legend to show the Animal categories + r styles
+    plt.legend(bbox_to_anchor=(1.15, 1), loc='upper left', borderaxespad=0.)
+    
     plt.tight_layout()
     plt.show()
