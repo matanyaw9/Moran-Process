@@ -200,7 +200,7 @@ def plot_property_effect(df, x_prop, y_outcome='prob_fixation', color_dict=COLOR
     """
     plt.figure(figsize=(11,8))
     is_prob = (y_outcome == 'prob_fixation')
-    ylabel = "Probability of Fixation ($P_{fix}$)" if is_prob else "Median Steps (Time)"
+    ylabel = "Probability of Fixation ($P_{fix}$)" if is_prob else y_outcome.title()
     sns.scatterplot(
         data=df,
         x=x_prop,
@@ -238,12 +238,23 @@ def plot_hybrid_density(df, x_prop, y_outcome='prob_fixation', color_dict=COLOR_
     
     # --- 1. Labeling & Setup ---
     is_prob = (y_outcome == 'prob_fixation')
-    ylabel = "Probability of Fixation ($P_{fix}$)" if is_prob else "Median Steps (Time)"
+    ylabel = "Probability of Fixation ($P_{fix}$)" if is_prob else y_outcome.title()
     
     # PATCH 1: Calculate Correlation (Pearson)
-    # We drop NaNs to avoid errors
-    clean_df = df[[x_prop, y_outcome]].dropna()
-    correlation = clean_df[x_prop].corr(clean_df[y_outcome])
+    clean_df = df[[x_prop, y_outcome, 'r']].dropna()
+
+    # TODO I want different correlations for different r values: 
+    r_groups = clean_df.groupby('r')
+    corrs_by_r = r_groups.apply(lambda g: g[x_prop].corr(g[y_outcome]))
+
+    # Construct the text string for the box
+    stats_lines = [f"Pearson Correlation"]
+    stats_lines.append("-" * 15)
+    for r_val, r_corr in corrs_by_r.items():
+        stats_lines.append(f"r={r_val}: {r_corr:.3f}")
+
+    stats_text = "\n".join(stats_lines)
+
     
     # Copy data for plotting
     plot_df = df.copy()
@@ -346,15 +357,17 @@ def plot_hybrid_density(df, x_prop, y_outcome='prob_fixation', color_dict=COLOR_
     plt.title(wrapped_desc, fontsize=10, style='italic', color='#555555', pad=15)
 
     # Add Correlation Text Box
-    # Placed in top-left or top-right depending on preference. Here: Top-Right relative to axes.
-    stats_text = f"Pearson r = {correlation:.3f}"
+    # First, capture the legend object
+    leg = plt.legend(bbox_to_anchor=(1.02, 1), loc='upper left', borderaxespad=0.)
+
+    # Add the correlation text box below the legend
     plt.gca().text(
-        0.98, 0.02, stats_text, 
+        1.02, 0.4, # Horizontal matches legend; Vertical adjusted manually or via transform
+        stats_text, 
         transform=plt.gca().transAxes, 
-        fontsize=12, 
-        fontweight='bold',
-        verticalalignment='bottom', 
-        horizontalalignment='right',
+        fontsize=10, 
+        verticalalignment='top', # Anchor to the top of the text block
+        horizontalalignment='left',
         bbox=dict(boxstyle="round,pad=0.4", facecolor="white", alpha=0.9, edgecolor="lightgray")
     )
 
@@ -362,4 +375,5 @@ def plot_hybrid_density(df, x_prop, y_outcome='prob_fixation', color_dict=COLOR_
     plt.legend(bbox_to_anchor=(1.02, 1), loc='upper left', borderaxespad=0.)
     
     plt.tight_layout()
+    # plt.subplots_adjust(right=0.8) # Make room on the right
     plt.show()
