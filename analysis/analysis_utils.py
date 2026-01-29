@@ -230,9 +230,17 @@ def plot_property_effect(df, x_prop, y_outcome='prob_fixation', color_dict=COLOR
     plt.show()
 
 
-def plot_hybrid_density(df, x_prop, y_outcome='prob_fixation', color_dict=COLOR_DICT, density_threshold=100):
+def plot_hybrid_density(df, x_prop, y_outcome='prob_fixation', color_dict=COLOR_DICT, density_threshold=100, with_violin=True):
     """
     Hybrid Plot with Correlation & Description Patches.
+
+    Args:
+        df (pd.DataFrame): The dataframe containing graph properties and outcomes
+        x_prop (str): Name of the graph property to plot on x-axis
+        y_outcome (str): Name of the outcome variable to plot on y-axis (default: 'prob_fixation')
+        color_dict (dict): Dictionary mapping categories to colors
+        density_threshold (int): Minimum number of points to trigger violin plot (default: 100)
+        with_violin (bool): If False - this is just a scatter plot. If true, it puts a violin plot for dense x values
     """
     plt.figure(figsize=(11, 8.5)) # Increased height slightly for the subtitle
     
@@ -249,9 +257,9 @@ def plot_hybrid_density(df, x_prop, y_outcome='prob_fixation', color_dict=COLOR_
 
     # Construct the text string for the box
     stats_lines = [f"Pearson Correlation"]
-    stats_lines.append("-" * 15)
+    stats_lines.append("-" * 28)
     for r_val, r_corr in corrs_by_r.items():
-        stats_lines.append(f"r={r_val}: {r_corr:.3f}")
+        stats_lines.append(f"(r={r_val}): {r_corr:.3f}")
 
     stats_text = "\n".join(stats_lines)
 
@@ -269,45 +277,46 @@ def plot_hybrid_density(df, x_prop, y_outcome='prob_fixation', color_dict=COLOR_
         cat_map = {val: i for i, val in enumerate(unique_cats)}
         plot_df['x_plot'] = plot_df[x_prop].map(cat_map)
 
-    # --- 3. Identify Dense Locations ---
-    counts = plot_df['x_plot'].value_counts()
-    dense_x_values = counts[counts > density_threshold].index.tolist()
-    
-    # === SMART WIDTH CALCULATION ===
-    unique_x_sorted = sorted(plot_df['x_plot'].unique())
-    
-    if len(unique_x_sorted) > 1:
-        diffs = np.diff(unique_x_sorted)
-        total_span = unique_x_sorted[-1] - unique_x_sorted[0]
-        if total_span == 0: total_span = 1.0 
+    if with_violin:
+        # --- 3. Identify Dense Locations ---
+        counts = plot_df['x_plot'].value_counts()
+        dense_x_values = counts[counts > density_threshold].index.tolist()
         
-        # Threshold: 2% of total span
-        min_valid_gap_threshold = total_span * 0.02 
-        valid_gaps = diffs[diffs > min_valid_gap_threshold]
+        # === SMART WIDTH CALCULATION ===
+        unique_x_sorted = sorted(plot_df['x_plot'].unique())
         
-        if len(valid_gaps) > 0:
-            dist_basis = np.min(valid_gaps)
-        else:
-            dist_basis = total_span * 0.1
+        if len(unique_x_sorted) > 1:
+            diffs = np.diff(unique_x_sorted)
+            total_span = unique_x_sorted[-1] - unique_x_sorted[0]
+            if total_span == 0: total_span = 1.0 
             
-        violin_width = dist_basis * 0.7 
-    else:
-        violin_width = 0.5
+            # Threshold: 2% of total span
+            min_valid_gap_threshold = total_span * 0.02 
+            valid_gaps = diffs[diffs > min_valid_gap_threshold]
+            
+            if len(valid_gaps) > 0:
+                dist_basis = np.min(valid_gaps)
+            else:
+                dist_basis = total_span * 0.1
+                
+            violin_width = dist_basis * 0.7 
+        else:
+            violin_width = 0.5
 
-    # --- 4. Draw Violins (Background) ---
-    for x_val in dense_x_values:
-        subset = plot_df[plot_df['x_plot'] == x_val]
-        parts = plt.violinplot(
-            dataset=subset[y_outcome],
-            positions=[x_val],
-            widths=violin_width,
-            showmeans=False,
-            showextrema=False
-        )
-        for pc in parts['bodies']:
-            pc.set_facecolor('whitesmoke')
-            pc.set_edgecolor('lightgray')
-            pc.set_alpha(1) 
+        # --- 4. Draw Violins (Background) ---
+        for x_val in dense_x_values:
+            subset = plot_df[plot_df['x_plot'] == x_val]
+            parts = plt.violinplot(
+                dataset=subset[y_outcome],
+                positions=[x_val],
+                widths=violin_width,
+                showmeans=False,
+                showextrema=False
+            )
+            for pc in parts['bodies']:
+                pc.set_facecolor('whitesmoke')
+                pc.set_edgecolor('lightgray')
+                pc.set_alpha(1) 
 
     # --- 5. Draw Scatter (Foreground) ---
     def apply_jitter(row):
@@ -317,7 +326,10 @@ def plot_hybrid_density(df, x_prop, y_outcome='prob_fixation', color_dict=COLOR_
         else:
             return row['x_plot']
 
-    plot_df['x_jittered'] = plot_df.apply(apply_jitter, axis=1)
+    if with_violin:
+        plot_df['x_jittered'] = plot_df.apply(apply_jitter, axis=1)
+    else: 
+        plot_df['x_jittered'] = plot_df['x_plot']
 
     sns.scatterplot(
         data=plot_df,
