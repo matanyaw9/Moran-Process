@@ -200,7 +200,7 @@ def plot_property_effect(df, x_prop, y_outcome='prob_fixation', color_dict=COLOR
     """
     plt.figure(figsize=(11,8))
     is_prob = (y_outcome == 'prob_fixation')
-    ylabel = "Probability of Fixation ($P_{fix}$)" if is_prob else y_outcome.title()
+    ylabel = "Probability of Fixation ($P_{fix}$)" if is_prob else y_outcome.replace('_', ' ').title()
     sns.scatterplot(
         data=df,
         x=x_prop,
