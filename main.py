@@ -26,11 +26,11 @@ def main():
     """
     
     # 1. DEFINE PARAMETERS
-    BATCH_NAME = "big_batch_test"
-    n_nodes = 31
-    edge_counts = list(range(30, 35))  
-    n_graphs_per_edge_count = 50  # Number of random graphs per edge count
-    r_values = [1.0, 1.1, 1.2, 1.3, 2 ]  # Same r values as main.py
+    BATCH_NAME = None
+    n_nodes = list(range(30, 33))
+    # edge_counts = list(range(29, 35))  
+    n_graphs_per_combination = 500  # Number of random graphs per edge count
+    r_values = [1.2 ]  # Same r values as main.py
     n_repeats = 10_000  # Same as main.py for consistency
     n_jobs = 1000
     
@@ -40,17 +40,24 @@ def main():
     print("="*60)
     print(f"Configuration:")
     print(f"  Nodes per graph: {n_nodes}")
-    print(f"  Edge counts: {edge_counts}")
-    print(f"  Graphs per edge count: {n_graphs_per_edge_count}")
+    print(f"  Edge counts: n_nodes -1 to +4")
+    print(f"  Graphs per edge count: {n_graphs_per_combination}")
     print(f"  r values: {r_values}")
     print(f"  Repeats per configuration: {n_repeats}")
+    n_random_configs = len(n_nodes) * 5 * len(r_values) * n_graphs_per_combination
+    n_graps_total = n_random_configs + len(graph_zoo)    
+    print(f"  In Total: {n_graps_total} graphs")
+    print(f"  In Total: {n_graps_total * n_repeats} simulations")
+
     print("="*60)
     
-    for n_edges in edge_counts:
-        for i in range(n_graphs_per_edge_count):
-            graph_zoo.append(PopulationGraph.random_connected_graph(n_nodes=n_nodes, 
-                                                                    n_edges=n_edges, 
-                                                                    name = f'random_n{n_nodes}_e{n_edges}_{i}'))
+    for nn in n_nodes: 
+        edge_counts = range(nn-1, nn+5)
+        for ne in edge_counts:
+            for i in range(n_graphs_per_combination):
+                graph_zoo.append(PopulationGraph.random_connected_graph(n_nodes=nn, 
+                                                                    n_edges=ne, 
+                                                                    name = f'random_n{nn}_e{ne}_{i}'))
     
     print(f"Number of graphs: {len(graph_zoo)}")
     # 3. DISPLAY GRAPH INFORMATION
@@ -67,7 +74,7 @@ def main():
     
     lab = ProcessLab()
     
-    df = lab.submit_jobs(
+    lab.submit_jobs(
         graph_zoo, 
         r_values, 
         n_repeats=n_repeats, 
