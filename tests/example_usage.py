@@ -8,8 +8,8 @@ from process_lab import ProcessLab
 
 # Create some test graphs
 graphs = [
-    PopulationGraph.complete_graph(N=10, register_in_db=False),
-    PopulationGraph.cycle_graph(N=10, register_in_db=False)
+    PopulationGraph.complete_graph(n_nodes=10, register_in_db=False),
+    PopulationGraph.cycle_graph(n_nodes=10, register_in_db=False)
 ]
 
 # Initialize lab

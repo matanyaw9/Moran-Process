@@ -79,6 +79,7 @@ def run_worker_slice(batch_dir, chunk_size, job_index):
             record = {
                 "task_id": row.task_id,
                 "job_id": job_index,
+                "wl_hash": target_graph.wl_hash,
                 "graph_name": target_graph.name,
                 "r": r_val,
                 "fixation": raw_result["fixation"],
@@ -87,7 +88,7 @@ def run_worker_slice(batch_dir, chunk_size, job_index):
                 "duration": raw_result["duration"],
 
                 # Add any other graph properties you need for analysis
-                **target_graph.metadata # (Optional) expands WL hash, etc.
+                # **target_graph.metadata # (Optional) expands WL hash, etc.
 
             }
             results_buffer.append(record)

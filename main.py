@@ -2,9 +2,7 @@
 
 from population_graph import PopulationGraph
 from process_lab import ProcessLab
-import pandas as pd
 from datetime import datetime
-import pickle
 import os
 import time
 
@@ -13,12 +11,14 @@ EXPERIMENTS_CSV = 'respiratory_runs.csv'
     # 1. DEFINE THE GRAPH ZOO
     # We instantiate them here so we can inspect them before running
 graph_zoo = [
-    # PopulationGraph.complete_graph(N=31),
-    # PopulationGraph.cycle_graph(N=31),
+    # PopulationGraph.complete_graph(n_nodes=31),
+    # PopulationGraph.cycle_graph(n_nodes=31),
     PopulationGraph.mammalian_lung_graph(branching_factor=2, depth=4), # N = 511
     PopulationGraph.avian_graph(n_rods=4, rod_length=7),
     PopulationGraph.fish_graph(n_rods=3, rod_length=3)
 ]
+
+
 
 
 def main():
@@ -28,20 +28,22 @@ def main():
     """
     
     # 1. DEFINE PARAMETERS
-    BATCH_NAME = None
+    BATCH_NAME = 'Big_Run'
     n_nodes = list(range(30, 33))
+    # n_nodes=[31]
     # edge_counts = list(range(29, 35))  
     n_graphs_per_combination = 500  # Number of random graphs per edge count
-    r_values = [1.2 ]  # Same r values as main.py
+    r_values = [1.1 ]  # Same r values as main.py
     n_repeats = 10_000  # Same as main.py for consistency
     n_jobs = 1000
     
 
-    output_dir = output_dir or os.path.join('simulation_data','tmp')
+    output_dir = os.path.join('simulation_data')
     os.makedirs(output_dir, exist_ok=True)
     # 1. Prepare Batch Directory
     batch_name = BATCH_NAME or datetime.now().strftime("%Y%m%d_%H%M%S")
     batch_dir = os.path.join(output_dir, f"batch_{batch_name}")
+    os.makedirs(batch_dir, exist_ok=True)
 
     # 2. GENERATE RANDOM GRAPHS
     print("="*60)
@@ -62,12 +64,13 @@ def main():
     
     for nn in n_nodes: 
         edge_counts = range(nn-1, nn+5)
+        # edge_counts = [30]
         for ne in edge_counts:
             for i in range(n_graphs_per_combination):
                 graph_zoo.append(PopulationGraph.random_connected_graph(n_nodes=nn, 
                                                                     n_edges=ne, 
                                                                     name = f'random_n{nn}_e{ne}_{i}',
-                                                                    register_in_db=False))
+                                                                    ))
     
     print(f"Number of graphs: {len(graph_zoo)}")
     # 3. DISPLAY GRAPH INFORMATION
@@ -75,13 +78,10 @@ def main():
     print("GENERATED GRAPHS:")
     print("="*60)
 
-    zoo_path = os.path.join(batch_dir, "graphs.pkl")
-    with open(zoo_path, "wb") as f:
-        pickle.dump(graph_zoo, f)
-    print(f"Serialized {len(graph_zoo)} graphs to {zoo_path}")
+    # PopulationGraph.batch_register(graph_zoo_path=zoo_path, batch_dir=batch_dir)
 
     for graph in graph_zoo:
-        print(f"Graph: {graph.name:30s} | Nodes: {graph.N:3d} | Edges: {graph.graph.number_of_edges():3d} | Density: {graph.graph.number_of_edges() / (graph.N * (graph.N - 1) / 2):.3f}")
+        print(f"Graph: {graph.name:30s} | Nodes: {graph.n_nodes:3d} | Edges: {graph.graph.number_of_edges():3d} | Density: {graph.graph.number_of_edges() / (graph.n_nodes * (graph.n_nodes - 1) / 2):.3f}")
     
     # 4. RUN EXPERIMENT AND SAVE RESULTS
     print("\n" + "="*60)
@@ -90,13 +90,14 @@ def main():
     
     lab = ProcessLab()
     
-    # lab.submit_jobs(
-    #     graph_zoo, 
-    #     r_values, 
-    #     n_repeats=n_repeats, 
-    #     batch_name=BATCH_NAME,
-    #     n_jobs=n_jobs
-    # )
+    lab.submit_jobs(
+        graph_zoo, 
+        r_values, 
+        batch_name=batch_name,
+        batch_dir=batch_dir,
+        n_repeats=n_repeats, 
+        n_jobs=n_jobs
+    )
     
 if __name__ == "__main__":
     start_time = time.perf_counter()
