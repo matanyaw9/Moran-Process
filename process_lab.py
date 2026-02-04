@@ -135,7 +135,7 @@ class ProcessLab:
 
         # 3. Generate Task Manifest (The Huge Table)
         # We expand the loops into a list of rows
-        manifest_df = ProcessLab._create_task_list(graph_zoo, r_values, n_repeats)
+        manifest_df = ProcessLab._create_task_list(graph_zoo, r_values)
         
         manifest_path = os.path.join(tmp_dir, "task_manifest.csv")
         manifest_df.to_csv(manifest_path, index=False)
@@ -164,9 +164,12 @@ class ProcessLab:
         ]
 
         cmd_process = [
-            "uv", "run", worker_script,
+            "uv", "run", 
+            "python", "-u",
+            worker_script,
             "--batch-dir", tmp_dir,
-            "--chunk-size", str(chunk_size)
+            "--chunk-size", str(chunk_size),
+            "--repeats", str(n_repeats),
         ]
         cmd = cmd_job + cmd_process
         # cmd = cmd_process + ['--job-index', '1']
@@ -177,21 +180,19 @@ class ProcessLab:
 
 
     @staticmethod
-    def _create_task_list(graphs, r_values, n_repeats):
+    def _create_task_list(graphs, r_values):
         """Create CSV task list for job array execution."""
         tasks = []
         task_id = 0
         
-        for graph_idx, graph_obj in enumerate(graphs):
+        for graph_idx in range(len(graphs)):
             for r in r_values:
-                for repeat in range(n_repeats):
-                    tasks.append({
-                        'task_id': task_id,
-                        'graph_idx': graph_idx,
-                        'r': r,
-                        'repeat': repeat
-                    })
-                    task_id += 1
+                tasks.append({
+                    'task_id': task_id,
+                    'graph_idx': graph_idx,
+                    'r': r,
+                })
+                task_id += 1
         
         return pd.DataFrame(tasks)
         

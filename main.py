@@ -1,5 +1,5 @@
 # main.py
-
+import argparse
 from population_graph import PopulationGraph
 from process_lab import ProcessLab
 from datetime import datetime
@@ -20,15 +20,15 @@ graph_zoo = [
 
 
 
+BATCH_NAME = 'Big_Run_01'
 
-def main():
+def main(batch_name=False):
     """
     Main experiment runner for random graphs.
     Similar structure to main.py but for random graphs.
     """
     
     # 1. DEFINE PARAMETERS
-    BATCH_NAME = 'Big_Run'
     n_nodes = list(range(30, 33))
     # n_nodes=[31]
     # edge_counts = list(range(29, 35))  
@@ -41,7 +41,7 @@ def main():
     output_dir = os.path.join('simulation_data')
     os.makedirs(output_dir, exist_ok=True)
     # 1. Prepare Batch Directory
-    batch_name = BATCH_NAME or datetime.now().strftime("%Y%m%d_%H%M%S")
+    batch_name = batch_name or BATCH_NAME or datetime.now().strftime("%Y%m%d_%H%M%S")
     batch_dir = os.path.join(output_dir, f"batch_{batch_name}")
     os.makedirs(batch_dir, exist_ok=True)
 
@@ -100,8 +100,13 @@ def main():
     )
     
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--batch-name", required=False, type=str, help="The name of the batch")
+    args = parser.parse_args()
+
     start_time = time.perf_counter()
-    main()
+  
+    main(args.batch_name)
     end_time = time.perf_counter()
     print(f"Whole thing took {(end_time-start_time):.4f} seconds")
 

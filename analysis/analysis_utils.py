@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import shutil
 import textwrap
+from collections import defaultdict
 
 
 COLOR_DICT = {
@@ -20,6 +21,9 @@ COLOR_DICT = {
     'Complete': 'black',       
     'Other': 'yellow'          
 }
+
+# Use a defaultdict to return 'lightgray' for unknown categories
+COLOR_DICT = defaultdict(lambda: 'lightgray', COLOR_DICT)
 # Paste your dictionary here (or ensure it's in the global scope)
 GRAPH_PROPERTY_DESCRIPTION = {
     'n_nodes': "The total number of vertices (individuals) in the graph.",
@@ -140,25 +144,24 @@ def setup_analysis_environment():
     
     return parent_dir
 
-def aggregate_results(batch_dir, save_to_dir, delete_temp=False):
+def aggregate_results(batch_dir, delete_temp=False):
     """
     Aggregate CSV result files from a batch directory into a single file.
         
     Args:
         batch_dir (str): Directory containing results subdirectory with CSV files
-        save_to_dir (str): Directory to save the aggregated results
         delete_temp (bool): Whether to delete the batch directory after aggregation
             
     Returns:
         pd.DataFrame: Aggregated results, or None if no files found
     """
     batch_name = os.path.basename(batch_dir).removeprefix("batch_")
-    output_file = os.path.join(save_to_dir, f"{batch_name}_full_results.csv")
+    output_file = os.path.join(batch_dir, f"{batch_name}_full_results.csv")
     if os.path.exists(output_file):
         print(f"File {os.path.abspath(output_file)} already exitst! Not aggregating...")
         return load_experiment_data(output_file)
     
-    results_path = os.path.join(batch_dir, "results")
+    results_path = os.path.join(batch_dir, "tmp", "results")
     
     # 1. Find all CSV files in the results directory
     # Using glob handles the pattern matching for 'result_job_*.csv'
@@ -186,11 +189,63 @@ def aggregate_results(batch_dir, save_to_dir, delete_temp=False):
     print(f"Master file saved at: {output_file}")
 
     if delete_temp:
-        shutil.rmtree(batch_dir)
-        print(f"Deleted temporary batch directory: {batch_dir}")
-
+        tmp_dir = os.path.join(batch_dir, "tmp")
+        if os.path.exists(tmp_dir):
+            shutil.rmtree(tmp_dir)
+            print(f"Deleted temporary directory: {tmp_dir}")
     
     return master_df
+
+
+def aggregate_results_2(batch_dir, delete_temp=False):
+    """
+    Efficiently aggregates CSV result files by streaming them into a single file.
+    """
+    # Setup paths
+    batch_name = os.path.basename(batch_dir).removeprefix("batch_")
+    output_file = os.path.join(batch_dir, f"{batch_name}_full_results_2.csv")
+    results_path = os.path.join(batch_dir, "tmp", "results")
+    
+    # Check if already done
+    if os.path.exists(output_file):
+        print(f"File {output_file} already exists! Loading...")
+        return pd.read_csv(output_file)
+
+    # 1. Find all CSV files
+    all_files = glob.glob(os.path.join(results_path, "result_job_*.csv"))
+    if not all_files:
+        print(f"No result files found in {results_path}")
+        return None
+
+    print(f"Found {len(all_files)} files. Aggregating via stream...")
+
+    # 2. Stream content directly to the output file (Memory Safe)
+    with open(output_file, 'w', encoding='utf-8') as outfile:
+        for i, fname in enumerate(all_files):
+            with open(fname, 'r', encoding='utf-8') as infile:
+                # For the first file, write everything (including header)
+                if i == 0:
+                    shutil.copyfileobj(infile, outfile)
+                else:
+                    # For subsequent files, skip the header line
+                    header = infile.readline() 
+                    shutil.copyfileobj(infile, outfile)
+    
+    print(f"Master file saved at: {output_file}")
+
+    # 3. CRITICAL FIX: Safe Deletion
+    # Your original code deleted 'batch_dir', which contains the 'output_file' you just created!
+    # We only delete the 'tmp' folder where the partial pieces live.
+    if delete_temp:
+        tmp_dir = os.path.join(batch_dir, "tmp")
+        if os.path.exists(tmp_dir):
+            shutil.rmtree(tmp_dir)
+            print(f"Deleted temporary directory: {tmp_dir}")
+    
+    # 4. Return the DataFrame (Only load into RAM now, if needed)
+    # If the file is massive, you might want to skip this return or use chunks.
+    return pd.read_csv(output_file)
+
 
 def plot_property_effect(df, x_prop, y_outcome='prob_fixation', color_dict=COLOR_DICT):
     """
