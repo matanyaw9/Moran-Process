@@ -5,5 +5,7 @@ __pycache__/
 *.pyd
 env/
 venv/
+.vscode/
 .DS_Store
 simulation_data/
+logs/

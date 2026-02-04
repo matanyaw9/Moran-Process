@@ -153,7 +153,7 @@ def aggregate_results(batch_dir, save_to_dir, delete_temp=False):
         pd.DataFrame: Aggregated results, or None if no files found
     """
     batch_name = os.path.basename(batch_dir).removeprefix("batch_")
-    output_file = os.path.join(save_to_dir, f"{batch_name}_results.csv")
+    output_file = os.path.join(save_to_dir, f"{batch_name}_full_results.csv")
     if os.path.exists(output_file):
         print(f"File {os.path.abspath(output_file)} already exitst! Not aggregating...")
         return load_experiment_data(output_file)
@@ -180,7 +180,6 @@ def aggregate_results(batch_dir, save_to_dir, delete_temp=False):
     master_df = pd.concat(df_list, ignore_index=True)
 
     # 4. Optional: Save the master file to the batch root
-    output_file = os.path.join(save_to_dir, f"{batch_name}_results.csv")
     master_df.to_csv(output_file, index=False)
     
     print(f"Success! Aggregated {len(master_df)} total rows.")
@@ -337,8 +336,9 @@ def plot_hybrid_density(df, x_prop, y_outcome='prob_fixation', color_dict=COLOR_
         y=y_outcome,
         hue='category',
         style='r',
+        size='n_edges',
+        sizes=(20, 100),
         palette=color_dict,
-        s=80 if len(plot_df) > 1000 else 120,
         alpha=0.85,
         edgecolor='w',
         linewidth=0.5,
