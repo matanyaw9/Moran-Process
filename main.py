@@ -3,6 +3,8 @@
 from population_graph import PopulationGraph
 from process_lab import ProcessLab
 import pandas as pd
+from datetime import datetime
+import pickle
 import os
 import time
 
@@ -34,6 +36,13 @@ def main():
     n_repeats = 10_000  # Same as main.py for consistency
     n_jobs = 1000
     
+
+    output_dir = output_dir or os.path.join('simulation_data','tmp')
+    os.makedirs(output_dir, exist_ok=True)
+    # 1. Prepare Batch Directory
+    batch_name = BATCH_NAME or datetime.now().strftime("%Y%m%d_%H%M%S")
+    batch_dir = os.path.join(output_dir, f"batch_{batch_name}")
+
     # 2. GENERATE RANDOM GRAPHS
     print("="*60)
     print("RANDOM GRAPH EXPERIMENT")
@@ -57,13 +66,20 @@ def main():
             for i in range(n_graphs_per_combination):
                 graph_zoo.append(PopulationGraph.random_connected_graph(n_nodes=nn, 
                                                                     n_edges=ne, 
-                                                                    name = f'random_n{nn}_e{ne}_{i}'))
+                                                                    name = f'random_n{nn}_e{ne}_{i}',
+                                                                    register_in_db=False))
     
     print(f"Number of graphs: {len(graph_zoo)}")
     # 3. DISPLAY GRAPH INFORMATION
     print("\n" + "="*60)
     print("GENERATED GRAPHS:")
     print("="*60)
+
+    zoo_path = os.path.join(batch_dir, "graphs.pkl")
+    with open(zoo_path, "wb") as f:
+        pickle.dump(graph_zoo, f)
+    print(f"Serialized {len(graph_zoo)} graphs to {zoo_path}")
+
     for graph in graph_zoo:
         print(f"Graph: {graph.name:30s} | Nodes: {graph.N:3d} | Edges: {graph.graph.number_of_edges():3d} | Density: {graph.graph.number_of_edges() / (graph.N * (graph.N - 1) / 2):.3f}")
     
@@ -74,13 +90,13 @@ def main():
     
     lab = ProcessLab()
     
-    lab.submit_jobs(
-        graph_zoo, 
-        r_values, 
-        n_repeats=n_repeats, 
-        batch_name=BATCH_NAME,
-        n_jobs=n_jobs
-    )
+    # lab.submit_jobs(
+    #     graph_zoo, 
+    #     r_values, 
+    #     n_repeats=n_repeats, 
+    #     batch_name=BATCH_NAME,
+    #     n_jobs=n_jobs
+    # )
     
 if __name__ == "__main__":
     start_time = time.perf_counter()

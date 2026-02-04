@@ -28,14 +28,11 @@ class PopulationGraph:
     """This class is a container of a networkx graph. Used for Evolutionary Graph Theory"""
     
     # Class-level database
-    _database_path = "simulation_data/graph_database.csv"
-    _database = None
-    
     def __init__(self, graph: nx.Graph, 
                  name: str, 
                  category: str, 
                  params: dict|None = None,
-                 register_in_graph_props=True,):
+                 ):
         self.graph = graph
         self.name = name  # e.g., "Mammalian_Depth4"
         self.category = category  # e.g., "Tree", "Complete"
@@ -47,10 +44,8 @@ class PopulationGraph:
         
         # Calculate WL hash and check database
         self.wl_hash = nx.weisfeiler_lehman_graph_hash(self.graph)
-        if register_in_graph_props:
-            self._register_in_graph_props()
         
-    def calculate_graph_properties(self, save_graph6=True):
+    def calculate_graph_properties(self):
         """Calculate comprehensive graph properties for database storage."""
         G = self.graph
 
@@ -66,16 +61,6 @@ class PopulationGraph:
             'is_connected': nx.is_connected(G) if not self.is_directed else nx.is_weakly_connected(G),
         }
 
-        # 1. Graph6 Generation (Added as requested)
-        # header=False strips the '>>graph6<<' prefix to save CSV space
-        if save_graph6:
-            try:
-                graph6_str = nx.to_graph6_bytes(G, header=False).decode('ascii').strip()
-            except Exception:
-                graph6_str = None
-            properties['graph6_string'] = graph6_str
-
-        # Add parameters (like rods in avian lungs)
         properties.update(self.params)
         
         # Only calculate expensive metrics for connected graphs
@@ -151,47 +136,53 @@ class PopulationGraph:
         
         return properties
     
+
+    #TODO make it a file per batch
+    #TODO make the properties claculated in a job
     @classmethod
-    def _load_graph_props(cls):
-        """Load the graph database from CSV file."""
-        if cls._database is None:
-            # Ensure directory exists
-            Path(cls._database_path).parent.mkdir(parents=True, exist_ok=True)
-            
-            if os.path.exists(cls._database_path):
-                cls._database = pd.read_csv(cls._database_path)
-            else:
-                cls._database = pd.DataFrame()
-        return cls._database
-    
-    @classmethod
-    def _save_graph_props(cls):
-        """Save the graph database to CSV file."""
-        if cls._database is not None:
-            cls._database.to_csv(cls._database_path, index=False)
-    
-    def _register_in_graph_props(self):
-        """Register this graph in the database if not already present."""
-        PopulationGraph._load_graph_props()
+    def batch_register(cls, graph_zoo_path, batch_dir):
+        """Registers graphs from a pickle file in one go to avoid I/O thrashing.
         
-        # Check if graph already exists - if it does, no need to calc properties
-        if not PopulationGraph._database.empty and self.wl_hash in PopulationGraph._database['wl_hash'].values:
-            print(f"Graph with WL hash {self.wl_hash} already exists in database")
-            return
-        
-        # Calculate properties and add to database
-        properties = self.calculate_graph_properties()
-        
-        # Convert to DataFrame row and append
-        new_row = pd.DataFrame([properties])
-        if PopulationGraph._database.empty:
-            PopulationGraph._database = new_row.copy()
+        Args:
+            graph_zoo_path: Path to pickle file containing list of PopulationGraph objects
+            batch_dir: Directory where graph_props.csv will be saved
+        """
+        # Load existing batch database
+        graph_props_path = os.path.join(batch_dir, 'graph_props.csv')
+        database = None
+        if os.path.exists(graph_props_path): 
+            database = pd.read_csv(graph_props_path)
+        new_rows = []
+        # Get existing hashes to avoid duplicates
+        if not cls._database.empty:
+            existing_hashes = set(database['wl_hash'].values)
         else:
-            PopulationGraph._database = pd.concat([PopulationGraph._database, new_row], ignore_index=True)
+            existing_hashes = set()
         
-        # Save to file
-        PopulationGraph._save_graph_props()
-        print(f"Added graph {self.name} (WL hash: {self.wl_hash}) to database")
+        with open(graph_zoo_path, "rb") as f:
+            graph_zoo = pickle.load(f)
+        print(f"Batch processing {len(graph_zoo)} graphs...")
+        
+        for graph in graph_zoo:
+            # Skip if already exists
+            if graph.wl_hash in existing_hashes:
+                continue
+            
+            # Calculate metrics only for new unique graphs
+            props = graph.calculate_graph_properties()
+            new_rows.append(props)
+            existing_hashes.add(graph.wl_hash)
+            
+        if new_rows:
+            new_df = pd.DataFrame(new_rows)
+            database = pd.concat([cls._database, new_df], ignore_index=True)
+            cls._save_graph_props(batch_dir=batch_dir) 
+            print(f"Added {len(new_rows)} new graphs to database.")
+        else:
+            print("No new graphs to add.")
+    
+    
+    
     
     @classmethod
     def get_database(cls):
@@ -237,7 +228,7 @@ class PopulationGraph:
     
     # --- FACTORY METHODS ---
     @classmethod
-    def complete_graph(cls, N:int, register_in_db: bool = True):
+    def complete_graph(cls, N:int, register_in_db: bool = False):
         """
         Creates a fully connected graph (everyone connected to everyone). 
         """
@@ -245,7 +236,7 @@ class PopulationGraph:
         return cls(nx.complete_graph(N), name=name, category="Complete", register_in_graph_props=register_in_db)
 
     @classmethod
-    def cycle_graph(cls, N:int, register_in_db: bool = True):
+    def cycle_graph(cls, N:int, register_in_db: bool = False):
         """
         Creates a ring graph.
         """
@@ -253,7 +244,7 @@ class PopulationGraph:
         return cls(nx.cycle_graph(N), name=name, category='Cycle', register_in_graph_props=register_in_db)
     
     @classmethod
-    def mammalian_lung_graph(cls, branching_factor:int=2, depth:int=3, name='mammalian', register_in_db: bool = True):
+    def mammalian_lung_graph(cls, branching_factor:int=2, depth:int=3, name='mammalian', register_in_db: bool = False):
         """Generates a tree shaped population graph mimicking mammalian lung topology."""
         G = nx.balanced_tree(branching_factor, depth)
         
@@ -277,7 +268,7 @@ class PopulationGraph:
                    params={"branching": branching_factor, "depth": depth}, register_in_graph_props=register_in_db)
 
     @classmethod
-    def avian_graph(cls, n_rods: int, rod_length: int, directed: bool = False, name="avian", register_in_db: bool = True):
+    def avian_graph(cls, n_rods: int, rod_length: int, directed: bool = False, name="avian", register_in_db: bool = False):
         """
         Generates a graph mimicking Avian Lungs topology. 
 
@@ -340,7 +331,7 @@ class PopulationGraph:
         return cls(G, name, category='Avian', params={"n_rods": n_rods, "rods_length": rod_length}, register_in_graph_props=register_in_db)
     
     @classmethod
-    def fish_graph(cls, n_rods: int, rod_length: int, name='fish', register_in_db: bool = True):
+    def fish_graph(cls, n_rods: int, rod_length: int, name='fish', register_in_db: bool = False):
         """Generates a 'Comb' structure: Vertical arch, horizontal filaments."""
         G = nx.Graph()
         pos = {}
@@ -392,7 +383,7 @@ class PopulationGraph:
                                 n_edges: int|None = None, 
                                 name: str|None = None, 
                                 seed: int|None = None, 
-                                register_in_db: bool = True):
+                                register_in_db: bool = False):
         """
         Creates a random connected graph with specified nodes and edges.
         
