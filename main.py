@@ -13,14 +13,15 @@ EXPERIMENTS_CSV = 'respiratory_runs.csv'
 graph_zoo = [
     # PopulationGraph.complete_graph(n_nodes=31),
     # PopulationGraph.cycle_graph(n_nodes=31),
-    PopulationGraph.mammalian_lung_graph(branching_factor=2, depth=4), # N = 511
+    PopulationGraph.mammalian_lung_graph(branching_factor=2, depth=4),
+    PopulationGraph.avian_graph(n_rods=7, rod_length=4),
     PopulationGraph.avian_graph(n_rods=4, rod_length=7),
     PopulationGraph.fish_graph(n_rods=3, rod_length=3)
 ]
 
 
 
-BATCH_NAME = 'Big_Run_01'
+BATCH_NAME = 'Large_graphs_30_01'
 
 def main(batch_name=False):
     """
@@ -29,13 +30,13 @@ def main(batch_name=False):
     """
     
     # 1. DEFINE PARAMETERS
-    n_nodes = list(range(30, 33))
+    n_nodes = list(range(62, 65))
     # n_nodes=[31]
     # edge_counts = list(range(29, 35))  
-    n_graphs_per_combination = 500  # Number of random graphs per edge count
-    r_values = [1.1 ]  # Same r values as main.py
-    n_repeats = 10_000  # Same as main.py for consistency
-    n_jobs = 1000
+    n_graphs_per_combination = 500  # Number of random graphs per n_edge X n_nodes
+    r_values = [1.1 ]  
+    n_repeats = 100_000  
+    n_jobs = 1_000
     
 
     output_dir = os.path.join('simulation_data')
@@ -61,16 +62,22 @@ def main(batch_name=False):
     print(f"  In Total: {n_graps_total * n_repeats} simulations")
 
     print("="*60)
-    
+    existing_graphs = set([graph.wl_hash for graph in graph_zoo])
+
     for nn in n_nodes: 
         edge_counts = range(nn-1, nn+5)
         # edge_counts = [30]
         for ne in edge_counts:
             for i in range(n_graphs_per_combination):
-                graph_zoo.append(PopulationGraph.random_connected_graph(n_nodes=nn, 
-                                                                    n_edges=ne, 
-                                                                    name = f'random_n{nn}_e{ne}_{i}',
-                                                                    ))
+                wl_hash = None 
+                while wl_hash is None or wl_hash in existing_graphs:
+                    new_random_graph = PopulationGraph.random_connected_graph(n_nodes=nn, 
+                                                                              n_edges=ne, 
+                                                                              name = f'random_n{nn}_e{ne}_{i}',
+                                                                              )
+                    wl_hash = new_random_graph.wl_hash
+                graph_zoo.append(new_random_graph)
+                existing_graphs.add(wl_hash)
     
     print(f"Number of graphs: {len(graph_zoo)}")
     # 3. DISPLAY GRAPH INFORMATION

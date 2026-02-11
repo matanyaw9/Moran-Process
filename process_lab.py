@@ -108,6 +108,7 @@ class ProcessLab:
         2. Creates 'task_manifest.csv' (The Huge Table)
         3. Submits an LSF Job Array where each worker takes a 'chunk' of the table.
         """
+        print("entered ProcessLab.submit_jobs ")
 
         # Create subdirs for logs and results
         if os.path.exists(batch_dir):
@@ -120,8 +121,6 @@ class ProcessLab:
         logs_dir = os.path.join(batch_dir, "logs")
         os.makedirs(logs_dir, exist_ok=True)
 
-        
-        
         zoo_path = os.path.join(tmp_dir, "graphs.pkl")
         with open(zoo_path, "wb") as f:
             pickle.dump(graph_zoo, f)
@@ -175,7 +174,12 @@ class ProcessLab:
         # cmd = cmd_process + ['--job-index', '1']
 
         print(f"Submitting: {' '.join(cmd)}")
-        subprocess.run(cmd)
+        result = subprocess.run(cmd)
+        if result.returncode == 0:
+            print("✅ Command launched and finished successfully.")
+        else:
+            print(f"❌ Command failed with return code {result.returncode}")
+        print(f"Error message: {result.stderr}")
         print(f"Batch submitted! \n > Logs: {logs_dir} \n > Results: {results_dir}")
 
 
@@ -196,8 +200,9 @@ class ProcessLab:
         
         return pd.DataFrame(tasks)
         
-def register_graphs_job(graph_zoo_path, batch_name, batch_dir, queue='short', memory="2048"):
+def register_graphs_job(graph_zoo_path, batch_name, batch_dir, queue='short', memory="8192"):
     
+    print("entered ProcessLab.register_graphs_job ")
     logs_dir = os.path.join(batch_dir, "logs")
     os.makedirs(logs_dir, exist_ok=True)
     
@@ -205,8 +210,8 @@ def register_graphs_job(graph_zoo_path, batch_name, batch_dir, queue='short', me
             "bsub",
             "-q", queue,
             "-J", f"batch_{batch_name}_register_graphs",
-            "-o", os.path.join(logs_dir, "job_%J.out"), # Log stdout
-            "-e", os.path.join(logs_dir, "job_%J.err"), # Log stderr
+            "-o", os.path.join(logs_dir, "job_%J_register_graphs.out"), # Log stdout
+            "-e", os.path.join(logs_dir, "job_%J_register_graphs.err"), # Log stderr
             "-R", f"rusage[mem={memory}]",
         ]
 
