@@ -197,14 +197,16 @@ def setup_analysis_environment():
 #     return master_df
 
 
-def aggregate_results(batch_dir, delete_temp=False):
+def aggregate_results(batch_dir, delete_temp=False, output_file=None):
     """
     Efficiently aggregates CSV result files by streaming them into a single file.
     """
     # Setup paths
-    batch_name = os.path.basename(batch_dir).removeprefix("batch_")
-    output_file = os.path.join(batch_dir, f"full_results.csv")
-    results_path = os.path.join(batch_dir, "tmp", "results")
+
+    if not output_file: 
+        output_file = os.path.join(batch_dir, f"full_results.csv")
+    
+    tmp_results_path = os.path.join(batch_dir, "tmp", "results")
     
     # Check if already done
     if os.path.exists(output_file):
@@ -212,9 +214,9 @@ def aggregate_results(batch_dir, delete_temp=False):
         return pd.read_csv(output_file)
 
     # 1. Find all CSV files
-    all_files = glob.glob(os.path.join(results_path, "result_job_*.csv"))
+    all_files = glob.glob(os.path.join(tmp_results_path, "result_job_*.csv"))
     if not all_files:
-        print(f"No result files found in {results_path}")
+        print(f"No result files found in {tmp_results_path}")
         return None
 
     print(f"Found {len(all_files)} files. Aggregating via stream...")
