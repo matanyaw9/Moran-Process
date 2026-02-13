@@ -21,7 +21,7 @@ graph_zoo = [
 
 
 
-BATCH_NAME = 'small_test_01'
+BATCH_NAME = 'large_test_30_02'
 
 def main(batch_name=False):
     """
@@ -67,7 +67,7 @@ def main(batch_name=False):
     print(f"  Graphs per edge count: {n_graphs_per_combination}")
     print(f"  r values: {r_values}")
     print(f"  Repeats per configuration: {n_repeats}")
-    n_random_configs = len(n_nodes) * 5 * len(r_values) * n_graphs_per_combination
+    n_random_configs = len(n_nodes) * edge_range * len(r_values) * n_graphs_per_combination
     n_graps_total = n_random_configs + len(graph_zoo)    
     print(f"  In Total: {n_graps_total} graphs")
     print(f"  In Total: {n_graps_total * n_repeats} simulations")

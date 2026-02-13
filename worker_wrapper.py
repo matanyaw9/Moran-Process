@@ -54,7 +54,7 @@ def run_worker_slice(batch_dir, chunk_size, job_index, repeats):
         print(f"[Worker] No tasks found for indices {start_idx} to {end_idx}. Exiting.")
         return
 
-    print(f"[Worker] Processing {len(my_tasks) * repeats} tasks (Rows {start_idx} to {end_idx})")
+    print(f"[Worker] Processing {len(my_tasks) * repeats} simulations (Rows {start_idx} to {end_idx})")
     
     # 3. Run The Simulations
     results_buffer = []
