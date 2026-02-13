@@ -21,22 +21,30 @@ graph_zoo = [
 
 
 
-BATCH_NAME = 'Large_graphs_30_01'
+BATCH_NAME = 'small_test_01'
 
 def main(batch_name=False):
     """
     Main experiment runner for random graphs.
     Similar structure to main.py but for random graphs.
     """
+
+    #  # 1. Small test Run
+    # n_nodes = list(range(29, 34))
+    # n_graphs_per_combination = 5  # Number of random graphs per n_edge X n_nodes
+    # r_values = [1.1 ]  
+    # n_repeats = 10  
+    # n_jobs = 250
+    # edge_range = 3
+    
     
     # 1. DEFINE PARAMETERS
-    n_nodes = list(range(62, 65))
-    # n_nodes=[31]
-    # edge_counts = list(range(29, 35))  
+    n_nodes = list(range(29, 34))
     n_graphs_per_combination = 500  # Number of random graphs per n_edge X n_nodes
     r_values = [1.1 ]  
-    n_repeats = 100_000  
+    n_repeats = 10_000  
     n_jobs = 1_000
+    edge_range = 5
     
 
     output_dir = os.path.join('simulation_data')
@@ -45,6 +53,9 @@ def main(batch_name=False):
     batch_name = batch_name or BATCH_NAME or datetime.now().strftime("%Y%m%d_%H%M%S")
     batch_dir = os.path.join(output_dir, f"batch_{batch_name}")
     os.makedirs(batch_dir, exist_ok=True)
+    min_edges = min(n_nodes) - 1 
+    max_edges = max(n_nodes) + edge_range - 2
+
 
     # 2. GENERATE RANDOM GRAPHS
     print("="*60)
@@ -52,7 +63,7 @@ def main(batch_name=False):
     print("="*60)
     print(f"Configuration:")
     print(f"  Nodes per graph: {n_nodes}")
-    print(f"  Edge counts: n_nodes -1 to +4")
+    print(f"  Edge counts: {min_edges} to {max_edges}")
     print(f"  Graphs per edge count: {n_graphs_per_combination}")
     print(f"  r values: {r_values}")
     print(f"  Repeats per configuration: {n_repeats}")
@@ -65,7 +76,9 @@ def main(batch_name=False):
     existing_graphs = set([graph.wl_hash for graph in graph_zoo])
 
     for nn in n_nodes: 
-        edge_counts = range(nn-1, nn+5)
+        min_e = nn-1
+        max_e = nn + edge_range - 1 # if edge_range = 1 -> range will be only [nn-1]
+        edge_counts = range(min_e, max_e)
         # edge_counts = [30]
         for ne in edge_counts:
             for i in range(n_graphs_per_combination):

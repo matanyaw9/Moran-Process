@@ -152,6 +152,7 @@ class ProcessLab:
         # start = (ID - 1) * chunk_size
         
         worker_script = "worker_wrapper.py" # Must be in current dir
+        python_exec = os.path.abspath(".venv/bin/python")
         
         cmd_job = [
             "bsub",
@@ -160,11 +161,11 @@ class ProcessLab:
             "-o", os.path.join(logs_dir, "job_%J_%I.out"), # Log stdout
             "-e", os.path.join(logs_dir, "job_%J_%I.err"), # Log stderr
             "-R", f"rusage[mem={memory}]",
+            "-env", "OMP_NUM_THREADS=1, MKL_NUM_THREADS=1, OPENBLAS_NUM_THREADS=1",
         ]
 
         cmd_process = [
-            "uv", "run", 
-            "python", "-u",
+            python_exec, "-u",
             worker_script,
             "--batch-dir", tmp_dir,
             "--chunk-size", str(chunk_size),
