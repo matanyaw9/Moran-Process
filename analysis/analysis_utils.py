@@ -11,7 +11,7 @@ import seaborn as sns
 import shutil
 import textwrap
 from collections import defaultdict
-
+from pathlib import Path
 
 COLOR_DICT = {
     'Random': 'lightgray',     
@@ -248,6 +248,70 @@ def aggregate_results(batch_dir, delete_temp=False, output_file=None):
     # If the file is massive, you might want to skip this return or use chunks.
     return pd.read_csv(output_file)
 
+
+def aggregate_results_no_load(batch_dir, delete_temp=False, output_file=None):
+    """
+    Version that doesn't load the result into memory - just creates the file.
+    Use this for very large datasets where you don't need the DataFrame immediately.
+    
+    Returns the path to the output file instead of a DataFrame.
+    """
+    batch_path = Path(batch_dir)
+    if not output_file:
+        output_file = batch_path / "full_results.csv"
+    else:
+        output_file = Path(output_file)
+    
+    tmp_results_path = batch_path / "tmp" / "results"
+    
+    # Check if already done
+    if output_file.exists():
+        print(f"File {output_file} already exists!")
+        return output_file
+
+    # Find and sort files
+    all_files = sorted(
+        tmp_results_path.glob("result_job_*.csv"),
+        key=lambda p: int(p.stem.split('_')[-1])
+    )
+    
+    if not all_files:
+        print(f"No result files found in {tmp_results_path}")
+        return None
+
+    print(f"Found {len(all_files)} files. Aggregating...")
+
+    # Stream aggregation
+    try:
+        with open(output_file, 'w', encoding='utf-8') as outfile:
+            for i, fpath in enumerate(all_files):
+                if i > 0 and i % 100 == 0:
+                    print(f"  Processed {i}/{len(all_files)} files...")
+                
+                with open(fpath, 'r', encoding='utf-8') as infile:
+                    if i == 0:
+                        shutil.copyfileobj(infile, outfile)
+                    else:
+                        next(infile)
+                        shutil.copyfileobj(infile, outfile)
+        
+        print(f"✓ Master file saved at: {output_file}")
+    
+    except Exception as e:
+        print(f"Error during aggregation: {e}")
+        if output_file.exists():
+            output_file.unlink()
+        raise
+
+    # Delete temp files
+    if delete_temp:
+        tmp_dir = batch_path / "tmp"
+        if tmp_dir.exists():
+            shutil.rmtree(tmp_dir)
+            print(f"Deleted temporary directory: {tmp_dir}")
+    
+    # Return path instead of loading into memory
+    return output_file
 
 def plot_property_effect(df, x_prop, y_outcome='prob_fixation', color_dict=COLOR_DICT):
     """
