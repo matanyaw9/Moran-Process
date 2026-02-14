@@ -366,7 +366,7 @@ def plot_hybrid_density(df, x_prop, y_outcome='prob_fixation', color_dict=COLOR_
     
     # --- 1. Labeling & Setup ---
     is_prob = (y_outcome == 'prob_fixation')
-    ylabel = "Probability of Fixation ($P_{fix}$)" if is_prob else y_outcome.title()
+    ylabel = "Probability of Fixation ($P_{fix}$)" if is_prob else y_outcome.replace("_", " ").title()
     
     # PATCH 1: Calculate Correlation (Pearson)
     clean_df = df[[x_prop, y_outcome, 'r']].dropna()
