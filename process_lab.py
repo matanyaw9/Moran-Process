@@ -39,7 +39,7 @@ class ProcessLab:
         # We can optimize by converting graphs to adjacency lists ONCE
         for graph_obj in graphs_zoo:
             # Pre-compute adjacency for speed
-            # adj_list = [list(graph_obj.graph.neighbors(n)) for n in range(graph_obj.N)]
+            # adj_list = [list(graph_obj.graph.neighbors(n)) for n in range(graph_obj.n_nodes)]
             
             for r in r_values:
                 # Run Repeats
@@ -54,14 +54,14 @@ class ProcessLab:
                     # MERGE METADATA HERE
                     # This is the "secret sauce" to robust analysis
                     record = {
-                        **graph_obj.metadata, # Expands: N, graph_name, depth...
+                        **graph_obj.metadata, # Expands: n_nodes, graph_name, depth...
                         "r": r,
                         **raw_result          # Expands: fixation, steps...
                     }
                     all_results.append(record)
                     if print_time: 
                         seconds = raw_result['duration']
-                        print(f"Graph: {graph_obj.name}, r: {r}, Fixation: {raw_result['fixation']}, N: {graph_obj.number_of_nodes()}, Steps: {raw_result['steps']}, Time: {seconds:.4f}s")
+                        print(f"Graph: {graph_obj.name}, r: {r}, Fixation: {raw_result['fixation']}, n_nodes: {graph_obj.number_of_nodes()}, Steps: {raw_result['steps']}, Time: {seconds:.4f}s")
         
         print('Done.')
         df = pd.DataFrame(all_results)
@@ -100,47 +100,43 @@ class ProcessLab:
      
 
     # --- HPC SUBMISSION ENGINE ---
-    def submit_jobs(self, graphs_zoo, r_values, n_repeats=1000, 
+    def submit_jobs(self, graph_zoo, r_values, batch_name, batch_dir, n_repeats=1000, 
                     n_jobs=50, queue="short", memory="2048", 
-                    output_dir=None, batch_name=None):
+                    ):
         """
         1. Dumps all graphs to 'graphs.pkl'
         2. Creates 'task_manifest.csv' (The Huge Table)
         3. Submits an LSF Job Array where each worker takes a 'chunk' of the table.
         """
+        print("entered ProcessLab.submit_jobs ")
 
-        output_dir = output_dir or os.path.join('simulation_data','tmp')
-        os.makedirs(output_dir, exist_ok=True)
-        # 1. Prepare Batch Directory
-        batch_name = batch_name or datetime.now().strftime("%Y%m%d_%H%M%S")
-        batch_dir = os.path.join(output_dir, f"batch_{batch_name}")
-        
-        
         # Create subdirs for logs and results
         if os.path.exists(batch_dir):
-            # Optional: only delete if you really want a fresh start
-            # shutil.rmtree(batch_dir) 
             print(f"Warning: Batch directory {batch_name} already exists. Appending/Overwriting.")
 
-        logs_dir = os.path.join(batch_dir, "logs")
-        results_dir = os.path.join(batch_dir, "results")
-        os.makedirs(logs_dir, exist_ok=True)
+        tmp_dir = os.path.join(batch_dir, 'tmp')
+        os.makedirs(tmp_dir, exist_ok=True)
+        results_dir = os.path.join(tmp_dir, "results")
         os.makedirs(results_dir, exist_ok=True)
-        
-        print(f"--- Preparing Batch {batch_name} ---")
+        logs_dir = os.path.join(batch_dir, "logs")
+        os.makedirs(logs_dir, exist_ok=True)
 
-        # 2. Serialize Graphs (The Zoo)
-        # We save the LIST of graphs to one file. It's faster for the cluster to read.
-        zoo_path = os.path.join(batch_dir, "graphs.pkl")
+        zoo_path = os.path.join(tmp_dir, "graphs.pkl")
         with open(zoo_path, "wb") as f:
-            pickle.dump(graphs_zoo, f)
-        print(f"Serialized {len(graphs_zoo)} graphs to {zoo_path}")
+            pickle.dump(graph_zoo, f)
+
+        print(f"Serialized {len(graph_zoo)} graphs to {zoo_path}")
+
+        register_graphs_job(zoo_path, batch_name, batch_dir)
+
+
+        print(f"--- Preparing Batch {batch_name} ---")
 
         # 3. Generate Task Manifest (The Huge Table)
         # We expand the loops into a list of rows
-        manifest_df = ProcessLab._create_task_list(graphs_zoo, r_values, n_repeats)
+        manifest_df = ProcessLab._create_task_list(graph_zoo, r_values)
         
-        manifest_path = os.path.join(batch_dir, "task_manifest.csv")
+        manifest_path = os.path.join(tmp_dir, "task_manifest.csv")
         manifest_df.to_csv(manifest_path, index=False)
         print(f"Created Manifest with {len(manifest_df)} rows.")
 
@@ -156,6 +152,7 @@ class ProcessLab:
         # start = (ID - 1) * chunk_size
         
         worker_script = "worker_wrapper.py" # Must be in current dir
+        python_exec = os.path.abspath(".venv/bin/python")
         
         cmd_job = [
             "bsub",
@@ -164,41 +161,72 @@ class ProcessLab:
             "-o", os.path.join(logs_dir, "job_%J_%I.out"), # Log stdout
             "-e", os.path.join(logs_dir, "job_%J_%I.err"), # Log stderr
             "-R", f"rusage[mem={memory}]",
+            "-env", "OMP_NUM_THREADS=1, MKL_NUM_THREADS=1, OPENBLAS_NUM_THREADS=1",
         ]
 
         cmd_process = [
-            "uv", "run", worker_script,
-            "--batch-dir", batch_dir,
-            "--chunk-size", str(chunk_size)
+            python_exec, "-u",
+            worker_script,
+            "--batch-dir", tmp_dir,
+            "--chunk-size", str(chunk_size),
+            "--repeats", str(n_repeats),
         ]
         cmd = cmd_job + cmd_process
         # cmd = cmd_process + ['--job-index', '1']
 
         print(f"Submitting: {' '.join(cmd)}")
-        subprocess.run(cmd)
+        result = subprocess.run(cmd)
+        if result.returncode == 0:
+            print("✅ Command launched and finished successfully.")
+        else:
+            print(f"❌ Command failed with return code {result.returncode}")
+        print(f"Error message: {result.stderr}")
         print(f"Batch submitted! \n > Logs: {logs_dir} \n > Results: {results_dir}")
 
 
     @staticmethod
-    def _create_task_list(graphs, r_values, n_repeats):
+    def _create_task_list(graphs, r_values):
         """Create CSV task list for job array execution."""
         tasks = []
         task_id = 0
         
-        for graph_idx, graph_obj in enumerate(graphs):
+        for graph_idx in range(len(graphs)):
             for r in r_values:
-                for repeat in range(n_repeats):
-                    tasks.append({
-                        'task_id': task_id,
-                        'graph_idx': graph_idx,
-                        'r': r,
-                        'repeat': repeat
-                    })
-                    task_id += 1
+                tasks.append({
+                    'task_id': task_id,
+                    'graph_idx': graph_idx,
+                    'r': r,
+                })
+                task_id += 1
         
         return pd.DataFrame(tasks)
         
+def register_graphs_job(graph_zoo_path, batch_name, batch_dir, queue='short', memory="8192"):
     
+    print("entered ProcessLab.register_graphs_job ")
+    logs_dir = os.path.join(batch_dir, "logs")
+    os.makedirs(logs_dir, exist_ok=True)
+    
+    cmd_job = [
+            "bsub",
+            "-q", queue,
+            "-J", f"batch_{batch_name}_register_graphs",
+            "-o", os.path.join(logs_dir, "job_%J_register_graphs.out"), # Log stdout
+            "-e", os.path.join(logs_dir, "job_%J_register_graphs.err"), # Log stderr
+            "-R", f"rusage[mem={memory}]",
+        ]
+
+    cmd_process = [
+            "uv", "run", 'population_graph.py',
+            "--register",
+            "--batch-dir", batch_dir,
+            "--graph-zoo-path", graph_zoo_path
+        ]
+    cmd = cmd_job + cmd_process
+    # cmd = cmd_process + ['--job-index', '1']
+
+    print(f"Submitting: {' '.join(cmd)}")
+    subprocess.run(cmd)
 
 
 

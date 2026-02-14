@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import warnings
 import pickle
+import argparse
 # import pydot
 warnings.filterwarnings("ignore", message="The hashes produced for graphs")
 
@@ -28,29 +29,24 @@ class PopulationGraph:
     """This class is a container of a networkx graph. Used for Evolutionary Graph Theory"""
     
     # Class-level database
-    _database_path = "simulation_data/graph_database.csv"
-    _database = None
-    
     def __init__(self, graph: nx.Graph, 
                  name: str, 
                  category: str, 
                  params: dict|None = None,
-                 register_in_graph_props=True,):
+                 ):
         self.graph = graph
         self.name = name  # e.g., "Mammalian_Depth4"
         self.category = category  # e.g., "Tree", "Complete"
         self.params = params or {}  # Store {depth: 4, branching: 2} for reproducibility
         
         # Pre-calculate static metrics (Vital for analysis later)
-        self.N = self.graph.number_of_nodes()
+        self.n_nodes = self.graph.number_of_nodes()
         self.is_directed = self.graph.is_directed()
         
         # Calculate WL hash and check database
         self.wl_hash = nx.weisfeiler_lehman_graph_hash(self.graph)
-        if register_in_graph_props:
-            self._register_in_graph_props()
         
-    def calculate_graph_properties(self, save_graph6=True):
+    def calculate_graph_properties(self):
         """Calculate comprehensive graph properties for database storage."""
         G = self.graph
 
@@ -59,23 +55,13 @@ class PopulationGraph:
             'wl_hash': self.wl_hash,
             'graph_name': self.name,
             'category': self.category,
-            'n_nodes': self.N,
+            'n_nodes': self.n_nodes,
             'n_edges': G.number_of_edges(),
             'is_directed': self.is_directed,
             'density': nx.density(G),
             'is_connected': nx.is_connected(G) if not self.is_directed else nx.is_weakly_connected(G),
         }
 
-        # 1. Graph6 Generation (Added as requested)
-        # header=False strips the '>>graph6<<' prefix to save CSV space
-        if save_graph6:
-            try:
-                graph6_str = nx.to_graph6_bytes(G, header=False).decode('ascii').strip()
-            except Exception:
-                graph6_str = None
-            properties['graph6_string'] = graph6_str
-
-        # Add parameters (like rods in avian lungs)
         properties.update(self.params)
         
         # Only calculate expensive metrics for connected graphs
@@ -103,7 +89,7 @@ class PopulationGraph:
                 # --- SLOW METRICS (Guarded by N) ---
                 
                 # CRITICAL FIX: Diameter is O(N^2). It will freeze your computer for N > 1000.
-                if self.N <= 500:
+                if self.n_nodes <= 500:
                     properties['diameter'] = nx.diameter(G)
                     properties['radius'] = nx.radius(G)
                     properties['average_shortest_path_length'] = nx.average_shortest_path_length(G)
@@ -121,7 +107,7 @@ class PopulationGraph:
 
                 # Betweenness Centrality (Slow - O(NM))
                 # Use built-in approximation 'k' for large graphs
-                if self.N <= 100:
+                if self.n_nodes <= 100:
                     between_cent = nx.betweenness_centrality(G)
                 else:
                     between_cent = nx.betweenness_centrality(G, k=50) # Sample 50 nodes
@@ -132,7 +118,7 @@ class PopulationGraph:
                 # Closeness Centrality (Slow - O(NM))
                 # NetworkX does NOT support 'k' sampling for closeness automatically!
                 # We must implement manual sampling.
-                if self.N <= 200:
+                if self.n_nodes <= 200:
                     close_cent = nx.closeness_centrality(G)
                     properties['avg_closeness_centrality'] = np.mean(list(close_cent.values()))
                     properties['max_closeness_centrality'] = max(close_cent.values())
@@ -150,83 +136,48 @@ class PopulationGraph:
                 print(f"Warning: Could not calculate some properties for {self.name}: {e}")
         
         return properties
-    
+
+    #TODO make the properties claculated in a job
     @classmethod
-    def _load_graph_props(cls):
-        """Load the graph database from CSV file."""
-        if cls._database is None:
-            # Ensure directory exists
-            Path(cls._database_path).parent.mkdir(parents=True, exist_ok=True)
+    def batch_register(cls, graph_zoo_path, batch_dir):
+        """Registers graphs from a pickle file in one go to avoid I/O thrashing.
+        
+        Args:
+            graph_zoo_path: Path to pickle file containing list of PopulationGraph objects
+            batch_dir: Directory where graph_props.csv will be saved
+        """
+        # Load existing batch database
+        if type(graph_zoo_path) is str: 
+            graph_props_path = os.path.join(batch_dir, 'graph_props.csv')
+            new_rows = []
+            existing_hashes = set()
+            with open(graph_zoo_path, "rb") as f:
+                graph_zoo = pickle.load(f)
+        
+        elif type(graph_zoo_path) is list: 
+            graph_zoo = graph_zoo_path
+        else: 
+            raise ValueError("graph_zoo_path must be a list or a string path")
+        
+        print(f"Batch processing {len(graph_zoo)} graphs...")
+        
+        for graph in graph_zoo:
+            # Skip if already exists
+            if graph.wl_hash in existing_hashes:
+                continue
             
-            if os.path.exists(cls._database_path):
-                cls._database = pd.read_csv(cls._database_path)
-            else:
-                cls._database = pd.DataFrame()
-        return cls._database
-    
-    @classmethod
-    def _save_graph_props(cls):
-        """Save the graph database to CSV file."""
-        if cls._database is not None:
-            cls._database.to_csv(cls._database_path, index=False)
-    
-    def _register_in_graph_props(self):
-        """Register this graph in the database if not already present."""
-        PopulationGraph._load_graph_props()
-        
-        # Check if graph already exists - if it does, no need to calc properties
-        if not PopulationGraph._database.empty and self.wl_hash in PopulationGraph._database['wl_hash'].values:
-            print(f"Graph with WL hash {self.wl_hash} already exists in database")
-            return
-        
-        # Calculate properties and add to database
-        properties = self.calculate_graph_properties()
-        
-        # Convert to DataFrame row and append
-        new_row = pd.DataFrame([properties])
-        if PopulationGraph._database.empty:
-            PopulationGraph._database = new_row.copy()
+            # Calculate metrics only for new unique graphs
+            props = graph.calculate_graph_properties()
+            new_rows.append(props)
+            existing_hashes.add(graph.wl_hash)
+            
+        if new_rows:
+            pd.DataFrame(new_rows).to_csv(graph_props_path, index=False)
+            print(f"Entered {len(new_rows)} graph props to {graph_props_path}.")
         else:
-            PopulationGraph._database = pd.concat([PopulationGraph._database, new_row], ignore_index=True)
-        
-        # Save to file
-        PopulationGraph._save_graph_props()
-        print(f"Added graph {self.name} (WL hash: {self.wl_hash}) to database")
+            print("No new graphs to add.")
     
-    @classmethod
-    def get_database(cls):
-        """Get the current graph database."""
-        return cls._load_graph_props().copy()
-    
-    @classmethod
-    def find_similar_graphs(cls, wl_hash):
-        """Find graphs with the same WL hash (isomorphic graphs)."""
-        db = cls._load_graph_props()
-        if db.empty:
-            return pd.DataFrame()
-        return db[db['wl_hash'] == wl_hash]
-    
-    @classmethod
-    def get_graph_stats(cls)->dict: 
-        """Get summary statistics of the graph database."""
-        db = cls._load_graph_props()
-        if db.empty:
-            print("Database is empty")
-            return {}
-        
-        stats = {
-            'total_graphs': len(db),
-            'unique_topologies': db['wl_hash'].nunique(),
-            'graph_types': db['category'].value_counts().to_dict(),
-            'size_range': f"{db['n_nodes'].min()}-{db['n_nodes'].max()} nodes",
-            'avg_density': db['density'].mean() if 'density' in db.columns else None
-        }
-        return stats
-    
-    def register_in_database(self):
-        """Manually register this graph in the database (useful if created with register_in_db=False)."""
-        self._register_in_graph_props()
-        
+
     @property
     def metadata(self):
         """Returns a flat dictionary of graph properties for the dataframe."""
@@ -237,23 +188,23 @@ class PopulationGraph:
     
     # --- FACTORY METHODS ---
     @classmethod
-    def complete_graph(cls, N:int, register_in_db: bool = True):
+    def complete_graph(cls, n_nodes:int):
         """
         Creates a fully connected graph (everyone connected to everyone). 
         """
-        name=f'complete_n{N}'
-        return cls(nx.complete_graph(N), name=name, category="Complete", register_in_graph_props=register_in_db)
+        name=f'complete_n{n_nodes}'
+        return cls(nx.complete_graph(n_nodes), name=name, category="Complete")
 
     @classmethod
-    def cycle_graph(cls, N:int, register_in_db: bool = True):
+    def cycle_graph(cls, n_nodes:int):
         """
         Creates a ring graph.
         """
-        name=f'cycle_n{N}'
-        return cls(nx.cycle_graph(N), name=name, category='Cycle', register_in_graph_props=register_in_db)
+        name=f'cycle_n{n_nodes}'
+        return cls(nx.cycle_graph(n_nodes), name=name, category='Cycle')
     
     @classmethod
-    def mammalian_lung_graph(cls, branching_factor:int=2, depth:int=3, name='mammalian', register_in_db: bool = True):
+    def mammalian_lung_graph(cls, branching_factor:int=2, depth:int=3, name='mammalian'):
         """Generates a tree shaped population graph mimicking mammalian lung topology."""
         G = nx.balanced_tree(branching_factor, depth)
         
@@ -274,10 +225,10 @@ class PopulationGraph:
         nx.set_node_attributes(G, pos, 'pos')
         name = f"mammalian_b{branching_factor}_d{depth}"
         return cls(G, name=name, category="Mammalian", 
-                   params={"branching": branching_factor, "depth": depth}, register_in_graph_props=register_in_db)
+                   params={"branching": branching_factor, "depth": depth})
 
     @classmethod
-    def avian_graph(cls, n_rods: int, rod_length: int, directed: bool = False, name="avian", register_in_db: bool = True):
+    def avian_graph(cls, n_rods: int, rod_length: int, directed: bool = False, name="avian"):
         """
         Generates a graph mimicking Avian Lungs topology. 
 
@@ -337,10 +288,10 @@ class PopulationGraph:
         nx.set_node_attributes(G, pos, 'pos')
         G = nx.convert_node_labels_to_integers(G)
         name = f'avian_r{n_rods}_l{rod_length}'
-        return cls(G, name, category='Avian', params={"n_rods": n_rods, "rods_length": rod_length}, register_in_graph_props=register_in_db)
+        return cls(G, name, category='Avian', params={"n_rods": n_rods, "rods_length": rod_length})
     
     @classmethod
-    def fish_graph(cls, n_rods: int, rod_length: int, name='fish', register_in_db: bool = True):
+    def fish_graph(cls, n_rods: int, rod_length: int, name='fish'):
         """Generates a 'Comb' structure: Vertical arch, horizontal filaments."""
         G = nx.Graph()
         pos = {}
@@ -385,14 +336,14 @@ class PopulationGraph:
         nx.set_node_attributes(G, pos, 'pos')
         G = nx.convert_node_labels_to_integers(G)
         name = f'fish_r{n_rods}_l{rod_length}'
-        return cls(G, name, category='Fish', params={'n_rods': n_rods, 'rod_length': rod_length}, register_in_graph_props=register_in_db)
+        return cls(G, name, category='Fish', params={'n_rods': n_rods, 'rod_length': rod_length})
 
     @classmethod
     def random_connected_graph(cls, n_nodes: int, 
                                 n_edges: int|None = None, 
                                 name: str|None = None, 
                                 seed: int|None = None, 
-                                register_in_db: bool = True):
+                                ):
         """
         Creates a random connected graph with specified nodes and edges.
         
@@ -402,7 +353,6 @@ class PopulationGraph:
                                    between n_nodes-1 (minimum for connectivity) and 
                                    n_nodes*(n_nodes-1)/2 (complete graph)
             seed (int, optional): Random seed for reproducibility
-            register_in_db (bool): Whether to register this graph in the database
             
         Returns:
             PopulationGraph: Random connected graph
@@ -467,7 +417,7 @@ class PopulationGraph:
                 name += f'_s{seed}'
             
         return cls(G, name, category='Random', 
-                   params={'n_nodes': n_nodes, 'n_edges': n_edges, 'seed': seed}, register_in_graph_props=register_in_db)
+                   params={'n_nodes': n_nodes, 'n_edges': n_edges, 'seed': seed})
 
 
     # --- UTULITIES ---
@@ -508,9 +458,9 @@ class PopulationGraph:
 
         # --- ADDED: Descriptive Stats ---
         if descriptive:
-            N = self.graph.number_of_nodes()
-            E = self.graph.number_of_edges()
-            stats_text = f"Nodes (N): {N}\nEdges (E): {E}"
+            n_nodes = self.graph.number_of_nodes()
+            n_edges = self.graph.number_of_edges()
+            stats_text = f"Nodes (N): {n_nodes}\nEdges (E): {n_edges}"
             
             # Place text in bottom-right corner (0.98, 0.02) relative to axes
             ax.text(0.98, 0.02, stats_text, 
@@ -596,51 +546,14 @@ class PopulationGraph:
 
 
 
-# --- TEST BLOCK ---
 if __name__ == "__main__":
-    print("--- Testing Population Graph Class with Database and register_in_db parameter")
-    
-    # Clear any existing database for fresh test
-    if os.path.exists("simulation_data/graph_database.csv"):
-        os.remove("simulation_data/graph_database.csv")
-    
-    print("\n1. Creating graphs with database registration...")
-    mammalian = PopulationGraph.mammalian_lung_graph(branching_factor=2, depth=4)
-    complete = PopulationGraph.complete_graph(10)
-    
-    print("\n2. Creating graphs WITHOUT database registration...")
-    # These won't be added to database initially
-    temp_cycle = PopulationGraph.cycle_graph(8, register_in_db=False)
-    temp_random = PopulationGraph.random_connected_graph(12, 20, seed=42, register_in_db=False)
-    
-    print(f"Temp cycle WL hash: {temp_cycle.wl_hash}")
-    print(f"Temp random WL hash: {temp_random.wl_hash}")
-    
-    print("\n3. Database stats after initial creation:")
-    stats = PopulationGraph.get_graph_stats()
-    for key, value in stats.items():
-        print(f"  {key}: {value}")
-    
-    print("\n4. Manually registering temp graphs...")
-    temp_cycle.register_in_database()
-    temp_random.register_in_database()
-    
-    print("\n5. Final database stats:")
-    stats = PopulationGraph.get_graph_stats()
-    for key, value in stats.items():
-        print(f"  {key}: {value}")
-    
-    print("\n6. Testing duplicate detection with register_in_db=False...")
-    # This should still detect the duplicate even without registering
-    duplicate_complete = PopulationGraph.complete_graph(10, register_in_db=False)
-    print(f"Duplicate complete graph WL hash: {duplicate_complete.wl_hash}")
-    
-    print("\n7. Sample database entries:")
-    db = PopulationGraph.get_database()
-    if not db.empty:
-        print(db[['name', 'category', 'wl_hash', 'n_nodes', 'n_edges']].head())
-        
-    print(f"\nDatabase saved to: {PopulationGraph._database_path}")
+    parser = argparse.ArgumentParser(description="Register graphs in the database.")
+    parser.add_argument("--batch-dir", required=True, help="Directory for graph_props.csv")
+    parser.add_argument("--graph-zoo-path", required=True, help="Path to pickle file with graphs")
+    parser.add_argument("--register", action="store_true", help="Enable registration")
 
+    args = parser.parse_args()
 
-        
+    if args.register:
+        print("Registering graphs in database...")
+        PopulationGraph.batch_register(args.graph_zoo_path, args.batch_dir)

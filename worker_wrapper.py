@@ -29,7 +29,7 @@ def load_data(batch_dir):
     
     return graph_zoo, manifest_df
 
-def run_worker_slice(batch_dir, chunk_size, job_index):
+def run_worker_slice(batch_dir, chunk_size, job_index, repeats):
     """
     Main Logic:
     1. Calculate which rows of the CSV belong to this job.
@@ -54,7 +54,7 @@ def run_worker_slice(batch_dir, chunk_size, job_index):
         print(f"[Worker] No tasks found for indices {start_idx} to {end_idx}. Exiting.")
         return
 
-    print(f"[Worker] Processing {len(my_tasks)} tasks (Rows {start_idx} to {end_idx})")
+    print(f"[Worker] Processing {len(my_tasks) * repeats} simulations (Rows {start_idx} to {end_idx})")
     
     # 3. Run The Simulations
     results_buffer = []
@@ -68,29 +68,31 @@ def run_worker_slice(batch_dir, chunk_size, job_index):
             target_graph = graph_zoo[row.graph_idx]
             r_val = row.r
             
-            # B. Initialize Simulation
-            sim = ProcessRun(population_graph=target_graph, selection_coefficient=r_val)
-            sim.initialize_random_mutant()
-            
-            # C. Run
-            raw_result = sim.run()
-            
-            # D. Save Record
-            record = {
-                "task_id": row.task_id,
-                "job_id": job_index,
-                "graph_name": target_graph.name,
-                "r": r_val,
-                "fixation": raw_result["fixation"],
-                "steps": raw_result["steps"],
-                "initial_mutants": raw_result["initial_mutants"],
-                "duration": raw_result["duration"],
+            for rep in range(repeats):
+                # B. Initialize Simulation
+                sim = ProcessRun(population_graph=target_graph, selection_coefficient=r_val)
+                sim.initialize_random_mutant()
+                
+                # C. Run
+                raw_result = sim.run()
+                
+                # D. Save Record
+                record = {
+                    "task_id": row.task_id,
+                    "job_id": job_index,
+                    "wl_hash": target_graph.wl_hash,
+                    "graph_name": target_graph.name,
+                    "r": r_val,
+                    "fixation": raw_result["fixation"],
+                    "steps": raw_result["steps"],
+                    "initial_mutants": raw_result["initial_mutants"],
+                    "duration": raw_result["duration"],
 
-                # Add any other graph properties you need for analysis
-                **target_graph.metadata # (Optional) expands WL hash, etc.
+                    # Add any other graph properties you need for analysis
+                    # **target_graph.metadata # (Optional) expands WL hash, etc.
 
-            }
-            results_buffer.append(record)
+                }
+                results_buffer.append(record)
             
         except Exception as e:
             print(f"ERROR in Task {row.task_id}: {e}")
@@ -114,6 +116,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--batch-dir", required=True, help="Path to the batch directory (containing graphs.pkl)")
     parser.add_argument("--chunk-size", required=True, type=int, help="How many rows this worker should process")
+    parser.add_argument("--repeats", required=True, type=int, help="How many times to repeat each simulation")
+
     
     # Optional: Allow manually passing job-index for testing locally
     # On the cluster, we will look at the env variable LSB_JOBINDEX
@@ -132,7 +136,5 @@ if __name__ == "__main__":
             print("ERROR: Could not find job index! (Set --job-index or run via bsub)")
             sys.exit(1)
             
-    run_worker_slice(args.batch_dir, args.chunk_size, job_idx)
+    run_worker_slice(args.batch_dir, args.chunk_size, job_idx, args.repeats)
     # print(f"job number {job_idx} is running!:\t Batch dir: {args.batch_dir}\t Chunk Size: {args.chunk_size}")
-
-    # TODO how to debug: run locally without the bsub but with the terminal. 

@@ -10,7 +10,8 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import shutil
 import textwrap
-
+from collections import defaultdict
+from pathlib import Path
 
 COLOR_DICT = {
     'Random': 'lightgray',     
@@ -20,6 +21,9 @@ COLOR_DICT = {
     'Complete': 'black',       
     'Other': 'yellow'          
 }
+
+# Use a defaultdict to return 'lightgray' for unknown categories
+COLOR_DICT = defaultdict(lambda: 'lightgray', COLOR_DICT)
 # Paste your dictionary here (or ensure it's in the global scope)
 GRAPH_PROPERTY_DESCRIPTION = {
     'n_nodes': "The total number of vertices (individuals) in the graph.",
@@ -140,57 +144,174 @@ def setup_analysis_environment():
     
     return parent_dir
 
-def aggregate_results(batch_dir, save_to_dir, delete_temp=False):
-    """
-    Aggregate CSV result files from a batch directory into a single file.
+# def aggregate_results(batch_dir, delete_temp=False):
+#     """
+#     Aggregate CSV result files from a batch directory into a single file.
         
-    Args:
-        batch_dir (str): Directory containing results subdirectory with CSV files
-        save_to_dir (str): Directory to save the aggregated results
-        delete_temp (bool): Whether to delete the batch directory after aggregation
+#     Args:
+#         batch_dir (str): Directory containing results subdirectory with CSV files
+#         delete_temp (bool): Whether to delete the batch directory after aggregation
             
-    Returns:
-        pd.DataFrame: Aggregated results, or None if no files found
+#     Returns:
+#         pd.DataFrame: Aggregated results, or None if no files found
+#     """
+#     batch_name = os.path.basename(batch_dir).removeprefix("batch_")
+#     output_file = os.path.join(batch_dir, f"{batch_name}_full_results.csv")
+#     if os.path.exists(output_file):
+#         print(f"File {os.path.abspath(output_file)} already exitst! Not aggregating...")
+#         return load_experiment_data(output_file)
+    
+#     results_path = os.path.join(batch_dir, "tmp", "results")
+    
+#     # 1. Find all CSV files in the results directory
+#     # Using glob handles the pattern matching for 'result_job_*.csv'
+#     all_files = glob.glob(os.path.join(results_path, "result_job_*.csv"))
+    
+#     if not all_files:
+#         print(f"No result files found in {results_path}")
+#         return None
+
+#     print(f"Found {len(all_files)} files. Aggregating...")
+
+#     # 2. Read each CSV into a list of DataFrames
+#     df_list = []
+#     for filename in all_files:
+#         df = pd.read_csv(filename)
+#         df_list.append(df)
+
+#     # 3. Concatenate all DataFrames into one
+#     master_df = pd.concat(df_list, ignore_index=True)
+
+#     # 4. Optional: Save the master file to the batch root
+#     master_df.to_csv(output_file, index=False)
+    
+#     print(f"Success! Aggregated {len(master_df)} total rows.")
+#     print(f"Master file saved at: {output_file}")
+
+#     if delete_temp:
+#         tmp_dir = os.path.join(batch_dir, "tmp")
+#         if os.path.exists(tmp_dir):
+#             shutil.rmtree(tmp_dir)
+#             print(f"Deleted temporary directory: {tmp_dir}")
+    
+#     return master_df
+
+
+def aggregate_results(batch_dir, delete_temp=False, output_file=None):
     """
-    batch_name = os.path.basename(batch_dir).removeprefix("batch_")
-    output_file = os.path.join(save_to_dir, f"{batch_name}_full_results.csv")
+    Efficiently aggregates CSV result files by streaming them into a single file.
+    """
+    # Setup paths
+
+    if not output_file: 
+        output_file = os.path.join(batch_dir, f"full_results.csv")
+    
+    tmp_results_path = os.path.join(batch_dir, "tmp", "results")
+    
+    # Check if already done
     if os.path.exists(output_file):
-        print(f"File {os.path.abspath(output_file)} already exitst! Not aggregating...")
-        return load_experiment_data(output_file)
+        print(f"File {output_file} already exists! Loading...")
+        return pd.read_csv(output_file)
+
+    # 1. Find all CSV files
+    all_files = glob.glob(os.path.join(tmp_results_path, "result_job_*.csv"))
+    if not all_files:
+        print(f"No result files found in {tmp_results_path}")
+        return None
+
+    print(f"Found {len(all_files)} files. Aggregating via stream...")
+
+    # 2. Stream content directly to the output file (Memory Safe)
+    with open(output_file, 'w', encoding='utf-8') as outfile:
+        for i, fname in enumerate(all_files):
+            with open(fname, 'r', encoding='utf-8') as infile:
+                # For the first file, write everything (including header)
+                if i == 0:
+                    shutil.copyfileobj(infile, outfile)
+                else:
+                    # For subsequent files, skip the header line
+                    header = infile.readline() 
+                    shutil.copyfileobj(infile, outfile)
     
-    results_path = os.path.join(batch_dir, "results")
+    print(f"Master file saved at: {output_file}")
+
+    # 3. CRITICAL FIX: Safe Deletion
+    # Your original code deleted 'batch_dir', which contains the 'output_file' you just created!
+    # We only delete the 'tmp' folder where the partial pieces live.
+    if delete_temp:
+        tmp_dir = os.path.join(batch_dir, "tmp")
+        if os.path.exists(tmp_dir):
+            shutil.rmtree(tmp_dir)
+            print(f"Deleted temporary directory: {tmp_dir}")
     
-    # 1. Find all CSV files in the results directory
-    # Using glob handles the pattern matching for 'result_job_*.csv'
-    all_files = glob.glob(os.path.join(results_path, "result_job_*.csv"))
+    # 4. Return the DataFrame (Only load into RAM now, if needed)
+    # If the file is massive, you might want to skip this return or use chunks.
+    return pd.read_csv(output_file)
+
+
+def aggregate_results_no_load(batch_dir, delete_temp=False, output_file=None):
+    """
+    Version that doesn't load the result into memory - just creates the file.
+    Use this for very large datasets where you don't need the DataFrame immediately.
+    
+    Returns the path to the output file instead of a DataFrame.
+    """
+    batch_path = Path(batch_dir)
+    if not output_file:
+        output_file = batch_path / "full_results.csv"
+    else:
+        output_file = Path(output_file)
+    
+    tmp_results_path = batch_path / "tmp" / "results"
+    
+    # Check if already done
+    if output_file.exists():
+        print(f"File {output_file} already exists!")
+        return output_file
+
+    # Find and sort files
+    all_files = sorted(
+        tmp_results_path.glob("result_job_*.csv"),
+        key=lambda p: int(p.stem.split('_')[-1])
+    )
     
     if not all_files:
-        print(f"No result files found in {results_path}")
+        print(f"No result files found in {tmp_results_path}")
         return None
 
     print(f"Found {len(all_files)} files. Aggregating...")
 
-    # 2. Read each CSV into a list of DataFrames
-    df_list = []
-    for filename in all_files:
-        df = pd.read_csv(filename)
-        df_list.append(df)
-
-    # 3. Concatenate all DataFrames into one
-    master_df = pd.concat(df_list, ignore_index=True)
-
-    # 4. Optional: Save the master file to the batch root
-    master_df.to_csv(output_file, index=False)
+    # Stream aggregation
+    try:
+        with open(output_file, 'w', encoding='utf-8') as outfile:
+            for i, fpath in enumerate(all_files):
+                if i > 0 and i % 100 == 0:
+                    print(f"  Processed {i}/{len(all_files)} files...")
+                
+                with open(fpath, 'r', encoding='utf-8') as infile:
+                    if i == 0:
+                        shutil.copyfileobj(infile, outfile)
+                    else:
+                        next(infile)
+                        shutil.copyfileobj(infile, outfile)
+        
+        print(f"✓ Master file saved at: {output_file}")
     
-    print(f"Success! Aggregated {len(master_df)} total rows.")
-    print(f"Master file saved at: {output_file}")
+    except Exception as e:
+        print(f"Error during aggregation: {e}")
+        if output_file.exists():
+            output_file.unlink()
+        raise
 
+    # Delete temp files
     if delete_temp:
-        shutil.rmtree(batch_dir)
-        print(f"Deleted temporary batch directory: {batch_dir}")
-
+        tmp_dir = batch_path / "tmp"
+        if tmp_dir.exists():
+            shutil.rmtree(tmp_dir)
+            print(f"Deleted temporary directory: {tmp_dir}")
     
-    return master_df
+    # Return path instead of loading into memory
+    return output_file
 
 def plot_property_effect(df, x_prop, y_outcome='prob_fixation', color_dict=COLOR_DICT):
     """
@@ -355,7 +476,7 @@ def plot_hybrid_density(df, x_prop, y_outcome='prob_fixation', color_dict=COLOR_
 
     # Titles & Labels
     plt.xlabel(x_prop.replace('_', ' ').title())
-    plt.ylabel(ylabel)
+    plt.ylabel(ylabel.replace("_", " ").title())
     
     # PATCH 2: Add Description as Subtitle
     # Fetch description, default to empty string if not found
