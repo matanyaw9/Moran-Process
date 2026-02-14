@@ -365,8 +365,23 @@ def plot_hybrid_density(df, x_prop, y_outcome='prob_fixation', color_dict=COLOR_
     plt.figure(figsize=(11, 8.5)) # Increased height slightly for the subtitle
     
     # --- 1. Labeling & Setup ---
-    is_prob = (y_outcome == 'prob_fixation')
-    ylabel = "Probability of Fixation ($P_{fix}$)" if is_prob else y_outcome.replace("_", " ").title()
+    prob_label = "Probability of Fixation ($P_{fix}$)"
+    is_prob = False
+    if y_outcome == 'prob_fixation':
+        ylabel = prob_label
+        is_prob = True  
+    
+    else: 
+        ylabel = y_outcome.replace("_", " ").title()
+    
+
+    
+    if x_prop == 'prob_fixation':
+        xlabel = prob_label
+    elif x_prop == "std_steps":
+        xlabel = "STD Steps to Fixation"
+    else: 
+        xlabel = x_prop.replace("_", " ").title()
     
     # PATCH 1: Calculate Correlation (Pearson)
     clean_df = df[[x_prop, y_outcome, 'r']].dropna()
@@ -475,8 +490,8 @@ def plot_hybrid_density(df, x_prop, y_outcome='prob_fixation', color_dict=COLOR_
         plt.axhline(1/avg_n, color='black', linestyle=':', label=f'Neutral (1/N)')
 
     # Titles & Labels
-    plt.xlabel(x_prop.replace('_', ' ').title())
-    plt.ylabel(ylabel.replace("_", " ").title())
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
     
     # PATCH 2: Add Description as Subtitle
     # Fetch description, default to empty string if not found
