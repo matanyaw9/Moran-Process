@@ -47,6 +47,22 @@ class PopulationGraph:
         
         # Calculate WL hash and check database
         self.wl_hash = nx.weisfeiler_lehman_graph_hash(self.graph)
+
+        # If requested, assign a 'label' attribute to every edge
+        if self.labeled_edges:
+            edge_labels = {}
+            for u, v in self.graph.edges():
+                # Create a consistent string label "u_v"
+                # If undirected, sort nodes to ensure "0_1" is same as "1_0"
+                if not self.is_directed:
+                    n1, n2 = sorted((u, v))
+                    label = f"{n1}_{n2}"
+                else:
+                    label = f"{u}_{v}"
+                edge_labels[(u, v)] = label
+            
+            # Efficiently batch-update the graph
+            nx.set_edge_attributes(self.graph, edge_labels, "label")
         
     def calculate_graph_properties(self):
         """Calculate comprehensive graph properties for database storage."""
@@ -190,23 +206,23 @@ class PopulationGraph:
     
     # --- FACTORY METHODS ---
     @classmethod
-    def complete_graph(cls, n_nodes:int):
+    def complete_graph(cls, n_nodes:int, labeled_edges: bool = False):
         """
         Creates a fully connected graph (everyone connected to everyone). 
         """
         name=f'complete_n{n_nodes}'
-        return cls(nx.complete_graph(n_nodes), name=name, category="Complete")
+        return cls(nx.complete_graph(n_nodes), name=name, category="Complete", labeled_edges=labeled_edges)
 
     @classmethod
-    def cycle_graph(cls, n_nodes:int):
+    def cycle_graph(cls, n_nodes:int, labeled_edges: bool = False):
         """
         Creates a ring graph.
         """
         name=f'cycle_n{n_nodes}'
-        return cls(nx.cycle_graph(n_nodes), name=name, category='Cycle')
+        return cls(nx.cycle_graph(n_nodes), name=name, category='Cycle', labeled_edges=labeled_edges)
     
     @classmethod
-    def mammalian_lung_graph(cls, branching_factor:int=2, depth:int=3, name='mammalian'):
+    def mammalian_lung_graph(cls, branching_factor:int=2, depth:int=3, name='mammalian', labeled_edges: bool = False):
         """Generates a tree shaped population graph mimicking mammalian lung topology."""
         G = nx.balanced_tree(branching_factor, depth)
         
@@ -227,10 +243,11 @@ class PopulationGraph:
         nx.set_node_attributes(G, pos, 'pos')
         name = f"mammalian_b{branching_factor}_d{depth}"
         return cls(G, name=name, category="Mammalian", 
-                   params={"branching": branching_factor, "depth": depth})
+               params={"branching": branching_factor, "depth": depth},
+               labeled_edges=labeled_edges)
 
     @classmethod
-    def avian_graph(cls, n_rods: int, rod_length: int, directed: bool = False, name="avian"):
+    def avian_graph(cls, n_rods: int, rod_length: int, directed: bool = False, name="avian", labeled_edges: bool = False):
         """
         Generates a graph mimicking Avian Lungs topology. 
 
@@ -290,10 +307,10 @@ class PopulationGraph:
         nx.set_node_attributes(G, pos, 'pos')
         G = nx.convert_node_labels_to_integers(G)
         name = f'avian_r{n_rods}_l{rod_length}'
-        return cls(G, name, category='Avian', params={"n_rods": n_rods, "rods_length": rod_length})
+        return cls(G, name, category='Avian', params={"n_rods": n_rods, "rods_length": rod_length}, labeled_edges=labeled_edges)
     
     @classmethod
-    def fish_graph(cls, n_rods: int, rod_length: int, name='fish'):
+    def fish_graph(cls, n_rods: int, rod_length: int, name='fish', labeled_edges: bool = False):
         """Generates a 'Comb' structure: Vertical arch, horizontal filaments."""
         G = nx.Graph()
         pos = {}
@@ -338,95 +355,15 @@ class PopulationGraph:
         nx.set_node_attributes(G, pos, 'pos')
         G = nx.convert_node_labels_to_integers(G)
         name = f'fish_r{n_rods}_l{rod_length}'
-        return cls(G, name, category='Fish', params={'n_rods': n_rods, 'rod_length': rod_length})
-
-    # @classmethod
-    # def random_connected_graph(cls, n_nodes: int, 
-    #                             n_edges: int|None = None, 
-    #                             name: str|None = None, 
-    #                             seed: int|None = None, 
-    #                             ):
-    #     """
-    #     Creates a random connected graph with specified nodes and edges.
-        
-    #     Args:
-    #         n_nodes (int): Number of nodes in the graph
-    #         n_edges (int, optional): Number of edges. If None, generates random number
-    #                                between n_nodes-1 (minimum for connectivity) and 
-    #                                n_nodes*(n_nodes-1)/2 (complete graph)
-    #         seed (int, optional): Random seed for reproducibility
-            
-    #     Returns:
-    #         PopulationGraph: Random connected graph
-    #     """
-    #     if seed is not None:
-    #         np.random.seed(seed)
-        
-    #     if n_nodes < 1:
-    #         raise ValueError("Number of nodes must be at least 1")
-        
-    #     # Calculate edge bounds
-    #     min_edges = n_nodes - 1  # Minimum for connectivity (spanning tree)
-    #     max_edges = n_nodes * (n_nodes - 1) // 2  # Complete graph
-        
-    #     # Generate random number of edges if not specified
-    #     if n_edges is None:
-    #         n_edges = np.random.randint(min_edges, max_edges + 1)
-        
-    #     # Validate edge count
-    #     if n_edges < min_edges or n_edges > max_edges:
-    #         raise ValueError(f"number of edges needs to be between {min_edges} and {max_edges} for connectivity with {n_nodes} nodes. Given number of edges: {n_edges}.")
-    #     if n_edges > max_edges:
-    #         raise ValueError(f"Maximum {max_edges} edges possible with {n_nodes} nodes")
-        
-    #     # Start with a random spanning tree to ensure connectivity
-    #     G = nx.random_labeled_tree(n_nodes, seed=seed)
-        
-    #     # Add additional random edges if needed
-    #     current_edges = G.number_of_edges()
-    #     edges_to_add = n_edges - current_edges
-        
-    #     if edges_to_add > 0:
-    #         # Generate all possible edges using numpy - much more efficient
-    #         i_indices, j_indices = np.triu_indices(n_nodes, k=1)
-    #         all_possible_edges = np.column_stack((i_indices, j_indices))
-            
-    #         # Convert existing edges to numpy array for efficient comparison
-    #         existing_edges = np.array(list(G.edges()))
-            
-    #         # Find available edges using numpy set operations
-    #         # Create a view for efficient comparison
-    #         all_edges_view = all_possible_edges.view([('', all_possible_edges.dtype)] * 2).ravel()
-    #         existing_edges_view = existing_edges.view([('', existing_edges.dtype)] * 2).ravel()
-            
-    #         # Get mask of available edges
-    #         available_mask = ~np.isin(all_edges_view, existing_edges_view)
-    #         available_edges = all_possible_edges[available_mask]
-            
-    #         # Randomly select additional edges
-    #         if len(available_edges) >= edges_to_add:
-    #             selected_indices = np.random.choice(
-    #                 len(available_edges), 
-    #                 size=edges_to_add, 
-    #                 replace=False
-    #             )
-    #             for idx in selected_indices:
-    #                 G.add_edge(*available_edges[idx])
-        
-    #     if not name: 
-    #         name = f'random_n{n_nodes}_e{n_edges}'
-    #         if seed is not None:
-    #             name += f'_s{seed}'
-            
-    #     return cls(G, name, category='Random', 
-    #                params={'n_nodes': n_nodes, 'n_edges': n_edges, 'seed': seed})
+        return cls(G, name, category='Fish', params={'n_rods': n_rods, 'rod_length': rod_length}, labeled_edges=labeled_edges)
 
 
     @classmethod
     def random_connected_graph(cls, n_nodes: int, 
                                 n_edges: int | None = None, 
                                 name: str | None = None, 
-                                seed: int | None = None):
+                                seed: int | None = None,
+                                labeled_edges: bool = False):
         """
         Creates a random connected graph efficiently using local RNG for stability.
         """
@@ -490,9 +427,10 @@ class PopulationGraph:
                 name += f'_s{seed}'
 
         return cls(G, name, category='Random', 
-                   params={'n_nodes': n_nodes, 'n_edges': n_edges, 'seed': seed})
+               params={'n_nodes': n_nodes, 'n_edges': n_edges, 'seed': seed},
+               labeled_edges=labeled_edges)
 
-    def mutate_graph(self, mutated_name=None, seed=None):
+    def mutate_graph(self, name=None, seed=None):
         # 1. Initialize the local RNG
         rng = np.random.default_rng(seed)
         
@@ -505,6 +443,7 @@ class PopulationGraph:
         # 2. Remove a random edge using RNG
         idx_to_remove = rng.integers(len(edges))
         u_rem, v_rem = edges[idx_to_remove]
+        edge_label = G.get_edge_data(u_rem, v_rem).get('label', f"{u_rem}_{v_rem}") if self.labeled_edges else None
         G.remove_edge(u_rem, v_rem)
 
         # 3. Get connected components
@@ -544,17 +483,21 @@ class PopulationGraph:
                 
                 # Check undirected existence (u,v) or (v,u)
                 if not G.has_edge(u, v):
+                    if self.labeled_edges and edge_label is not None:
+                        G.add_edge(u, v, label=edge_label)
+                        break
                     G.add_edge(u, v)
                     break
             else:
                  # If we fail to find a valid swap (e.g. complete graph), restore original
                  G.add_edge(u_rem, v_rem)
+                 print(f"Warning: Failed to mutate {self.name} after 100 attempts. Returning original graph.")
                  # Optional: Warn user or just return un-mutated graph
 
-        if not mutated_name:
-            mutated_name = f"{self.name}_mutated"
+        if not name:
+            name = f"{self.name}_mutated"
             
-        return PopulationGraph(G, mutated_name, self.category, params=self.params.copy())
+        return PopulationGraph(G, name, self.category, params=self.params.copy(), labeled_edges=self.labeled_edges)
 
     # --- UTULITIES ---
     def to_adjacency_matrix(self):
@@ -565,8 +508,8 @@ class PopulationGraph:
             raise ValueError("Graph not initialized.")
         return nx.to_numpy_array(self.graph)
     
-# --- VISUALIZATION ---
-    def draw(self, ax=None, filename='', descriptive=True):
+    # --- VISUALIZATION ---
+    def draw(self, ax=None, filename='', descriptive=True, with_labels=False):
         """Draws the graph using its stored biological layout."""
         if self.graph is None: return
 
@@ -582,13 +525,18 @@ class PopulationGraph:
             ax = plt.gca()
             created_internally = True
         
+        with_edge_labels = self.labeled_edges
         # 3. Drawing
         nx.draw(self.graph, pos=pos, ax=ax, 
-                with_labels=False,
-                node_size=50,
-                node_color='skyblue', 
-                edge_color='#555555',
-                width=1.5)
+            node_size=50,
+            node_color='skyblue', 
+            with_labels=with_labels,
+            edge_color='#555555',
+            width=1.5)
+        
+        if with_edge_labels:
+            edge_labels = nx.get_edge_attributes(self.graph, 'label')
+            nx.draw_networkx_edge_labels(self.graph, pos, edge_labels, ax=ax, font_size=8)
         
         ax.set_title(self.name, fontsize=14)
 

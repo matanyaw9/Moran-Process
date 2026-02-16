@@ -48,6 +48,30 @@ GRAPH_PROPERTY_DESCRIPTION = {
 }
 
 
+GRAPH_PROPERTY_COLUMNS = [  
+    'n_nodes',
+    'n_edges',
+    'is_directed',
+    'density',
+    'is_connected',
+    'avg_degree',
+    'max_degree',
+    'min_degree',
+    'degree_std',
+    'degree_assortativity',
+    'average_clustering',
+    'transitivity',
+    'diameter',
+    'radius',
+    'average_shortest_path_length',
+    'avg_degree_centrality',
+    'max_degree_centrality',
+    'avg_betweenness_centrality',
+    'max_betweenness_centrality',
+    'avg_closeness_centrality',
+    'max_closeness_centrality'
+    ]
+
 
 def get_data_path():
     """
