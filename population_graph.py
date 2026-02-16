@@ -33,6 +33,7 @@ class PopulationGraph:
                  name: str, 
                  category: str, 
                  params: dict|None = None,
+                 labeled_edges = False,
                  ):
         self.graph = graph
         self.name = name  # e.g., "Mammalian_Depth4"
@@ -42,6 +43,7 @@ class PopulationGraph:
         # Pre-calculate static metrics (Vital for analysis later)
         self.n_nodes = self.graph.number_of_nodes()
         self.is_directed = self.graph.is_directed()
+        self.labeled_edges = labeled_edges
         
         # Calculate WL hash and check database
         self.wl_hash = nx.weisfeiler_lehman_graph_hash(self.graph)
@@ -338,87 +340,221 @@ class PopulationGraph:
         name = f'fish_r{n_rods}_l{rod_length}'
         return cls(G, name, category='Fish', params={'n_rods': n_rods, 'rod_length': rod_length})
 
+    # @classmethod
+    # def random_connected_graph(cls, n_nodes: int, 
+    #                             n_edges: int|None = None, 
+    #                             name: str|None = None, 
+    #                             seed: int|None = None, 
+    #                             ):
+    #     """
+    #     Creates a random connected graph with specified nodes and edges.
+        
+    #     Args:
+    #         n_nodes (int): Number of nodes in the graph
+    #         n_edges (int, optional): Number of edges. If None, generates random number
+    #                                between n_nodes-1 (minimum for connectivity) and 
+    #                                n_nodes*(n_nodes-1)/2 (complete graph)
+    #         seed (int, optional): Random seed for reproducibility
+            
+    #     Returns:
+    #         PopulationGraph: Random connected graph
+    #     """
+    #     if seed is not None:
+    #         np.random.seed(seed)
+        
+    #     if n_nodes < 1:
+    #         raise ValueError("Number of nodes must be at least 1")
+        
+    #     # Calculate edge bounds
+    #     min_edges = n_nodes - 1  # Minimum for connectivity (spanning tree)
+    #     max_edges = n_nodes * (n_nodes - 1) // 2  # Complete graph
+        
+    #     # Generate random number of edges if not specified
+    #     if n_edges is None:
+    #         n_edges = np.random.randint(min_edges, max_edges + 1)
+        
+    #     # Validate edge count
+    #     if n_edges < min_edges or n_edges > max_edges:
+    #         raise ValueError(f"number of edges needs to be between {min_edges} and {max_edges} for connectivity with {n_nodes} nodes. Given number of edges: {n_edges}.")
+    #     if n_edges > max_edges:
+    #         raise ValueError(f"Maximum {max_edges} edges possible with {n_nodes} nodes")
+        
+    #     # Start with a random spanning tree to ensure connectivity
+    #     G = nx.random_labeled_tree(n_nodes, seed=seed)
+        
+    #     # Add additional random edges if needed
+    #     current_edges = G.number_of_edges()
+    #     edges_to_add = n_edges - current_edges
+        
+    #     if edges_to_add > 0:
+    #         # Generate all possible edges using numpy - much more efficient
+    #         i_indices, j_indices = np.triu_indices(n_nodes, k=1)
+    #         all_possible_edges = np.column_stack((i_indices, j_indices))
+            
+    #         # Convert existing edges to numpy array for efficient comparison
+    #         existing_edges = np.array(list(G.edges()))
+            
+    #         # Find available edges using numpy set operations
+    #         # Create a view for efficient comparison
+    #         all_edges_view = all_possible_edges.view([('', all_possible_edges.dtype)] * 2).ravel()
+    #         existing_edges_view = existing_edges.view([('', existing_edges.dtype)] * 2).ravel()
+            
+    #         # Get mask of available edges
+    #         available_mask = ~np.isin(all_edges_view, existing_edges_view)
+    #         available_edges = all_possible_edges[available_mask]
+            
+    #         # Randomly select additional edges
+    #         if len(available_edges) >= edges_to_add:
+    #             selected_indices = np.random.choice(
+    #                 len(available_edges), 
+    #                 size=edges_to_add, 
+    #                 replace=False
+    #             )
+    #             for idx in selected_indices:
+    #                 G.add_edge(*available_edges[idx])
+        
+    #     if not name: 
+    #         name = f'random_n{n_nodes}_e{n_edges}'
+    #         if seed is not None:
+    #             name += f'_s{seed}'
+            
+    #     return cls(G, name, category='Random', 
+    #                params={'n_nodes': n_nodes, 'n_edges': n_edges, 'seed': seed})
+
+
     @classmethod
     def random_connected_graph(cls, n_nodes: int, 
-                                n_edges: int|None = None, 
-                                name: str|None = None, 
-                                seed: int|None = None, 
-                                ):
+                                n_edges: int | None = None, 
+                                name: str | None = None, 
+                                seed: int | None = None):
         """
-        Creates a random connected graph with specified nodes and edges.
-        
-        Args:
-            n_nodes (int): Number of nodes in the graph
-            n_edges (int, optional): Number of edges. If None, generates random number
-                                   between n_nodes-1 (minimum for connectivity) and 
-                                   n_nodes*(n_nodes-1)/2 (complete graph)
-            seed (int, optional): Random seed for reproducibility
-            
-        Returns:
-            PopulationGraph: Random connected graph
+        Creates a random connected graph efficiently using local RNG for stability.
         """
-        if seed is not None:
-            np.random.seed(seed)
+        # 1. Use a local Generator. This fixes the seeding issue without polluting global state.
+        rng = np.random.default_rng(seed)
         
         if n_nodes < 1:
             raise ValueError("Number of nodes must be at least 1")
+
+        # 2. Calculate bounds
+        min_edges = n_nodes - 1
+        max_edges = n_nodes * (n_nodes - 1) // 2
         
-        # Calculate edge bounds
-        min_edges = n_nodes - 1  # Minimum for connectivity (spanning tree)
-        max_edges = n_nodes * (n_nodes - 1) // 2  # Complete graph
-        
-        # Generate random number of edges if not specified
         if n_edges is None:
-            n_edges = np.random.randint(min_edges, max_edges + 1)
+            n_edges = rng.integers(min_edges, max_edges + 1)
         
-        # Validate edge count
-        if n_edges < min_edges:
-            raise ValueError(f"Need at least {min_edges} edges for connectivity with {n_nodes} nodes")
-        if n_edges > max_edges:
-            raise ValueError(f"Maximum {max_edges} edges possible with {n_nodes} nodes")
+        if not (min_edges <= n_edges <= max_edges):
+            raise ValueError(f"Edges must be between {min_edges} and {max_edges} for {n_nodes} nodes.")
+
+        # 3. Generate the backbone (Spanning Tree)
+        # We derive a seed for NetworkX from our local rng to maintain full reproducibility
+        tree_seed = int(rng.integers(0, 2**32))
+        G = nx.random_labeled_tree(n_nodes, seed=tree_seed)
         
-        # Start with a random spanning tree to ensure connectivity
-        G = nx.random_labeled_tree(n_nodes, seed=seed)
+        # 4. Efficiently add the remaining edges (Rejection Sampling)
+        # Your previous method generated N^2 edges (huge memory). 
+        # This method generates batches of random pairs, which is much faster for biological/sparse graphs.
+        edges_needed = n_edges - (n_nodes - 1)
         
-        # Add additional random edges if needed
-        current_edges = G.number_of_edges()
-        edges_to_add = n_edges - current_edges
-        
-        if edges_to_add > 0:
-            # Generate all possible edges using numpy - much more efficient
-            i_indices, j_indices = np.triu_indices(n_nodes, k=1)
-            all_possible_edges = np.column_stack((i_indices, j_indices))
-            
-            # Convert existing edges to numpy array for efficient comparison
-            existing_edges = np.array(list(G.edges()))
-            
-            # Find available edges using numpy set operations
-            # Create a view for efficient comparison
-            all_edges_view = all_possible_edges.view([('', all_possible_edges.dtype)] * 2).ravel()
-            existing_edges_view = existing_edges.view([('', existing_edges.dtype)] * 2).ravel()
-            
-            # Get mask of available edges
-            available_mask = ~np.isin(all_edges_view, existing_edges_view)
-            available_edges = all_possible_edges[available_mask]
-            
-            # Randomly select additional edges
-            if len(available_edges) >= edges_to_add:
-                selected_indices = np.random.choice(
-                    len(available_edges), 
-                    size=edges_to_add, 
-                    replace=False
-                )
-                for idx in selected_indices:
-                    G.add_edge(*available_edges[idx])
-        
-        if not name: 
+        if edges_needed > 0:
+            # For very dense graphs (near complete), use the complement approach
+            if n_edges > 0.9 * max_edges:
+                # Add all edges then remove random ones (faster for near-complete)
+                G_complete = nx.complete_graph(n_nodes)
+                edges_to_remove = max_edges - n_edges
+                edges_list = list(G_complete.edges())
+                # Use rng.choice without replacement
+                remove_indices = rng.choice(len(edges_list), size=edges_to_remove, replace=False)
+                # Rebuild G (it's faster to start full and prune than add 90% of edges one by one)
+                G = G_complete
+                G.remove_edges_from([edges_list[i] for i in remove_indices])
+            else:
+                # For sparse/medium graphs (Respiratory logic) -> Add random edges
+                while edges_needed > 0:
+                    # Generate a batch of potential edges (u, v)
+                    # We generate 2x what we need to account for collisions/existing edges
+                    batch_size = max(edges_needed * 2, 100)
+                    u_list = rng.integers(0, n_nodes, size=batch_size)
+                    v_list = rng.integers(0, n_nodes, size=batch_size)
+                    
+                    for u, v in zip(u_list, v_list):
+                        if u != v and not G.has_edge(u, v):
+                            G.add_edge(u, v)
+                            edges_needed -= 1
+                            if edges_needed == 0:
+                                break
+
+        if not name:
             name = f'random_n{n_nodes}_e{n_edges}'
             if seed is not None:
                 name += f'_s{seed}'
-            
+
         return cls(G, name, category='Random', 
                    params={'n_nodes': n_nodes, 'n_edges': n_edges, 'seed': seed})
 
+    def mutate_graph(self, mutated_name=None, seed=None):
+        # 1. Initialize the local RNG
+        rng = np.random.default_rng(seed)
+        
+        G = self.graph.copy()
+        edges = list(G.edges())
+        
+        if not edges:
+            return self
+
+        # 2. Remove a random edge using RNG
+        idx_to_remove = rng.integers(len(edges))
+        u_rem, v_rem = edges[idx_to_remove]
+        G.remove_edge(u_rem, v_rem)
+
+        # 3. Get connected components
+        if self.is_directed:
+            comps = list(nx.weakly_connected_components(G))
+        else:
+            comps = list(nx.connected_components(G))
+
+        # 4. Branching Logic
+        if len(comps) > 1:
+            # CASE A: Graph was split. Bridge the two components.
+            # IMPORTANT: We must SORT the list because set->list conversion 
+            # is non-deterministic in Python (hash randomization). 
+            # Without sorting, the seed won't work across different program runs.
+            comp_a = sorted(list(comps[0]))
+            comp_b = sorted(list(comps[1]))
+            
+            # Pick one random node from each distinct group using RNG
+            u = rng.choice(comp_a)
+            v = rng.choice(comp_b)
+            G.add_edge(u, v)
+            
+        else:
+            # CASE B: Graph is still connected (edge was part of a cycle).
+            # Add a random edge elsewhere.
+            nodes = sorted(list(G.nodes())) # Sort for deterministic indexing
+            
+            # Create an efficient lookup for existing edges
+            # (check once, update later)
+            existing_edges = set(G.edges())
+
+            for _ in range(100): 
+                # rng.choice needs 1D array or int, passing list works but is slower.
+                # Better to pick indices if nodes are standard integers, 
+                # but if nodes are strings, choice(nodes) is fine.
+                u, v = rng.choice(nodes, size=2, replace=False)
+                
+                # Check undirected existence (u,v) or (v,u)
+                if not G.has_edge(u, v):
+                    G.add_edge(u, v)
+                    break
+            else:
+                 # If we fail to find a valid swap (e.g. complete graph), restore original
+                 G.add_edge(u_rem, v_rem)
+                 # Optional: Warn user or just return un-mutated graph
+
+        if not mutated_name:
+            mutated_name = f"{self.name}_mutated"
+            
+        return PopulationGraph(G, mutated_name, self.category, params=self.params.copy())
 
     # --- UTULITIES ---
     def to_adjacency_matrix(self):

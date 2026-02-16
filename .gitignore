@@ -9,3 +9,6 @@ venv/
 .DS_Store
 simulation_data/
 logs/
+
+# directories that start with 'tmp'
+tmp*/   
