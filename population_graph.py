@@ -155,7 +155,6 @@ class PopulationGraph:
         
         return properties
 
-    #TODO make the properties claculated in a job
     @classmethod
     def batch_register(cls, graph_zoo_path, batch_dir):
         """Registers graphs from a pickle file in one go to avoid I/O thrashing.
