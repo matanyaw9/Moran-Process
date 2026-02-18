@@ -16,7 +16,7 @@ import joblib
 
 
 
-BATCH_NAME = 'toy_run'
+BATCH_NAME = 'with_extreme_graphs'
 
 EXPERIMENTS_CSV = 'respiratory_runs.csv'
 
@@ -101,14 +101,14 @@ def main(batch_name=False):
     Main experiment runner for random graphs.
     Similar structure to main.py but for random graphs.
     """
-    # 1. Toy Examples
-    n_nodes = list(range(29, 34))
-    edge_range = 5
-    n_graphs_per_combination = 0  # Number of random graphs per n_edge X n_nodes
+    # # 1. Toy Examples
+    # n_nodes = list(range(29, 34))
+    # edge_range = 5
+    # n_graphs_per_combination = 0  # Number of random graphs per n_edge X n_nodes
     
-    r_values = [1.1]  
-    n_repeats = 10  
-    n_jobs = 4
+    # r_values = [1.1]  
+    # n_repeats = 10  
+    # n_jobs = 4
     
 
     #  # 1. Small test Run
@@ -119,15 +119,18 @@ def main(batch_name=False):
     # n_jobs = 250
     # edge_range = 3
     
-    # # Extreme Graphs  
-    # graph_zoo = joblib.load('./tmp_winning_graphs/extreme_graph_zoo.joblib')   
-    # n_nodes = list(range(29, 34))
-    # edge_range = 5
-    # n_graphs_per_combination = 0  # Number of random graphs per n_edge X n_nodes
+    # Extreme Graphs  
+    accelerator_graphs = joblib.load('./tmp_winning_graphs/accelerator_graphs_zoo.joblib')
+    decelerator_graphs = joblib.load('./tmp_winning_graphs/decelerator_graphs_zoo.joblib')
+    graph_zoo.extend(accelerator_graphs)
+    graph_zoo.extend(decelerator_graphs)
+    n_nodes = list(range(29, 34))
+    edge_range = 5
+    n_graphs_per_combination = 50  # Number of random graphs per n_edge X n_nodes
     
-    # r_values = [1.1 ]  
-    # n_repeats = 10_000  
-    # n_jobs = 1_000
+    r_values = [1.1 ]  
+    n_repeats = 10_000  
+    n_jobs = 1_000
 
     
     # # DEFAULT PARAMS    

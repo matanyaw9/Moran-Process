@@ -13,17 +13,19 @@ import textwrap
 from collections import defaultdict
 from pathlib import Path
 
-COLOR_DICT = {
+COLOR_DICT = dict({
     'Random': 'lightgray',     
     'Avian': "#2DB806",       
     'Fish': '#1f77b4',        
     'Mammalian': "#833105",   
-    'Complete': 'black',       
+    'Complete': 'black',
+    'Decelerator': "#5e54e0",   
+    'Accelerator': "#d1234e",       
+
     'Other': 'yellow'          
-}
+})
 
 # Use a defaultdict to return 'lightgray' for unknown categories
-COLOR_DICT = defaultdict(lambda: 'lightgray', COLOR_DICT)
 # Paste your dictionary here (or ensure it's in the global scope)
 GRAPH_PROPERTY_DESCRIPTION = {
     'n_nodes': "The total number of vertices (individuals) in the graph.",

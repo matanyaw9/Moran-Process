@@ -226,7 +226,7 @@ class ProcessLab:
         current_config_idx = 0
         # How many repeats of the current config are still waiting to be assigned?
         repeats_left_in_current_config = repeats_per_config 
-
+        task_id = 0
         # 3. Assign work to each worker
         for worker_id in range(num_workers):
             
@@ -243,8 +243,9 @@ class ProcessLab:
                 
                 # Add the row to our manifest
                 tasks.append({
+                    'task_id': task_id,
                     'worker_id': worker_id+1,
-                    'graph_file': graph_idx,
+                    'graph_idx': graph_idx,
                     'r_value': r,
                     'n_repeats': take
                 })
@@ -257,7 +258,8 @@ class ProcessLab:
                 if repeats_left_in_current_config == 0:
                     current_config_idx += 1
                     repeats_left_in_current_config = repeats_per_config
-
+                
+                task_id += 1
         # 4. Create DataFrame and save
         manifest = pd.DataFrame(tasks)
         manifest.to_csv(output_path, index=False)

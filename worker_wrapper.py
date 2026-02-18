@@ -48,11 +48,17 @@ def run_worker_slice(batch_dir, zoo_path, manifest_path, worker_index):
     # Handle the last job (which might not have a full chunk)
 
     my_tasks = manifest_df[manifest_df['worker_id'] == worker_index]
+
+    print('='*60)
+    print(my_tasks)
+    print('='*60)
+
+
     if my_tasks.empty:
         print(f"[Worker] No tasks found. Exiting.")
         return
 
-    print(f"[Worker] Processing {my_tasks[n_repeats].sum()} simulations.")
+    print(f"[Worker] Processing {my_tasks['n_repeats'].sum()} simulations.")
     # 3. Run The Simulations
     results_buffer = []
     # Iterate over the rows in my slice
@@ -62,7 +68,7 @@ def run_worker_slice(batch_dir, zoo_path, manifest_path, worker_index):
             # A. Get Parameters from the Table
             # row.graph_idx corresponds to the list index in graphs.pkl
             target_graph = graph_zoo[row.graph_idx]
-            r_val = row.r
+            r_val = row.r_value
             n_repeats = row.n_repeats
             
             for rep in range(n_repeats):
