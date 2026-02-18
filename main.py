@@ -1,10 +1,21 @@
 # main.py
+
+"""
+In this file, we create the graph zoo by first creating the graphs we're interested in and then creating lots of 
+random graphs. We give the newley created batch a name.
+"""
+
 import argparse
 from population_graph import PopulationGraph
 from process_lab import ProcessLab
 from datetime import datetime
 import os
 import time
+
+
+
+
+BATCH_NAME = 'toy_example'
 
 EXPERIMENTS_CSV = 'respiratory_runs.csv'
 
@@ -20,14 +31,84 @@ graph_zoo = [
 ]
 
 
+def print_configuration(n_nodes, min_edges, max_edges, n_graphs_per_combination, 
+                         r_values, n_repeats, n_random_configs, n_graphs_total):
+    """
+    Print experiment configuration details.
+    """
+    print("="*60)
+    print("RANDOM GRAPH EXPERIMENT")
+    print("="*60)
+    print(f"Configuration:")
+    print(f"  Nodes per graph: {n_nodes}")
+    print(f"  Edge counts: {min_edges} to {max_edges}")
+    print(f"  Graphs per edge count: {n_graphs_per_combination}")
+    print(f"  r values: {r_values}")
+    print(f"  Repeats per configuration: {n_repeats}")
+    print(f"  In Total: {n_graphs_total} graphs")
+    print(f"  In Total: {n_graphs_total * n_repeats} simulations")
+    print("="*60)
 
-BATCH_NAME = 'large_test_30_02'
+
+def generate_random_graphs(n_nodes:int, edge_range:int, n_graphs_per_combination:int, forbidden_wl_hashes: set[str]=set()):
+    """
+    Generate random connected graphs and add them to the graph zoo.
+    
+    Args:
+        graph_zoo: List of existing PopulationGraph objects
+        n_nodes: List of node counts to generate graphs for
+        edge_range: Range of edge counts relative to node count
+        n_graphs_per_combination: Number of random graphs to generate per (n_nodes, n_edges) combination
+    
+    Returns:
+        Updated graph_zoo list with random graphs added
+    """
+    new_random_graph_zoo = []
+    occupied_wl = forbidden_wl_hashes.copy()
+
+    for nn in n_nodes: 
+        min_e = nn - 1
+        max_e = nn + edge_range - 1  # if edge_range = 1 -> range will be only [nn-1]
+        edge_counts = range(min_e, max_e)
+        
+        for ne in edge_counts:
+            for i in range(n_graphs_per_combination):
+                wl_hash = None 
+                while wl_hash is None or wl_hash in occupied_wl:
+                    new_random_graph = PopulationGraph.random_connected_graph(
+                        n_nodes=nn, 
+                        n_edges=ne, 
+                        name=f'random_n{nn}_e{ne}_{i}'
+                    )
+                    wl_hash = new_random_graph.wl_hash
+                new_random_graph_zoo.append(new_random_graph)
+                occupied_wl.add(wl_hash)
+    
+    print(f"Number of graphs: {len(new_random_graph_zoo)}")
+    print("\n" + "="*60)
+    print("GENERATED GRAPHS:")
+    print("="*60)
+
+    for graph in new_random_graph_zoo:
+        print(f"Graph: {graph.name:30s} | Nodes: {graph.n_nodes:3d} | Edges: {graph.graph.number_of_edges():3d} | Density: {graph.graph.number_of_edges() / (graph.n_nodes * (graph.n_nodes - 1) / 2):.3f}")
+    
+    return new_random_graph_zoo
+
 
 def main(batch_name=False):
     """
     Main experiment runner for random graphs.
     Similar structure to main.py but for random graphs.
     """
+    # 1. Toy Examples
+    n_nodes = list(range(29, 34))
+    edge_range = 5
+    n_graphs_per_combination = 0  # Number of random graphs per n_edge X n_nodes
+    
+    r_values = [1.1]  
+    n_repeats = 10  
+    n_jobs = 4
+    
 
     #  # 1. Small test Run
     # n_nodes = list(range(29, 34))
@@ -38,13 +119,14 @@ def main(batch_name=False):
     # edge_range = 3
     
     
-    # 1. DEFINE PARAMETERS
-    n_nodes = list(range(29, 34))
-    n_graphs_per_combination = 500  # Number of random graphs per n_edge X n_nodes
-    r_values = [1.1 ]  
-    n_repeats = 10_000  
-    n_jobs = 1_000
-    edge_range = 5
+    # # DEFAULT PARAMS    
+    # n_nodes = list(range(29, 34))
+    # edge_range = 5
+    # n_graphs_per_combination = 500  # Number of random graphs per n_edge X n_nodes
+    
+    # r_values = [1.1 ]  
+    # n_repeats = 10_000  
+    # n_jobs = 1_000
     
 
     output_dir = os.path.join('simulation_data')
@@ -56,57 +138,19 @@ def main(batch_name=False):
     min_edges = min(n_nodes) - 1 
     max_edges = max(n_nodes) + edge_range - 2
 
-
-    # 2. GENERATE RANDOM GRAPHS
-    print("="*60)
-    print("RANDOM GRAPH EXPERIMENT")
-    print("="*60)
-    print(f"Configuration:")
-    print(f"  Nodes per graph: {n_nodes}")
-    print(f"  Edge counts: {min_edges} to {max_edges}")
-    print(f"  Graphs per edge count: {n_graphs_per_combination}")
-    print(f"  r values: {r_values}")
-    print(f"  Repeats per configuration: {n_repeats}")
+    # 2. PRINT CONFIGURATION
     n_random_configs = len(n_nodes) * edge_range * len(r_values) * n_graphs_per_combination
-    n_graps_total = n_random_configs + len(graph_zoo)    
-    print(f"  In Total: {n_graps_total} graphs")
-    print(f"  In Total: {n_graps_total * n_repeats} simulations")
+    n_graphs_total = n_random_configs + len(graph_zoo)    
+    print_configuration(n_nodes, min_edges, max_edges, n_graphs_per_combination, 
+                        r_values, n_repeats, n_random_configs, n_graphs_total)
 
-    print("="*60)
-    existing_graphs = set([graph.wl_hash for graph in graph_zoo])
-
-    for nn in n_nodes: 
-        min_e = nn-1
-        max_e = nn + edge_range - 1 # if edge_range = 1 -> range will be only [nn-1]
-        edge_counts = range(min_e, max_e)
-        # edge_counts = [30]
-        for ne in edge_counts:
-            for i in range(n_graphs_per_combination):
-                wl_hash = None 
-                while wl_hash is None or wl_hash in existing_graphs:
-                    new_random_graph = PopulationGraph.random_connected_graph(n_nodes=nn, 
-                                                                              n_edges=ne, 
-                                                                              name = f'random_n{nn}_e{ne}_{i}',
-                                                                              )
-                    wl_hash = new_random_graph.wl_hash
-                graph_zoo.append(new_random_graph)
-                existing_graphs.add(wl_hash)
-    
-    print(f"Number of graphs: {len(graph_zoo)}")
-    # 3. DISPLAY GRAPH INFORMATION
-    print("\n" + "="*60)
-    print("GENERATED GRAPHS:")
-    print("="*60)
-
-    # PopulationGraph.batch_register(graph_zoo_path=zoo_path, batch_dir=batch_dir)
-
-    for graph in graph_zoo:
-        print(f"Graph: {graph.name:30s} | Nodes: {graph.n_nodes:3d} | Edges: {graph.graph.number_of_edges():3d} | Density: {graph.graph.number_of_edges() / (graph.n_nodes * (graph.n_nodes - 1) / 2):.3f}")
-    
+    # 3. GENERATE RANDOM GRAPHS
+    if n_random_configs:
+        graph_zoo_hashes = set([graph.wl_hash for graph in graph_zoo])
+        random_graphs = generate_random_graphs(n_nodes, edge_range, n_graphs_per_combination, forbidden_wl_hashes=graph_zoo_hashes)
+        graph_zoo.extend(random_graphs)
     # 4. RUN EXPERIMENT AND SAVE RESULTS
-    print("\n" + "="*60)
-    print("RUNNING EXPERIMENTS")
-    print("="*60)
+    print("\n" + "="*60, "RUNNING EXPERIMENTS", "="*60, sep='\n')
     
     lab = ProcessLab()
     
