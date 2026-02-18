@@ -10,6 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from population_graph import PopulationGraph
 from process_run import ProcessRun
+import itertools
 
 class ProcessLab:
     """ Manages multiple process runs and stores their results"""
@@ -68,7 +69,7 @@ class ProcessLab:
         
         # Save to CSV if output_path is provided
         if output_path:
-            save_results(df, output_path)
+            ProcessLab.save_results(df, output_path)
         
         return df
     
@@ -100,8 +101,16 @@ class ProcessLab:
      
 
     # --- HPC SUBMISSION ENGINE ---
-    def submit_jobs(self, zoo_path, n_graphs,  r_values, batch_name, batch_dir, n_repeats=1000, 
-                    n_jobs=50, queue="short", memory="2048", 
+    def submit_jobs(self, 
+                    zoo_path, 
+                    n_graphs,  
+                    r_values, 
+                    batch_name, 
+                    batch_dir, 
+                    n_repeats=10, 
+                    n_requested_jobs=1, 
+                    queue="short", 
+                    memory="2048", 
                     ):
         """
         1. Dumps all graphs to 'graphs.pkl'
@@ -121,26 +130,22 @@ class ProcessLab:
         logs_dir = os.path.join(batch_dir, "logs")
         os.makedirs(logs_dir, exist_ok=True)
 
-
-
         register_graphs_job(zoo_path, batch_name, batch_dir)
-
 
         print(f"--- Preparing Batch {batch_name} ---")
 
         # 3. Generate Task Manifest (The Huge Table)
         # We expand the loops into a list of rows
-        manifest_df = ProcessLab._create_task_list(n_graphs, r_values)
-        
         manifest_path = os.path.join(tmp_dir, "task_manifest.csv")
-        manifest_df.to_csv(manifest_path, index=False)
+        manifest_df = ProcessLab._create_task_list(n_graphs, 
+                                                   r_values, 
+                                                   n_repeats, 
+                                                   n_requested_jobs, 
+                                                   output_path=manifest_path)
+        
         print(f"Created Manifest with {len(manifest_df)} rows.")
+        print(manifest_df)
 
-        # 4. Calculate Slicing (Chunk Size)
-        # If we have 50,000 tasks and 50 jobs, chunk_size = 1000.
-        total_tasks = len(manifest_df)
-        chunk_size = math.ceil(total_tasks / n_jobs)
-        print(f"Splitting into {n_jobs} jobs. Chunk size: {chunk_size} tasks per worker.")
 
         # 5. Submit LSF Job Array
         # We pass the batch_dir and chunk_size. 
@@ -153,7 +158,7 @@ class ProcessLab:
         cmd_job = [
             "bsub",
             "-q", queue,
-            "-J", f"batch_{batch_name}[1-{n_jobs}]", # Array 1..N
+            "-J", f"batch_{batch_name}[1-{n_requested_jobs}]", # Array 1..N
             "-o", os.path.join(logs_dir, "job_%J_%I.out"), # Log stdout
             "-e", os.path.join(logs_dir, "job_%J_%I.err"), # Log stderr
             "-R", f"rusage[mem={memory}]",
@@ -163,12 +168,11 @@ class ProcessLab:
         cmd_process = [
             python_exec, "-u",
             worker_script,
+            "--zoo-path", zoo_path,
+            "--manifest-path", manifest_path,
             "--batch-dir", tmp_dir,
-            "--chunk-size", str(chunk_size),
-            "--repeats", str(n_repeats),
         ]
         cmd = cmd_job + cmd_process
-        # cmd = cmd_process + ['--job-index', '1']
 
         print(f"Submitting: {' '.join(cmd)}")
         result = subprocess.run(cmd)
@@ -180,22 +184,86 @@ class ProcessLab:
         print(f"Batch submitted! \n > Logs: {logs_dir} \n > Results: {results_dir}")
 
 
-    @staticmethod
-    def _create_task_list(n_graphs, r_values):
-        """Create CSV task list for job array execution."""
+    # @staticmethod
+    # def _create_task_list(n_graphs, r_values, n_jobs, n_repeats):
+    #     """Create CSV task list for job array execution."""
+    #     tasks = []
+    #     task_id = 0
+    #     simulations_per_worker = math.ceil((n_graphs * len(r_values) * n_repeats) / n_jobs) 
+    #     simulations = simulations_per_worker
+    #     for graph_idx in range(n_graphs):
+    #         for r in r_values:
+    #             repeats = min(simulations, n_repeats)
+    #             tasks.append({
+    #                 'task_id': task_id,
+    #                 'graph_idx': graph_idx,
+    #                 'r': r,
+    #                 'repeats': min(repeats)
+    #             })
+    #             task_id += 1
+    #             simulations -= repeats
+        
+    #     return pd.DataFrame(tasks)
+
+
+    def _create_task_list(n_graphs, r_values, repeats_per_config, num_workers, output_path="task_manifest.csv"):
+        """
+        Allocates simulations to workers as evenly as possible.
+        Splits a single configuration across multiple workers if necessary.
+        """
+        # 1. Generate all unique configurations (Graph X, r Y)
+        configs = list(itertools.product(range(n_graphs), r_values))
+        num_configs = len(configs)
+        
+        # 2. Calculate total work and fair share
+        total_sims = num_configs * repeats_per_config
+        base_share = total_sims // num_workers
+        remainder = total_sims % num_workers
+        
         tasks = []
-        task_id = 0
         
-        for graph_idx in range(n_graphs):
-            for r in r_values:
+        # Trackers for our position in the configurations list
+        current_config_idx = 0
+        # How many repeats of the current config are still waiting to be assigned?
+        repeats_left_in_current_config = repeats_per_config 
+
+        # 3. Assign work to each worker
+        for worker_id in range(num_workers):
+            
+            # Calculate exactly how many repeats this worker should handle
+            # (Distribute the remainder: first few workers get +1 simulation)
+            worker_target = base_share + (1 if worker_id < remainder else 0)
+            
+            while worker_target > 0 and current_config_idx < num_configs:
+                graph_idx, r = configs[current_config_idx]
+                
+                # How many can we take from the current config?
+                # Either all that are left in this config, or just enough to fill the worker.
+                take = min(worker_target, repeats_left_in_current_config)
+                
+                # Add the row to our manifest
                 tasks.append({
-                    'task_id': task_id,
-                    'graph_idx': graph_idx,
-                    'r': r,
+                    'worker_id': worker_id+1,
+                    'graph_file': graph_idx,
+                    'r_value': r,
+                    'n_repeats': take
                 })
-                task_id += 1
+                
+                # Update counters
+                worker_target -= take
+                repeats_left_in_current_config -= take
+                
+                # If we used up this configuration, move to the next one
+                if repeats_left_in_current_config == 0:
+                    current_config_idx += 1
+                    repeats_left_in_current_config = repeats_per_config
+
+        # 4. Create DataFrame and save
+        manifest = pd.DataFrame(tasks)
+        manifest.to_csv(output_path, index=False)
         
-        return pd.DataFrame(tasks)
+        print(f"Manifest created! Total Sims: {total_sims}. Distributed across {num_workers} workers.")
+        return manifest
         
 def register_graphs_job(graph_zoo_path, batch_name, batch_dir, queue='short', memory="8192"):
     
@@ -229,3 +297,4 @@ def register_graphs_job(graph_zoo_path, batch_name, batch_dir, queue='short', me
     # Usage:
     # batch_path = r'.\simulation_data\tmp\batch_20260127_151215'
     # df = aggregate_results(batch_path)
+

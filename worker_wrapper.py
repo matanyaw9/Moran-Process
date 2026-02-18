@@ -8,58 +8,53 @@ from population_graph import PopulationGraph
 from process_run import ProcessRun
 import joblib
 
-def load_data(batch_dir):
+def load_data(zoo_path, task_manifest_path):
     """Loads the Graph Zoo and the Task Manifest."""
     
     # 1. Load the Graph Zoo (The "Frozen" Graphs)
-    zoo_path = os.path.join(batch_dir, "graph_zoo.joblib")
     if not os.path.exists(zoo_path):
-        raise FileNotFoundError(f"Could not find graphs.pkl at {zoo_path}")
+        raise FileNotFoundError(f"Could not find {zoo_path}")
     
     with open(zoo_path, "rb") as f:
         graph_zoo = joblib.load(f)
     print(f"[Worker] Loaded {len(graph_zoo)} graphs from Zoo.")
 
     # 2. Load the Task Manifest (The "Huge Table")
-    manifest_path = os.path.join(batch_dir, "task_manifest.csv")
-    if not os.path.exists(manifest_path):
-        raise FileNotFoundError(f"Could not find task_manifest.csv at {manifest_path}")
+    if not os.path.exists(task_manifest_path):
+        raise FileNotFoundError(f"Could not find task_manifest.csv at {task_manifest_path}")
         
-    manifest_df = pd.read_csv(manifest_path)
+    manifest_df = pd.read_csv(task_manifest_path)
     print(f"[Worker] Loaded Manifest with {len(manifest_df)} total tasks.")
     
     return graph_zoo, manifest_df
 
-def run_worker_slice(batch_dir, chunk_size, job_index, repeats):
+def run_worker_slice(batch_dir, zoo_path, manifest_path, worker_index):
     """
     Main Logic:
     1. Calculate which rows of the CSV belong to this job.
     2. Run simulations for those rows.
     3. Save a unique CSV file.
     """
-    print(f"--- Worker Started | Job Index: {job_index} ---")
+    print(f"--- Worker Started | Job Index: {worker_index} ---")
     
     # 1. Load Data
-    graph_zoo, manifest_df = load_data(batch_dir)
+    graph_zoo, manifest_df = load_data(zoo_path, manifest_path)
     
     # 2. Calculate My Slice
     # LSF Job Indices are 1-based (1, 2, 3...)
     # We convert to 0-based for array slicing
-    start_idx = (job_index - 1) * chunk_size
-    end_idx = start_idx + chunk_size
+
     
     # Handle the last job (which might not have a full chunk)
-    my_tasks = manifest_df.iloc[start_idx:end_idx]
-    
+
+    my_tasks = manifest_df[manifest_df['worker_id'] == worker_index]
     if my_tasks.empty:
-        print(f"[Worker] No tasks found for indices {start_idx} to {end_idx}. Exiting.")
+        print(f"[Worker] No tasks found. Exiting.")
         return
 
-    print(f"[Worker] Processing {len(my_tasks) * repeats} simulations (Rows {start_idx} to {end_idx})")
-    
+    print(f"[Worker] Processing {my_tasks[n_repeats].sum()} simulations.")
     # 3. Run The Simulations
     results_buffer = []
-    
     # Iterate over the rows in my slice
     # iterrows is slow, but fine for 500 tasks. itertuples is faster.
     for row in my_tasks.itertuples():
@@ -68,8 +63,9 @@ def run_worker_slice(batch_dir, chunk_size, job_index, repeats):
             # row.graph_idx corresponds to the list index in graphs.pkl
             target_graph = graph_zoo[row.graph_idx]
             r_val = row.r
+            n_repeats = row.n_repeats
             
-            for rep in range(repeats):
+            for rep in range(n_repeats):
                 # B. Initialize Simulation
                 sim = ProcessRun(population_graph=target_graph, selection_coefficient=r_val)
                 sim.initialize_random_mutant()
@@ -80,7 +76,7 @@ def run_worker_slice(batch_dir, chunk_size, job_index, repeats):
                 # D. Save Record
                 record = {
                     "task_id": row.task_id,
-                    "job_id": job_index,
+                    "job_id": worker_index,
                     "wl_hash": target_graph.wl_hash,
                     "graph_name": target_graph.name,
                     "r": r_val,
@@ -105,7 +101,7 @@ def run_worker_slice(batch_dir, chunk_size, job_index, repeats):
         results_df = pd.DataFrame(results_buffer)
         
         # Save to: batch_dir/results/result_job_5.csv
-        filename = f"result_job_{job_index}.csv"
+        filename = f"result_job_{worker_index}.csv"
         save_path = os.path.join(batch_dir, "results", filename)
         
         results_df.to_csv(save_path, index=False)
@@ -115,9 +111,10 @@ def run_worker_slice(batch_dir, chunk_size, job_index, repeats):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    
+    parser.add_argument("--zoo-path", required=True, help="Path to the graph zoo pickle file")
+    parser.add_argument("--manifest-path", required=True, help="Path to the task manifest CSV file")
     parser.add_argument("--batch-dir", required=True, help="Path to the batch directory (containing graphs.pkl)")
-    parser.add_argument("--chunk-size", required=True, type=int, help="How many rows this worker should process")
-    parser.add_argument("--repeats", required=True, type=int, help="How many times to repeat each simulation")
 
     
     # Optional: Allow manually passing job-index for testing locally
@@ -137,5 +134,5 @@ if __name__ == "__main__":
             print("ERROR: Could not find job index! (Set --job-index or run via bsub)")
             sys.exit(1)
             
-    run_worker_slice(args.batch_dir, args.chunk_size, job_idx, args.repeats)
+    run_worker_slice(args.batch_dir, args.zoo_path, args.manifest_path, job_idx)
     # print(f"job number {job_idx} is running!:\t Batch dir: {args.batch_dir}\t Chunk Size: {args.chunk_size}")

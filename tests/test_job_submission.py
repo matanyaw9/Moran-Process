@@ -27,5 +27,5 @@ if __name__ == "__main__":
     repeats = 100
     
     lab = ProcessLab()
-    lab.submit_jobs(graph_zoo=graph_zoo, r_values=r_values, n_repeats=repeats, n_jobs=50)
+    lab.submit_jobs(graph_zoo=graph_zoo, r_values=r_values, n_repeats=repeats, n_requested_jobs=50)
     

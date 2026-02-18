@@ -16,7 +16,7 @@ import joblib
 
 
 
-BATCH_NAME = 'toy_example'
+BATCH_NAME = 'toy_run'
 
 EXPERIMENTS_CSV = 'respiratory_runs.csv'
 
@@ -137,7 +137,7 @@ def main(batch_name=False):
     
     # r_values = [1.1 ]  
     # n_repeats = 10_000  
-    # n_jobs = 1_000
+    # n_jobs = 1000
     
 
     output_dir = os.path.join('simulation_data')
@@ -181,7 +181,7 @@ def main(batch_name=False):
         batch_name=batch_name,
         batch_dir=batch_dir,
         n_repeats=n_repeats, 
-        n_jobs=n_jobs
+        n_requested_jobs=n_jobs
     )
     
 if __name__ == "__main__":
