@@ -11,6 +11,7 @@ from process_lab import ProcessLab
 from datetime import datetime
 import os
 import time
+import joblib
 
 
 
@@ -118,6 +119,16 @@ def main(batch_name=False):
     # n_jobs = 250
     # edge_range = 3
     
+    # # Extreme Graphs  
+    # graph_zoo = joblib.load('./tmp_winning_graphs/extreme_graph_zoo.joblib')   
+    # n_nodes = list(range(29, 34))
+    # edge_range = 5
+    # n_graphs_per_combination = 0  # Number of random graphs per n_edge X n_nodes
+    
+    # r_values = [1.1 ]  
+    # n_repeats = 10_000  
+    # n_jobs = 1_000
+
     
     # # DEFAULT PARAMS    
     # n_nodes = list(range(29, 34))
@@ -151,12 +162,22 @@ def main(batch_name=False):
         graph_zoo.extend(random_graphs)
     # 4. RUN EXPERIMENT AND SAVE RESULTS
     print("\n" + "="*60, "RUNNING EXPERIMENTS", "="*60, sep='\n')
+
+    # 5. SERIALIZE THE GRAPHS
+    tmp_dir = os.path.join(batch_dir, 'tmp')
+    os.makedirs(tmp_dir, exist_ok=True)
+    zoo_path = os.path.join(tmp_dir, "graph_zoo.joblib")
+    with open(zoo_path, "wb") as f:
+        joblib.dump(graph_zoo, f)
+
+    print(f"Serialized {len(graph_zoo)} graphs to {zoo_path}")
     
     lab = ProcessLab()
     
     lab.submit_jobs(
-        graph_zoo, 
-        r_values, 
+        zoo_path=zoo_path, 
+        n_graphs=len(graph_zoo),
+        r_values=r_values, 
         batch_name=batch_name,
         batch_dir=batch_dir,
         n_repeats=n_repeats, 

@@ -6,17 +6,18 @@ import pandas as pd
 from datetime import datetime
 from population_graph import PopulationGraph
 from process_run import ProcessRun
+import joblib
 
 def load_data(batch_dir):
     """Loads the Graph Zoo and the Task Manifest."""
     
     # 1. Load the Graph Zoo (The "Frozen" Graphs)
-    zoo_path = os.path.join(batch_dir, "graphs.pkl")
+    zoo_path = os.path.join(batch_dir, "graph_zoo.joblib")
     if not os.path.exists(zoo_path):
         raise FileNotFoundError(f"Could not find graphs.pkl at {zoo_path}")
     
     with open(zoo_path, "rb") as f:
-        graph_zoo = pickle.load(f)
+        graph_zoo = joblib.load(f)
     print(f"[Worker] Loaded {len(graph_zoo)} graphs from Zoo.")
 
     # 2. Load the Task Manifest (The "Huge Table")

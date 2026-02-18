@@ -7,6 +7,7 @@ from pathlib import Path
 import warnings
 import pickle
 import argparse
+import joblib
 # import pydot
 warnings.filterwarnings("ignore", message="The hashes produced for graphs")
 
@@ -169,7 +170,7 @@ class PopulationGraph:
             new_rows = []
             existing_hashes = set()
             with open(graph_zoo_path, "rb") as f:
-                graph_zoo = pickle.load(f)
+                graph_zoo = joblib.load(f)
         
         elif type(graph_zoo_path) is list: 
             graph_zoo = graph_zoo_path

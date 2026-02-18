@@ -100,7 +100,7 @@ class ProcessLab:
      
 
     # --- HPC SUBMISSION ENGINE ---
-    def submit_jobs(self, graph_zoo, r_values, batch_name, batch_dir, n_repeats=1000, 
+    def submit_jobs(self, zoo_path, n_graphs,  r_values, batch_name, batch_dir, n_repeats=1000, 
                     n_jobs=50, queue="short", memory="2048", 
                     ):
         """
@@ -121,11 +121,7 @@ class ProcessLab:
         logs_dir = os.path.join(batch_dir, "logs")
         os.makedirs(logs_dir, exist_ok=True)
 
-        zoo_path = os.path.join(tmp_dir, "graphs.pkl")
-        with open(zoo_path, "wb") as f:
-            pickle.dump(graph_zoo, f)
 
-        print(f"Serialized {len(graph_zoo)} graphs to {zoo_path}")
 
         register_graphs_job(zoo_path, batch_name, batch_dir)
 
@@ -134,7 +130,7 @@ class ProcessLab:
 
         # 3. Generate Task Manifest (The Huge Table)
         # We expand the loops into a list of rows
-        manifest_df = ProcessLab._create_task_list(graph_zoo, r_values)
+        manifest_df = ProcessLab._create_task_list(n_graphs, r_values)
         
         manifest_path = os.path.join(tmp_dir, "task_manifest.csv")
         manifest_df.to_csv(manifest_path, index=False)
@@ -185,12 +181,12 @@ class ProcessLab:
 
 
     @staticmethod
-    def _create_task_list(graphs, r_values):
+    def _create_task_list(n_graphs, r_values):
         """Create CSV task list for job array execution."""
         tasks = []
         task_id = 0
         
-        for graph_idx in range(len(graphs)):
+        for graph_idx in range(n_graphs):
             for r in r_values:
                 tasks.append({
                     'task_id': task_id,
