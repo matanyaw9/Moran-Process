@@ -295,8 +295,3 @@ def register_graphs_job(graph_zoo_path, batch_name, batch_dir, queue='short', me
     subprocess.run(cmd)
 
 
-
-    # Usage:
-    # batch_path = r'.\simulation_data\tmp\batch_20260127_151215'
-    # df = aggregate_results(batch_path)
-

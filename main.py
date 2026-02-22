@@ -1,6 +1,7 @@
 # main.py
 
 """
+Batch Creation and Runnning
 In this file, we create the graph zoo by first creating the graphs we're interested in and then creating lots of 
 random graphs. We give the newley created batch a name.
 """
@@ -147,7 +148,7 @@ def main(batch_name=False):
     os.makedirs(output_dir, exist_ok=True)
     # 1. Prepare Batch Directory
     batch_name = batch_name or BATCH_NAME or datetime.now().strftime("%Y%m%d_%H%M%S")
-    batch_dir = os.path.join(output_dir, f"batch_{batch_name}")
+    batch_dir = os.path.join(output_dir, f"{batch_name}")
     os.makedirs(batch_dir, exist_ok=True)
     min_edges = min(n_nodes) - 1 
     max_edges = max(n_nodes) + edge_range - 2
