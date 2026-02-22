@@ -13,11 +13,17 @@ from datetime import datetime
 import os
 import time
 import joblib
+from pathlib import Path
 
 
+ROOT = Path(os.getcwd()) 
 
+# Directory constants
+SIMULATION_DATA_DIR = ROOT / "simulation_data"
+GRAPH_ZOOS_DIR = ROOT / "graph_zoos"
+TMP_DIR_NAME = "tmp"
 
-BATCH_NAME = 'with_extreme_graphs'
+BATCH_NAME = 'batch_toy_example'
 
 EXPERIMENTS_CSV = 'respiratory_runs.csv'
 
@@ -102,36 +108,31 @@ def main(batch_name=False):
     Main experiment runner for random graphs.
     Similar structure to main.py but for random graphs.
     """
-    # # 1. Toy Examples
+    # 1. Toy Examples
+    n_nodes = list(range(29, 34))
+    edge_range = 5
+    n_random_graphs_per_combination = 0  # Number of random graphs per n_edge X n_nodes
+    
+    r_values = [1.1]  
+    n_repeats = 10  
+    n_jobs = 4
+    
+
+    # # Extreme Graphs  
+    # graph_zoo = []      # I intentionally overwrite graph_zoo
+    # for fname in os.listdir(GRAPH_ZOOS_DIR):
+    #     if not (fname.startswith("extreme_") and fname.endswith(".joblib")):
+    #         continue
+    #     fpath = GRAPH_ZOOS_DIR / fname
+    #     zoo = joblib.load(fpath)
+    #     graph_zoo.extend(zoo)
+    
     # n_nodes = list(range(29, 34))
     # edge_range = 5
     # n_graphs_per_combination = 0  # Number of random graphs per n_edge X n_nodes
-    
-    # r_values = [1.1]  
-    # n_repeats = 10  
-    # n_jobs = 4
-    
-
-    #  # 1. Small test Run
-    # n_nodes = list(range(29, 34))
-    # n_graphs_per_combination = 5  # Number of random graphs per n_edge X n_nodes
     # r_values = [1.1 ]  
-    # n_repeats = 10  
-    # n_jobs = 250
-    # edge_range = 3
-    
-    # Extreme Graphs  
-    accelerator_graphs = joblib.load('./tmp_winning_graphs/accelerator_graphs_zoo.joblib')
-    decelerator_graphs = joblib.load('./tmp_winning_graphs/decelerator_graphs_zoo.joblib')
-    graph_zoo.extend(accelerator_graphs)
-    graph_zoo.extend(decelerator_graphs)
-    n_nodes = list(range(29, 34))
-    edge_range = 5
-    n_graphs_per_combination = 50  # Number of random graphs per n_edge X n_nodes
-    
-    r_values = [1.1 ]  
-    n_repeats = 10_000  
-    n_jobs = 1_000
+    # n_repeats = 10_000  
+    # n_jobs = 1_000
 
     
     # # DEFAULT PARAMS    
@@ -144,33 +145,32 @@ def main(batch_name=False):
     # n_jobs = 1000
     
 
-    output_dir = os.path.join('simulation_data')
-    os.makedirs(output_dir, exist_ok=True)
+    SIMULATION_DATA_DIR.mkdir(exist_ok=True)
     # 1. Prepare Batch Directory
     batch_name = batch_name or BATCH_NAME or datetime.now().strftime("%Y%m%d_%H%M%S")
-    batch_dir = os.path.join(output_dir, f"{batch_name}")
-    os.makedirs(batch_dir, exist_ok=True)
+    BATCH_DIR = SIMULATION_DATA_DIR / batch_name
+    BATCH_DIR.mkdir(exist_ok=True)
     min_edges = min(n_nodes) - 1 
     max_edges = max(n_nodes) + edge_range - 2
 
     # 2. PRINT CONFIGURATION
-    n_random_configs = len(n_nodes) * edge_range * len(r_values) * n_graphs_per_combination
+    n_random_configs = len(n_nodes) * edge_range * len(r_values) * n_random_graphs_per_combination
     n_graphs_total = n_random_configs + len(graph_zoo)    
-    print_configuration(n_nodes, min_edges, max_edges, n_graphs_per_combination, 
+    print_configuration(n_nodes, min_edges, max_edges, n_random_graphs_per_combination, 
                         r_values, n_repeats, n_random_configs, n_graphs_total)
 
     # 3. GENERATE RANDOM GRAPHS
     if n_random_configs:
         graph_zoo_hashes = set([graph.wl_hash for graph in graph_zoo])
-        random_graphs = generate_random_graphs(n_nodes, edge_range, n_graphs_per_combination, forbidden_wl_hashes=graph_zoo_hashes)
+        random_graphs = generate_random_graphs(n_nodes, edge_range, n_random_graphs_per_combination, forbidden_wl_hashes=graph_zoo_hashes)
         graph_zoo.extend(random_graphs)
     # 4. RUN EXPERIMENT AND SAVE RESULTS
     print("\n" + "="*60, "RUNNING EXPERIMENTS", "="*60, sep='\n')
 
     # 5. SERIALIZE THE GRAPHS
-    tmp_dir = os.path.join(batch_dir, 'tmp')
-    os.makedirs(tmp_dir, exist_ok=True)
-    zoo_path = os.path.join(tmp_dir, "graph_zoo.joblib")
+    tmp_dir = BATCH_DIR / TMP_DIR_NAME
+    tmp_dir.mkdir(exist_ok=True)
+    zoo_path = tmp_dir / "graph_zoo.joblib"
     with open(zoo_path, "wb") as f:
         joblib.dump(graph_zoo, f)
 
@@ -183,7 +183,7 @@ def main(batch_name=False):
         n_graphs=len(graph_zoo),
         r_values=r_values, 
         batch_name=batch_name,
-        batch_dir=batch_dir,
+        batch_dir=BATCH_DIR,
         n_repeats=n_repeats, 
         n_requested_jobs=n_jobs
     )
