@@ -168,9 +168,9 @@ class ProcessLab:
         cmd_process = [
             python_exec, "-u",
             worker_script,
-            "--zoo-path", zoo_path,
-            "--manifest-path", manifest_path,
-            "--batch-dir", tmp_dir,
+            "--zoo-path", str(zoo_path),
+            "--manifest-path", str(manifest_path),
+            "--batch-dir", str(tmp_dir),
         ]
         cmd = cmd_job + cmd_process
 
@@ -285,8 +285,8 @@ def register_graphs_job(graph_zoo_path, batch_name, batch_dir, queue='short', me
     cmd_process = [
             "uv", "run", 'population_graph.py',
             "--register",
-            "--batch-dir", batch_dir,
-            "--graph-zoo-path", graph_zoo_path
+            "--batch-dir", str(batch_dir),
+            "--graph-zoo-path", str(graph_zoo_path)
         ]
     cmd = cmd_job + cmd_process
     # cmd = cmd_process + ['--job-index', '1']

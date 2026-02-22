@@ -15,6 +15,7 @@ import time
 import joblib
 from pathlib import Path
 
+BATCH_NAME = 'batch_extreme_graphs'
 
 ROOT = Path(os.getcwd()) 
 
@@ -23,7 +24,6 @@ SIMULATION_DATA_DIR = ROOT / "simulation_data"
 GRAPH_ZOOS_DIR = ROOT / "graph_zoos"
 TMP_DIR_NAME = "tmp"
 
-BATCH_NAME = 'batch_toy_example'
 
 EXPERIMENTS_CSV = 'respiratory_runs.csv'
 
@@ -108,37 +108,37 @@ def main(batch_name=False):
     Main experiment runner for random graphs.
     Similar structure to main.py but for random graphs.
     """
-    # 1. Toy Examples
+    # # 1. Toy Examples
+    # n_nodes = list(range(29, 34))
+    # edge_range = 5
+    # n_random_graphs_per_combination = 0  # Number of random graphs per n_edge X n_nodes
+    
+    # r_values = [1.1]  
+    # n_repeats = 10  
+    # n_jobs = 4
+    
+
+    # Extreme Graphs  
+    graph_zoo = []      # I intentionally overwrite graph_zoo
+    for fname in os.listdir(GRAPH_ZOOS_DIR):
+        if not (fname.startswith("extreme_") and fname.endswith(".joblib")):
+            continue
+        fpath = GRAPH_ZOOS_DIR / fname
+        zoo = joblib.load(fpath)
+        graph_zoo.extend(zoo)
+    
     n_nodes = list(range(29, 34))
     edge_range = 5
     n_random_graphs_per_combination = 0  # Number of random graphs per n_edge X n_nodes
-    
-    r_values = [1.1]  
-    n_repeats = 10  
-    n_jobs = 4
-    
-
-    # # Extreme Graphs  
-    # graph_zoo = []      # I intentionally overwrite graph_zoo
-    # for fname in os.listdir(GRAPH_ZOOS_DIR):
-    #     if not (fname.startswith("extreme_") and fname.endswith(".joblib")):
-    #         continue
-    #     fpath = GRAPH_ZOOS_DIR / fname
-    #     zoo = joblib.load(fpath)
-    #     graph_zoo.extend(zoo)
-    
-    # n_nodes = list(range(29, 34))
-    # edge_range = 5
-    # n_graphs_per_combination = 0  # Number of random graphs per n_edge X n_nodes
-    # r_values = [1.1 ]  
-    # n_repeats = 10_000  
-    # n_jobs = 1_000
+    r_values = [1.1 ]  
+    n_repeats = 10_000  
+    n_jobs = 1_000
 
     
     # # DEFAULT PARAMS    
     # n_nodes = list(range(29, 34))
     # edge_range = 5
-    # n_graphs_per_combination = 500  # Number of random graphs per n_edge X n_nodes
+    # n_random_graphs_per_combination = 500  # Number of random graphs per n_edge X n_nodes
     
     # r_values = [1.1 ]  
     # n_repeats = 10_000  
