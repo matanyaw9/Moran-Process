@@ -12,6 +12,10 @@ import shutil
 import textwrap
 from collections import defaultdict
 from pathlib import Path
+import matplotlib.colors as mcolors
+import seaborn as sns
+import hashlib
+
 
 COLOR_DICT = dict({
     'Random': 'lightgray',     
@@ -124,6 +128,50 @@ def load_experiment_data(csv_filename):
         print(f"  Current directory: {os.getcwd()}")
         print(f"  Looking for data in: {os.path.abspath(data_dir)}")
         return pd.DataFrame()
+
+
+def generate_robust_color_dict(df, existing_colors, default_palette='husl'):
+    """
+    Generates a color dictionary ensuring all categories have a unique color.
+    Uses existing colors where available, and generates distinct colors for new ones.
+    """
+    # 1. Get unique, non-null categories
+    categories = sorted(df['category'].dropna().unique().tolist())
+    
+    # 2. Separate known and unknown categories
+    known_cats = [c for c in categories if c in existing_colors]
+    unknown_cats = [c for c in categories if c not in existing_colors]
+    
+    # 3. Initialize the final dictionary with known colors
+    final_color_dict = {c: existing_colors[c] for c in known_cats}
+    
+    # 4. Handle unknown categories
+    if unknown_cats:
+        num_unknown = len(unknown_cats)
+        
+        # Strategy A: If few unknowns, generate a nicely spaced palette
+        if num_unknown <= 20: 
+            # 'husl' creates perceptually distinct colors
+            new_colors = sns.color_palette(default_palette, n_colors=num_unknown)
+            
+            for i, cat in enumerate(unknown_cats):
+                final_color_dict[cat] = mcolors.to_hex(new_colors[i])
+                
+        # Strategy B: If many unknowns, use a deterministic hash to pick colors
+        # This prevents the palette from becoming an indistinguishable rainbow
+        else:
+             # Use a very large palette to draw from
+            large_palette = sns.color_palette("hls", 50) 
+            
+            for cat in unknown_cats:
+                # Create a deterministic integer from the category name
+                hash_val = int(hashlib.md5(cat.encode('utf-8')).hexdigest(), 16)
+                # Pick a color from the palette based on the hash
+                color_idx = hash_val % len(large_palette)
+                final_color_dict[cat] = mcolors.to_hex(large_palette[color_idx])
+                
+    return final_color_dict
+
 
 # TODO Not sure I want this function... 
 def load_all_data():
@@ -272,7 +320,185 @@ def plot_property_effect(df, x_prop, y_outcome='prob_fixation', color_dict=COLOR
     plt.show()
 
 
-def plot_hybrid_density(df, x_prop, y_outcome='prob_fixation', color_dict=COLOR_DICT, density_threshold=100, with_violin=True):
+# def plot_hybrid_density(df, x_prop, y_outcome='prob_fixation', color_dict=COLOR_DICT, density_threshold=100, with_violin=True):
+#     """
+#     Hybrid Plot with Correlation & Description Patches.
+
+#     Args:
+#         df (pd.DataFrame): The dataframe containing graph properties and outcomes
+#         x_prop (str): Name of the graph property to plot on x-axis
+#         y_outcome (str): Name of the outcome variable to plot on y-axis (default: 'prob_fixation')
+#         color_dict (dict): Dictionary mapping categories to colors
+#         density_threshold (int): Minimum number of points to trigger violin plot (default: 100)
+#         with_violin (bool): If False - this is just a scatter plot. If true, it puts a violin plot for dense x values
+#     """
+#     plt.figure(figsize=(11, 8.5)) # Increased height slightly for the subtitle
+    
+#     # --- 1. Labeling & Setup ---
+#     prob_label = "Probability of Fixation ($P_{fix}$)"
+#     is_prob = False
+#     if y_outcome == 'prob_fixation':
+#         ylabel = prob_label
+#         is_prob = True  
+    
+#     else: 
+#         ylabel = y_outcome.replace("_", " ").title()
+
+#     if x_prop == 'prob_fixation':
+#         xlabel = prob_label
+#     elif x_prop == "std_steps":
+#         xlabel = "STD Steps to Fixation"
+#     else: 
+#         xlabel = x_prop.replace("_", " ").title()
+    
+#     # PATCH 1: Calculate Correlation (Pearson)
+#     clean_df = df[[x_prop, y_outcome, 'r']].dropna()
+
+#     r_groups = clean_df.groupby('r')
+#     corrs_by_r = r_groups.apply(lambda g: g[x_prop].corr(g[y_outcome]))
+
+#     # Construct the text string for the box
+#     stats_lines = [f"Pearson Correlation"]
+#     stats_lines.append("-" * 28)
+#     for r_val, r_corr in corrs_by_r.items():
+#         stats_lines.append(f"(r={r_val}): {r_corr:.3f}")
+
+#     stats_text = "\n".join(stats_lines)
+
+    
+#     # Copy data for plotting
+#     plot_df = df.copy()
+    
+#     # --- 2. X-Axis Processing ---
+#     is_numeric_x = pd.api.types.is_numeric_dtype(plot_df[x_prop])
+    
+#     if is_numeric_x:
+#         plot_df['x_plot'] = plot_df[x_prop].round(3)
+#     else:
+#         unique_cats = sorted(plot_df[x_prop].unique())
+#         cat_map = {val: i for i, val in enumerate(unique_cats)}
+#         plot_df['x_plot'] = plot_df[x_prop].map(cat_map)
+
+#     if with_violin:
+#         # --- 3. Identify Dense Locations ---
+#         counts = plot_df['x_plot'].value_counts()
+#         dense_x_values = counts[counts > density_threshold].index.tolist()
+        
+#         # === SMART WIDTH CALCULATION ===
+#         unique_x_sorted = sorted(plot_df['x_plot'].unique())
+        
+#         if len(unique_x_sorted) > 1:
+#             diffs = np.diff(unique_x_sorted)
+#             total_span = unique_x_sorted[-1] - unique_x_sorted[0]
+#             if total_span == 0: total_span = 1.0 
+            
+#             # Threshold: 2% of total span
+#             min_valid_gap_threshold = total_span * 0.02 
+#             valid_gaps = diffs[diffs > min_valid_gap_threshold]
+            
+#             if len(valid_gaps) > 0:
+#                 dist_basis = np.min(valid_gaps)
+#             else:
+#                 dist_basis = total_span * 0.1
+                
+#             violin_width = dist_basis * 0.7 
+#         else:
+#             violin_width = 0.5
+
+#         # --- 4. Draw Violins (Background) ---
+#         for x_val in dense_x_values:
+#             subset = plot_df[plot_df['x_plot'] == x_val]
+#             parts = plt.violinplot(
+#                 dataset=subset[y_outcome],
+#                 positions=[x_val],
+#                 widths=violin_width,
+#                 showmeans=False,
+#                 showextrema=False
+#             )
+#             for pc in parts['bodies']:
+#                 pc.set_facecolor('whitesmoke')
+#                 pc.set_edgecolor('lightgray')
+#                 pc.set_alpha(1) 
+
+#     # --- 5. Draw Scatter (Foreground) ---
+#     def apply_jitter(row):
+#         if row['x_plot'] in dense_x_values:
+#             noise = np.random.uniform(-violin_width * 0.15, violin_width * 0.15)
+#             return row['x_plot'] + noise
+#         else:
+#             return row['x_plot']
+
+#     if with_violin:
+#         plot_df['x_jittered'] = plot_df.apply(apply_jitter, axis=1)
+#     else: 
+#         plot_df['x_jittered'] = plot_df['x_plot']
+
+#     sns.scatterplot(
+#         data=plot_df,
+#         x='x_jittered',
+#         y=y_outcome,
+#         hue='category',
+#         style='r',
+#         size='n_edges',
+#         sizes=(20, 100),
+#         palette=color_dict,
+#         alpha=0.85,
+#         edgecolor='w',
+#         linewidth=0.5,
+#         zorder=2
+#     )
+
+#     # --- 6. Final Formatting ---
+#     if not is_numeric_x:
+#         plt.xticks(ticks=range(len(unique_cats)), labels=unique_cats)
+    
+#     if is_prob:
+#         avg_n = df['n_nodes'].mean()
+#         plt.axhline(1/avg_n, color='black', linestyle=':', label=f'Neutral (1/N)')
+
+#     # Titles & Labels
+#     plt.xlabel(xlabel)
+#     plt.ylabel(ylabel)
+    
+#     # PATCH 2: Add Description as Subtitle
+#     # Fetch description, default to empty string if not found
+#     desc_text = GRAPH_PROPERTY_DESCRIPTION.get(x_prop, "")
+    
+#     # Use the Suptitle for the main title, and standard title for description to get distinct sizing
+#     plt.suptitle(f'Effect of {x_prop.replace("_", " ").title()} on {ylabel}', fontsize=16, y=0.96)
+    
+#     # Wrap text so it doesn't run off the screen
+#     wrapped_desc = "\n".join(textwrap.wrap(desc_text, width=80))
+#     plt.title(wrapped_desc, fontsize=10, style='italic', color='#555555', pad=15)
+
+#     # Add Correlation Text Box
+#     # First, capture the legend object
+#     leg = plt.legend(bbox_to_anchor=(1.02, 1), loc='upper left', borderaxespad=0.)
+
+#     # Add the correlation text box below the legend
+#     plt.gca().text(
+#         1.02, 0.4, # Horizontal matches legend; Vertical adjusted manually or via transform
+#         stats_text, 
+#         transform=plt.gca().transAxes, 
+#         fontsize=10, 
+#         verticalalignment='top', # Anchor to the top of the text block
+#         horizontalalignment='left',
+#         bbox=dict(boxstyle="round,pad=0.4", facecolor="white", alpha=0.9, edgecolor="lightgray")
+#     )
+
+#     plt.grid(True, linestyle='--', alpha=0.4)
+#     plt.legend(bbox_to_anchor=(1.02, 1), loc='upper left', borderaxespad=0.)
+    
+#     plt.tight_layout()
+#     # plt.subplots_adjust(right=0.8) # Make room on the right
+#     plt.show()
+
+
+# Assuming GRAPH_PROPERTY_DESCRIPTION and COLOR_DICT are defined elsewhere in your code
+# GRAPH_PROPERTY_DESCRIPTION = {...}
+# COLOR_DICT = {...}
+
+def plot_hybrid_density(df, x_prop, y_outcome='prob_fixation', color_dict=None, density_threshold=100, with_violin=True):
     """
     Hybrid Plot with Correlation & Description Patches.
 
@@ -284,7 +510,11 @@ def plot_hybrid_density(df, x_prop, y_outcome='prob_fixation', color_dict=COLOR_
         density_threshold (int): Minimum number of points to trigger violin plot (default: 100)
         with_violin (bool): If False - this is just a scatter plot. If true, it puts a violin plot for dense x values
     """
-    plt.figure(figsize=(11, 8.5)) # Increased height slightly for the subtitle
+    if color_dict is None:
+        # Fallback if no dict is provided, though usually passed in
+        color_dict = {}
+
+    plt.figure(figsize=(11, 8.5))
     
     # --- 1. Labeling & Setup ---
     prob_label = "Probability of Fixation ($P_{fix}$)"
@@ -292,11 +522,8 @@ def plot_hybrid_density(df, x_prop, y_outcome='prob_fixation', color_dict=COLOR_
     if y_outcome == 'prob_fixation':
         ylabel = prob_label
         is_prob = True  
-    
     else: 
         ylabel = y_outcome.replace("_", " ").title()
-    
-
     
     if x_prop == 'prob_fixation':
         xlabel = prob_label
@@ -306,21 +533,31 @@ def plot_hybrid_density(df, x_prop, y_outcome='prob_fixation', color_dict=COLOR_
         xlabel = x_prop.replace("_", " ").title()
     
     # PATCH 1: Calculate Correlation (Pearson)
-    clean_df = df[[x_prop, y_outcome, 'r']].dropna()
+    # Ensure we only use rows where both x and y are valid numbers
+    clean_df = df[[x_prop, y_outcome, 'r']].replace([np.inf, -np.inf], np.nan).dropna()
 
-    # TODO I want different correlations for different r values: 
+    # Calculate correlations by 'r'
     r_groups = clean_df.groupby('r')
-    corrs_by_r = r_groups.apply(lambda g: g[x_prop].corr(g[y_outcome]))
+    
+    # Handle cases where correlation can't be calculated (e.g., constant values)
+    def safe_corr(g):
+        if len(g) > 1 and g[x_prop].std() > 0 and g[y_outcome].std() > 0:
+             return g[x_prop].corr(g[y_outcome])
+        return np.nan
+        
+    corrs_by_r = r_groups.apply(safe_corr)
 
     # Construct the text string for the box
-    stats_lines = [f"Pearson Correlation"]
+    stats_lines = ["Pearson Correlation"]
     stats_lines.append("-" * 28)
     for r_val, r_corr in corrs_by_r.items():
-        stats_lines.append(f"(r={r_val}): {r_corr:.3f}")
+         if pd.notna(r_corr):
+            stats_lines.append(f"(r={r_val}): {r_corr:.3f}")
+         else:
+            stats_lines.append(f"(r={r_val}): N/A")
 
     stats_text = "\n".join(stats_lines)
 
-    
     # Copy data for plotting
     plot_df = df.copy()
     
@@ -328,24 +565,33 @@ def plot_hybrid_density(df, x_prop, y_outcome='prob_fixation', color_dict=COLOR_
     is_numeric_x = pd.api.types.is_numeric_dtype(plot_df[x_prop])
     
     if is_numeric_x:
+        # Coerce to numeric, turning errors into NaNs, then drop them
+        plot_df[x_prop] = pd.to_numeric(plot_df[x_prop], errors='coerce')
         plot_df['x_plot'] = plot_df[x_prop].round(3)
     else:
+        # For categorical, drop NaNs before mapping
+        plot_df = plot_df.dropna(subset=[x_prop])
         unique_cats = sorted(plot_df[x_prop].unique())
         cat_map = {val: i for i, val in enumerate(unique_cats)}
         plot_df['x_plot'] = plot_df[x_prop].map(cat_map)
 
     if with_violin:
         # --- 3. Identify Dense Locations ---
-        counts = plot_df['x_plot'].value_counts()
+        # Only consider rows where x_plot is not NaN
+        valid_x_df = plot_df.dropna(subset=['x_plot'])
+        counts = valid_x_df['x_plot'].value_counts()
         dense_x_values = counts[counts > density_threshold].index.tolist()
         
         # === SMART WIDTH CALCULATION ===
-        unique_x_sorted = sorted(plot_df['x_plot'].unique())
+        # CRITICAL FIX: Ensure no NaNs are in the unique array before sorting
+        valid_x_values = valid_x_df['x_plot'].unique()
+        unique_x_sorted = sorted(valid_x_values)
         
         if len(unique_x_sorted) > 1:
             diffs = np.diff(unique_x_sorted)
             total_span = unique_x_sorted[-1] - unique_x_sorted[0]
-            if total_span == 0: total_span = 1.0 
+            if total_span == 0: 
+                total_span = 1.0 
             
             # Threshold: 2% of total span
             min_valid_gap_threshold = total_span * 0.02 
@@ -359,35 +605,46 @@ def plot_hybrid_density(df, x_prop, y_outcome='prob_fixation', color_dict=COLOR_
             violin_width = dist_basis * 0.7 
         else:
             violin_width = 0.5
+            
+        # Fallback if violin_width somehow became invalid
+        if not (isinstance(violin_width, (int, float)) and violin_width > 0 and not np.isnan(violin_width) and not np.isinf(violin_width)):
+             violin_width = 0.5
 
         # --- 4. Draw Violins (Background) ---
         for x_val in dense_x_values:
-            subset = plot_df[plot_df['x_plot'] == x_val]
-            parts = plt.violinplot(
-                dataset=subset[y_outcome],
-                positions=[x_val],
-                widths=violin_width,
-                showmeans=False,
-                showextrema=False
-            )
-            for pc in parts['bodies']:
-                pc.set_facecolor('whitesmoke')
-                pc.set_edgecolor('lightgray')
-                pc.set_alpha(1) 
+            # Drop NaNs in y_outcome as well before passing to violinplot
+            subset = plot_df[(plot_df['x_plot'] == x_val)][y_outcome].dropna()
+            
+            # Only draw if there's actually data left
+            if len(subset) > 0:
+                parts = plt.violinplot(
+                    dataset=subset,
+                    positions=[x_val],
+                    widths=violin_width,
+                    showmeans=False,
+                    showextrema=False
+                )
+                for pc in parts['bodies']:
+                    pc.set_facecolor('whitesmoke')
+                    pc.set_edgecolor('lightgray')
+                    pc.set_alpha(1) 
 
     # --- 5. Draw Scatter (Foreground) ---
     def apply_jitter(row):
-        if row['x_plot'] in dense_x_values:
-            noise = np.random.uniform(-violin_width * 0.15, violin_width * 0.15)
-            return row['x_plot'] + noise
-        else:
-            return row['x_plot']
+        # Only apply jitter if x_plot is a valid number and it's in the dense list
+        if pd.notna(row['x_plot']) and row['x_plot'] in dense_x_values:
+             # Ensure violin_width is valid before using it for random boundaries
+             if pd.notna(violin_width) and violin_width > 0:
+                 noise = np.random.uniform(-violin_width * 0.15, violin_width * 0.15)
+                 return row['x_plot'] + noise
+        return row['x_plot']
 
     if with_violin:
         plot_df['x_jittered'] = plot_df.apply(apply_jitter, axis=1)
     else: 
         plot_df['x_jittered'] = plot_df['x_plot']
 
+    # Draw scatterplot using the jittered x values
     sns.scatterplot(
         data=plot_df,
         x='x_jittered',
@@ -407,43 +664,43 @@ def plot_hybrid_density(df, x_prop, y_outcome='prob_fixation', color_dict=COLOR_
     if not is_numeric_x:
         plt.xticks(ticks=range(len(unique_cats)), labels=unique_cats)
     
-    if is_prob:
-        avg_n = df['n_nodes'].mean()
-        plt.axhline(1/avg_n, color='black', linestyle=':', label=f'Neutral (1/N)')
+    if is_prob and 'n_nodes' in df.columns:
+        # Safeguard against NaNs when calculating mean n_nodes
+        avg_n = df['n_nodes'].dropna().mean()
+        if pd.notna(avg_n) and avg_n > 0:
+            plt.axhline(1/avg_n, color='black', linestyle=':', label=f'Neutral (1/N)')
 
     # Titles & Labels
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
     
     # PATCH 2: Add Description as Subtitle
-    # Fetch description, default to empty string if not found
-    desc_text = GRAPH_PROPERTY_DESCRIPTION.get(x_prop, "")
-    
-    # Use the Suptitle for the main title, and standard title for description to get distinct sizing
+    try:
+        # Assuming GRAPH_PROPERTY_DESCRIPTION is globally available
+        desc_text = GRAPH_PROPERTY_DESCRIPTION.get(x_prop, "")
+    except NameError:
+        desc_text = ""
+        
     plt.suptitle(f'Effect of {x_prop.replace("_", " ").title()} on {ylabel}', fontsize=16, y=0.96)
     
-    # Wrap text so it doesn't run off the screen
-    wrapped_desc = "\n".join(textwrap.wrap(desc_text, width=80))
-    plt.title(wrapped_desc, fontsize=10, style='italic', color='#555555', pad=15)
+    if desc_text:
+        wrapped_desc = "\n".join(textwrap.wrap(desc_text, width=80))
+        plt.title(wrapped_desc, fontsize=10, style='italic', color='#555555', pad=15)
 
     # Add Correlation Text Box
-    # First, capture the legend object
     leg = plt.legend(bbox_to_anchor=(1.02, 1), loc='upper left', borderaxespad=0.)
 
-    # Add the correlation text box below the legend
     plt.gca().text(
-        1.02, 0.4, # Horizontal matches legend; Vertical adjusted manually or via transform
+        1.02, 0.4, 
         stats_text, 
         transform=plt.gca().transAxes, 
         fontsize=10, 
-        verticalalignment='top', # Anchor to the top of the text block
+        verticalalignment='top', 
         horizontalalignment='left',
         bbox=dict(boxstyle="round,pad=0.4", facecolor="white", alpha=0.9, edgecolor="lightgray")
     )
 
     plt.grid(True, linestyle='--', alpha=0.4)
-    plt.legend(bbox_to_anchor=(1.02, 1), loc='upper left', borderaxespad=0.)
     
     plt.tight_layout()
-    # plt.subplots_adjust(right=0.8) # Make room on the right
     plt.show()
