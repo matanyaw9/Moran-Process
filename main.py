@@ -15,7 +15,7 @@ import time
 import joblib
 from pathlib import Path
 
-BATCH_NAME = 'batch_extreme_graphs'
+BATCH_NAME = 'batch_extreme_graphs_02'
 
 ROOT = Path(os.getcwd()) 
 
@@ -131,7 +131,7 @@ def main(batch_name=False):
     edge_range = 5
     n_random_graphs_per_combination = 0  # Number of random graphs per n_edge X n_nodes
     r_values = [1.1 ]  
-    n_repeats = 10_000  
+    n_repeats = 20_000  
     n_jobs = 1_000
 
     

@@ -14,9 +14,9 @@ ROOT = Path(os.getcwd())
 # Now define your paths relative to ROOT
 DATA_DIR = ROOT / "simulation_data"
 
-NEW_BATCH_NAME = "merged_batch_03"
+NEW_BATCH_NAME = "merged_batch_04"
 BATCH_1 = "batch_large_test_30_02"
-BATCH_2 = "batch_extreme_graphs"
+BATCH_2 = "batch_extreme_graphs_02"
 
 # Function to copy files from one batch to the new batch
 def concat_csv_files(csv_path_1, csv_path_2, new_file_path):

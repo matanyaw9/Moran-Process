@@ -11,4 +11,4 @@ simulation_data/
 logs/
 
 # directories that start with 'tmp'
-tmp*/   
+tmp*   
