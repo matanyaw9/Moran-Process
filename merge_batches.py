@@ -89,7 +89,7 @@ if __name__ == "__main__":
     # Define the paths to the graph zoos in each batch
     graph_zoo_1 = BATCH_1_DIR / "tmp" /  "graphs.pkl"
     graph_zoo_2 = BATCH_2_DIR / "tmp" / "graph_zoo.joblib"
-    new_graph_zoo_path = NEW_BATCH_DIR / "tmp" / "graph.joblib"
+    new_graph_zoo_path = NEW_BATCH_DIR / "tmp" / "graph_zoo.joblib"
     os.makedirs(NEW_BATCH_DIR / "tmp", exist_ok=True)
     merge_graph_zoos(graph_zoo_1, graph_zoo_2, new_graph_zoo_path)
     print(f"Merged graph zoo saved to: {new_graph_zoo_path}")

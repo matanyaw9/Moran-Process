@@ -498,7 +498,14 @@ def plot_property_effect(df, x_prop, y_outcome='prob_fixation', color_dict=COLOR
 # GRAPH_PROPERTY_DESCRIPTION = {...}
 # COLOR_DICT = {...}
 
-def plot_hybrid_density(df, x_prop, y_outcome='prob_fixation', color_dict=None, density_threshold=100, with_violin=True):
+def plot_hybrid_density(df, 
+                        x_prop, 
+                        y_outcome='prob_fixation', 
+                        color_dict=None, 
+                        density_threshold=100, 
+                        with_violin=True,
+                        highlight_categories=None
+                        ):
     """
     Hybrid Plot with Correlation & Description Patches.
 
@@ -644,7 +651,7 @@ def plot_hybrid_density(df, x_prop, y_outcome='prob_fixation', color_dict=None, 
     else: 
         plot_df['x_jittered'] = plot_df['x_plot']
 
-    # Draw scatterplot using the jittered x values
+    # Draw normal scatterplot
     sns.scatterplot(
         data=plot_df,
         x='x_jittered',
@@ -654,18 +661,38 @@ def plot_hybrid_density(df, x_prop, y_outcome='prob_fixation', color_dict=None, 
         size='n_edges',
         sizes=(20, 100),
         palette=color_dict,
-        alpha=0.85,
+        alpha=0.7,           # Slightly transparent background points
         edgecolor='w',
         linewidth=0.5,
         zorder=2
     )
 
-    # --- 6. Final Formatting ---
+    # --- NEW: Highlight Specific Categories ---
+    if highlight_categories:
+        # Filter only the categories you want to pop out
+        highlight_df = plot_df[plot_df['category'].isin(highlight_categories)]
+        
+        if not highlight_df.empty:
+            sns.scatterplot(
+                data=highlight_df,
+                x='x_jittered',
+                y=y_outcome,
+                hue='category',
+                style='r',           # Keeps your marker shapes consistent!
+                size='n_edges',
+                sizes=(20, 100),
+                palette=color_dict,
+                alpha=1.0,           # Fully opaque
+                edgecolor='black',   # The highlight outline color
+                linewidth=1.8,       # Thicker outline to make it pop
+                legend=False,        # Don't duplicate legend entries
+                zorder=3             # Draw firmly on top of the base scatter
+            )
+   # --- 6. Final Formatting ---
     if not is_numeric_x:
         plt.xticks(ticks=range(len(unique_cats)), labels=unique_cats)
     
     if is_prob and 'n_nodes' in df.columns:
-        # Safeguard against NaNs when calculating mean n_nodes
         avg_n = df['n_nodes'].dropna().mean()
         if pd.notna(avg_n) and avg_n > 0:
             plt.axhline(1/avg_n, color='black', linestyle=':', label=f'Neutral (1/N)')
@@ -676,7 +703,6 @@ def plot_hybrid_density(df, x_prop, y_outcome='prob_fixation', color_dict=None, 
     
     # PATCH 2: Add Description as Subtitle
     try:
-        # Assuming GRAPH_PROPERTY_DESCRIPTION is globally available
         desc_text = GRAPH_PROPERTY_DESCRIPTION.get(x_prop, "")
     except NameError:
         desc_text = ""
@@ -687,20 +713,41 @@ def plot_hybrid_density(df, x_prop, y_outcome='prob_fixation', color_dict=None, 
         wrapped_desc = "\n".join(textwrap.wrap(desc_text, width=80))
         plt.title(wrapped_desc, fontsize=10, style='italic', color='#555555', pad=15)
 
-    # Add Correlation Text Box
-    leg = plt.legend(bbox_to_anchor=(1.02, 1), loc='upper left', borderaxespad=0.)
+    # --- UPDATE LEGEND HANDLES ---
+    handles, labels = plt.gca().get_legend_handles_labels()
 
+    if highlight_categories:
+        for handle, label in zip(handles, labels):
+            if label in highlight_categories:
+                # Seaborn legend markers are Line2D objects
+                if hasattr(handle, 'set_markeredgecolor'):
+                    handle.set_markeredgecolor('black')
+                    handle.set_markeredgewidth(1.8)
+                    handle.set_alpha(1.0)
+                # Fallback for other plot types
+                elif hasattr(handle, 'set_edgecolor'):
+                    handle.set_edgecolor('black')
+                    handle.set_linewidth(1.8)
+                    handle.set_alpha(1.0)
+
+    # 1. Place Legend OUTSIDE the plot on the right
+    plt.legend(handles=handles, labels=labels, bbox_to_anchor=(1.02, 1), loc='upper left', borderaxespad=0.)
+
+    # 2. Place Correlation Text INSIDE the plot (bottom right)
     plt.gca().text(
-        1.02, 0.4, 
+        0.96, 0.04,  # X, Y coordinates inside the axes
         stats_text, 
         transform=plt.gca().transAxes, 
         fontsize=10, 
-        verticalalignment='top', 
-        horizontalalignment='left',
-        bbox=dict(boxstyle="round,pad=0.4", facecolor="white", alpha=0.9, edgecolor="lightgray")
+        verticalalignment='bottom',   # Anchor to bottom
+        horizontalalignment='right',  # Anchor to right
+        bbox=dict(boxstyle="round,pad=0.4", facecolor="white", alpha=0.9, edgecolor="lightgray"),
+        zorder=5
     )
 
     plt.grid(True, linestyle='--', alpha=0.4)
     
-    plt.tight_layout()
+    # Manually adjust the layout so the legend is not cropped
+    plt.subplots_adjust(right=0.75) 
+    
     plt.show()
