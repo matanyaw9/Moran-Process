@@ -509,7 +509,7 @@ class PopulationGraph:
         return nx.to_numpy_array(self.graph)
     
     # --- VISUALIZATION ---
-    def draw(self, ax=None, filename='', descriptive=True, with_labels=False):
+    def draw(self, ax=None, filename='', descriptive=True, with_labels=False, title=None):
         """Draws the graph using its stored biological layout."""
         if self.graph is None: return
 
@@ -538,7 +538,10 @@ class PopulationGraph:
             edge_labels = nx.get_edge_attributes(self.graph, 'label')
             nx.draw_networkx_edge_labels(self.graph, pos, edge_labels, ax=ax, font_size=8)
         
-        ax.set_title(self.name, fontsize=14)
+        if title:
+            ax.set_title(title, fontsize=14)
+        else:
+            ax.set_title(self.name, fontsize=14)
 
         # --- ADDED: Descriptive Stats ---
         if descriptive:
