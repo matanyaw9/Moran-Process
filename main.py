@@ -15,7 +15,7 @@ import time
 import joblib
 from pathlib import Path
 
-BATCH_NAME = 'batch_extreme_graphs_02'
+BATCH_NAME = 'batch_100_nodes'
 
 ROOT = Path(os.getcwd()) 
 
@@ -118,21 +118,21 @@ def main(batch_name=False):
     # n_jobs = 4
     
 
-    # Extreme Graphs  
-    graph_zoo = []      # I intentionally overwrite graph_zoo
-    for fname in os.listdir(GRAPH_ZOOS_DIR):
-        if not (fname.startswith("extreme_") and fname.endswith(".joblib")):
-            continue
-        fpath = GRAPH_ZOOS_DIR / fname
-        zoo = joblib.load(fpath)
-        graph_zoo.extend(zoo)
+    # # Extreme Graphs  
+    # graph_zoo = []      # I intentionally overwrite graph_zoo
+    # for fname in os.listdir(GRAPH_ZOOS_DIR):
+    #     if not (fname.startswith("extreme_") and fname.endswith(".joblib")):
+    #         continue
+    #     fpath = GRAPH_ZOOS_DIR / fname
+    #     zoo = joblib.load(fpath)
+    #     graph_zoo.extend(zoo)
     
-    n_nodes = list(range(29, 34))
-    edge_range = 5
-    n_random_graphs_per_combination = 0  # Number of random graphs per n_edge X n_nodes
-    r_values = [1.1 ]  
-    n_repeats = 20_000  
-    n_jobs = 1_000
+    # n_nodes = list(range(29, 34))
+    # edge_range = 5
+    # n_random_graphs_per_combination = 0  # Number of random graphs per n_edge X n_nodes
+    # r_values = [1.1 ]  
+    # n_repeats = 20_000  
+    # n_jobs = 1_000
 
     
     # # DEFAULT PARAMS    
@@ -143,6 +143,16 @@ def main(batch_name=False):
     # r_values = [1.1 ]  
     # n_repeats = 10_000  
     # n_jobs = 1000
+
+    # 100 node graphs   
+    graph_zoo = []      # I intentionally overwrite graph_zoo
+    n_nodes = [100]
+    edge_range = 4
+    n_random_graphs_per_combination = 50  # Number of random graphs per n_edge X n_nodes
+    
+    r_values = [1.1 ]  
+    n_repeats = 10_000  
+    n_jobs = 1000
     
 
     SIMULATION_DATA_DIR.mkdir(exist_ok=True)
