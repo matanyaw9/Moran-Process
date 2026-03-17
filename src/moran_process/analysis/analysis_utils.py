@@ -312,6 +312,10 @@ def process_large_batch_polars(batch_dir):
     with graph properties.
     """
     batch_path = Path(batch_dir)
+    analysis_df_path = batch_path / "graph_statistics.csv"
+    if analysis_df_path.exists():
+        print(f"Found existing analysis file at {analysis_df_path}. Loading...")
+        return pd.read_csv(analysis_df_path)
     graph_props_path = batch_path / "graph_props.csv"
     
     # 1. Determine where the raw data lives
@@ -364,9 +368,9 @@ def process_large_batch_polars(batch_dir):
     pandas_analysis_df = pandas_analysis_df.sort_values('z_order').drop(columns='z_order')
     
     # Save the final consolidated, lightweight file
-    out_path = batch_path / "graph_statistics.csv"
-    pandas_analysis_df.to_csv(out_path, index=False)
-    print(f"Saved aggregated statistics to {out_path}")
+
+    pandas_analysis_df.to_csv(analysis_df_path, index=False)
+    print(f"Saved aggregated statistics to {analysis_df_path}")
     
     return pandas_analysis_df
 
