@@ -4,10 +4,10 @@
 
 ## Tasks
 - [X] Organise the files  
+- [ ] Make the Analysis file fit large datasets
 - [ ] Make the Process an Abstract Class
 - [ ] Write a multi color Moran Process Simulation in C++
 - [ ] Write the Moran Process simulation in C++
-- [ ] Make the Analysis file fit large datasets
 - [ ] Make the Analysis notebook just load figures that I will create with a function
 - [ ] Give it normal CLI interface
 
@@ -38,3 +38,4 @@ moran-process/
         ├── simulations/   # process_run.py, and future C++ code
         ├── pipeline/      # process_lab.py, worker_wrapper.py
         └── analysis/      # visualization.py, data_utils.py
+

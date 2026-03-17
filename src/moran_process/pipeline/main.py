@@ -12,15 +12,14 @@ import os
 import time
 import joblib
 from pathlib import Path
-import moran_process
 from moran_process.core.population_graph import PopulationGraph
 from moran_process.pipeline.process_lab import ProcessLab
 
-BATCH_NAME = 'batch_100_nodes'
+BATCH_NAME = 'testing_large_batch_17_03_2026-03'
 
 ROOT = Path(os.getcwd()) 
 
-# Directory constants
+# Directory constants                                                                                                                                                                                                        
 SIMULATION_DATA_DIR = ROOT / "simulation_data"
 GRAPH_ZOOS_DIR = ROOT / "graph_zoos"
 TMP_DIR_NAME = "tmp"
@@ -109,14 +108,14 @@ def main(batch_name=False):
     Main experiment runner for random graphs.
     Similar structure to main.py but for random graphs.
     """
-    # 1. Toy Examples
-    n_nodes = list(range(29, 34))
-    edge_range = 3
-    n_random_graphs_per_combination = 0  # Number of random graphs per n_edge X n_nodes
+    # # 1. Toy Examples
+    # n_nodes = list(range(29, 34))
+    # edge_range = 3
+    # n_random_graphs_per_combination = 0  # Number of random graphs per n_edge X n_nodes
     
-    r_values = [1.1]  
-    n_repeats = 10  
-    n_jobs = 5
+    # r_values = [1.1]  
+    # n_repeats = 10  
+    # n_jobs = 5
     
 
     # # Extreme Graphs  
@@ -136,14 +135,14 @@ def main(batch_name=False):
     # n_jobs = 1_000
 
     
-    # # DEFAULT PARAMS    
-    # n_nodes = list(range(29, 34))
-    # edge_range = 5
-    # n_random_graphs_per_combination = 500  # Number of random graphs per n_edge X n_nodes
+    # DEFAULT PARAMS    
+    n_nodes = list(range(29, 34))
+    edge_range = 5
+    n_random_graphs_per_combination = 500  # Number of random graphs per n_edge X n_nodes
     
-    # r_values = [1.1 ]  
-    # n_repeats = 10_000  
-    # n_jobs = 1000
+    r_values = [1.1 ]  
+    n_repeats = 10_000  
+    n_jobs = 1000
 
     # # 100 node graphs   
     # graph_zoo = []      # I intentionally overwrite graph_zoo
