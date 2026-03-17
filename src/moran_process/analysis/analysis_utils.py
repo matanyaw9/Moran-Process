@@ -3,8 +3,9 @@ Utility functions for analysis notebooks
 """
 import os
 import sys
-import pandas as pd
 import numpy as np
+import pandas as pd
+import polars as pl
 import glob
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -304,6 +305,101 @@ def plot_property_effect(df, x_prop, y_outcome='prob_fixation', color_dict=COLOR
     plt.show()
 
 
+def process_large_batch_polars(batch_dir):
+    """
+    Lazily processes millions of rows across worker CSVs or a single merged CSV 
+    without loading them into RAM. Calculates graph statistics and merges them 
+    with graph properties.
+    """
+    batch_path = Path(batch_dir)
+    graph_props_path = batch_path / "graph_props.csv"
+    
+    # 1. Determine where the raw data lives
+    merged_results_path = batch_path / "full_results.csv"
+    worker_results_glob = str(batch_path / "tmp" / "results" / "result_job_*.csv")
+    
+    if merged_results_path.exists():
+        print(f"Found merged results file. Aggregating out-of-core from: {merged_results_path}")
+        # Lazy scan the single large file
+        lazy_results = pl.scan_csv(merged_results_path)
+    else:
+        print(f"Aggregating massive dataset out-of-core from: {worker_results_glob}")
+        # Lazy scan all worker CSVs at once
+        lazy_results = pl.scan_csv(worker_results_glob)
+    
+    # 2. Compute Aggregations Out-of-Core
+    agg_df = (
+        lazy_results
+        .with_columns(
+            pl.when(pl.col("fixation") == True)
+            .then(pl.col("steps"))
+            .otherwise(None)
+            .alias("steps_success")
+        )
+        .group_by(["wl_hash", "r", "graph_name"])
+        .agg([
+            pl.col("fixation").mean().alias("prob_fixation"),
+            pl.col("steps_success").median().alias("median_steps"),
+            pl.col("steps_success").mean().alias("mean_steps"),
+            pl.col("steps_success").std().alias("std_steps"),
+            pl.col("steps_success").quantile(0.25).alias("q25_steps"),
+            pl.col("steps_success").quantile(0.75).alias("q75_steps"),
+            (pl.col("steps_success").quantile(0.75) - pl.col("steps_success").quantile(0.25)).alias("iqr_steps"),
+            pl.col("fixation").count().alias("n_grouped")
+        ])
+        .collect() # <--- Execution happens here, strictly optimized and parallelized
+    )
+    
+    # 3. Load the graph properties
+    props_df = pl.read_csv(graph_props_path)
+    
+    # 4. Merge the aggregates with the properties
+    analysis_df = agg_df.join(props_df, on=["wl_hash", "graph_name"], how="left")
+    
+    # 5. Convert to Pandas for seaborn/matplotlib compatibility in the notebook
+    pandas_analysis_df = analysis_df.to_pandas()
+    
+    # Re-apply visual sorting logic
+    pandas_analysis_df['z_order'] = (pandas_analysis_df['category'] != 'Random').astype(int)
+    pandas_analysis_df = pandas_analysis_df.sort_values('z_order').drop(columns='z_order')
+    
+    # Save the final consolidated, lightweight file
+    out_path = batch_path / "graph_statistics.csv"
+    pandas_analysis_df.to_csv(out_path, index=False)
+    print(f"Saved aggregated statistics to {out_path}")
+    
+    return pandas_analysis_df
+
+def get_histogram_data_polars(batch_dir):
+    """
+    Lazily extracts only the required columns and rows for the 3D histogram,
+    bypassing the memory bottleneck of loading the entire raw dataset.
+    """
+    batch_path = Path(batch_dir)
+    graph_props_path = batch_path / "graph_props.csv"
+    
+    merged_results_path = batch_path / "full_results.csv"
+    worker_results_glob = str(batch_path / "tmp" / "results" / "result_job_*.csv")
+    
+    if merged_results_path.exists():
+        lazy_results = pl.scan_csv(merged_results_path)
+    else:
+        lazy_results = pl.scan_csv(worker_results_glob)
+        
+    # We only need 'wl_hash' and 'category' from properties
+    lazy_props = pl.scan_csv(graph_props_path).select(["wl_hash", "category"])
+    
+    # Execute the optimized extraction
+    plot_data_df = (
+        lazy_results
+        .filter(pl.col("fixation") == True)          # Drop extinctions immediately
+        .join(lazy_props, on="wl_hash", how="left")  # Map categories
+        .select(["category", "steps"])               # Drop all other columns
+        .collect()
+    )
+    
+    # Returns a highly compressed Pandas dataframe perfect for plotting
+    return plot_data_df.to_pandas()
 
 def plot_hybrid_density(df, 
                         x_prop, 

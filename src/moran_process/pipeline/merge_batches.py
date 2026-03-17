@@ -1,95 +1,99 @@
-
-# merge_batches.py
-# Here is a script that takes the outputs of two batches and merges them into a single batch for merged analysis. 
-
-
 import os
 from pathlib import Path
-import shutil
+import sys
 import joblib
 import pickle
+import polars as pl
 
-ROOT = Path(os.getcwd()) 
 
-# Now define your paths relative to ROOT
-DATA_DIR = ROOT / "simulation_data"
+from moran_process.core import population_graph
+sys.modules['population_graph'] = population_graph
 
-NEW_BATCH_NAME = "merged_batch_04"
-BATCH_1 = "batch_large_test_30_02"
-BATCH_2 = "batch_extreme_graphs_02"
-
-# Function to copy files from one batch to the new batch
-def concat_csv_files(csv_path_1, csv_path_2, new_file_path):
+def merge_csv_safely(csv_path_1: Path, csv_path_2: Path, new_file_path: Path):
     """
-    Concatenates two CSV files with the same columns into a single file.
-    Uses shutil to avoid loading the entire files into memory, while 
-    ensuring the header from the second file is skipped.
+    Concatenates two CSVs safely by aligning their column NAMES, not physical positions.
+    Uses out-of-core processing to prevent memory crashes.
     """
-    with open(new_file_path, 'wb') as f_out: # Open in binary mode for shutil
-        
-        # 1. Copy the entirety of the first file (including its header)
-        with open(csv_path_1, 'rb') as f_in1:
-            shutil.copyfileobj(f_in1, f_out)
-            
-        # 2. Copy the second file, skipping its header row
-        with open(csv_path_2, 'rb') as f_in2:
-            # Advance the file pointer past the first line (the header)
-            next(f_in2, None) 
-            
-            # Copy the remaining data
-            shutil.copyfileobj(f_in2, f_out)
+    if not csv_path_1.exists() or not csv_path_2.exists():
+        print(f"Missing files. Skipping merge for {new_file_path.name}")
+        return
 
-def merge_graph_zoos(zoo_path_1, zoo_path_2, new_zoo_path):
+    print(f"Merging {new_file_path.name}...")
+    
+    # Lazy scan both files
+    df1 = pl.scan_csv(csv_path_1)
+    df2 = pl.scan_csv(csv_path_2)
+    
+    # how="diagonal" safely aligns columns by name. 
+    # If a column exists in one but not the other, it fills with nulls instead of shifting data.
+    merged_lazy = pl.concat([df1, df2], how="diagonal")
+    
+    # sink_csv streams the result directly to disk
+    merged_lazy.sink_csv(new_file_path)
+
+def merge_graph_zoos(zoo_path_1: Path, zoo_path_2: Path, new_zoo_path: Path):
     """
-    This function should take 2 graph zoos and merge them into a single graph zoo in the new batch directory. 
-    The function should ensure that the graph names are unique across both zoos to avoid overwriting.
+    Merges two graph zoos, ensuring unique graphs based on wl_hash.
     """
+    print(f"Merging graph zoos...")
     # Load with appropriate method based on file extension
     zoo_1 = joblib.load(zoo_path_1) if str(zoo_path_1).endswith('.joblib') else pickle.load(open(zoo_path_1, 'rb'))
     zoo_2 = joblib.load(zoo_path_2) if str(zoo_path_2).endswith('.joblib') else pickle.load(open(zoo_path_2, 'rb'))
     
     all_graphs = zoo_1 + zoo_2
-    wl_hashes = set([graph.wl_hash for graph in all_graphs])
-    if len(wl_hashes) != len(all_graphs):
-        updated_output_zoo = []
-        seen_hashes = set()
-        for graph in all_graphs:
-            if graph.wl_hash not in seen_hashes:
-                updated_output_zoo.append(graph)
-                seen_hashes.add(graph.wl_hash)
-    else:
-        updated_output_zoo = all_graphs
+    
+    # Use a dictionary to keep only unique graphs by their hash
+    unique_graphs = {graph.wl_hash: graph for graph in all_graphs}
+    updated_output_zoo = list(unique_graphs.values())
 
     joblib.dump(updated_output_zoo, new_zoo_path)
 
+
+def merge_batches(batch_1_name: str, batch_2_name: str, new_batch_name: str):
+    """
+    Main entry point to merge two simulation batches.
+    """
+    ROOT = Path(os.getcwd()) 
+    DATA_DIR = ROOT / "simulation_data"
     
-if __name__ == "__main__":
+    NEW_BATCH_DIR = DATA_DIR / new_batch_name
+    BATCH_1_DIR = DATA_DIR / batch_1_name
+    BATCH_2_DIR = DATA_DIR / batch_2_name
+    
+    # Validate inputs
+    if not BATCH_1_DIR.exists() or not BATCH_2_DIR.exists():
+        raise FileNotFoundError("One or both of the source batch directories do not exist.")
 
-    NEW_BATCH_DIR = DATA_DIR / NEW_BATCH_NAME
-    BATCH_1_DIR = DATA_DIR / BATCH_1
-    BATCH_2_DIR = DATA_DIR / BATCH_2
-
-    os.makedirs(NEW_BATCH_DIR, exist_ok=True)
+    # Prepare output directories
+    NEW_BATCH_DIR.mkdir(parents=True, exist_ok=True)
+    (NEW_BATCH_DIR / "tmp").mkdir(exist_ok=True)
     print(f"Created new batch directory: {NEW_BATCH_DIR}")
 
-    # Define the paths to the full_results.csv files in each batch
-    full_results_1 = BATCH_1_DIR / "full_results.csv"
-    full_results_2 = BATCH_2_DIR / "full_results.csv"
-    new_full_results_path = NEW_BATCH_DIR / "full_results.csv"
-    concat_csv_files(full_results_1, full_results_2, new_full_results_path)
-    print(f"Merged full results saved to: {new_full_results_path}")
+    # 1. Merge the CSVs safely
+    merge_csv_safely(BATCH_1_DIR / "full_results.csv", 
+                     BATCH_2_DIR / "full_results.csv", 
+                     NEW_BATCH_DIR / "full_results.csv")
+    
+    merge_csv_safely(BATCH_1_DIR / "graph_props.csv", 
+                     BATCH_2_DIR / "graph_props.csv", 
+                     NEW_BATCH_DIR / "graph_props.csv")
+
+    # 2. Find and merge the Zoos (handling both .pkl and .joblib extensions)
+    # Search batch 1
+    zoo_1_files = list((BATCH_1_DIR / "tmp").glob("graph*.*"))
+    # Search batch 2
+    zoo_2_files = list((BATCH_2_DIR / "tmp").glob("graph*.*"))
+    
+    if zoo_1_files and zoo_2_files:
+        new_graph_zoo_path = NEW_BATCH_DIR / "tmp" / "graph_zoo.joblib"
+        merge_graph_zoos(zoo_1_files[0], zoo_2_files[0], new_graph_zoo_path)
+        print(f"Merged graph zoo saved to: {new_graph_zoo_path}")
+    else:
+        print("Warning: Could not find graph zoos in one or both of the tmp directories.")
+        
+    print(f"Successfully merged {batch_1_name} and {batch_2_name} into {new_batch_name}!")
 
 
-    graph_props_1 = BATCH_1_DIR / "graph_props.csv"
-    graph_props_2 = BATCH_2_DIR / "graph_props.csv"
-    new_graph_props_path = NEW_BATCH_DIR / "graph_props.csv"
-    concat_csv_files(graph_props_1, graph_props_2, new_graph_props_path)
-    print(f"Merged graph properties saved to: {new_graph_props_path}")
-
-    # Define the paths to the graph zoos in each batch
-    graph_zoo_1 = BATCH_1_DIR / "tmp" /  "graphs.pkl"
-    graph_zoo_2 = BATCH_2_DIR / "tmp" / "graph_zoo.joblib"
-    new_graph_zoo_path = NEW_BATCH_DIR / "tmp" / "graph_zoo.joblib"
-    os.makedirs(NEW_BATCH_DIR / "tmp", exist_ok=True)
-    merge_graph_zoos(graph_zoo_1, graph_zoo_2, new_graph_zoo_path)
-    print(f"Merged graph zoo saved to: {new_graph_zoo_path}")
+if __name__ == "__main__":
+    # Example usage:
+    merge_batches("batch_large_test_30_02", "batch_extreme_graphs_02", "merged_batch_06")
