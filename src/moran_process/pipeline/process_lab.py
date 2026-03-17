@@ -6,15 +6,18 @@ import shutil
 import pickle
 import math
 import subprocess
+import sys
 from datetime import datetime
 from pathlib import Path
-from population_graph import PopulationGraph
-from process_run import ProcessRun
+
 import itertools
+
+from moran_process.core.population_graph import PopulationGraph
+from moran_process.simulations.process_run import ProcessRun
 
 class ProcessLab:
     """ Manages multiple process runs and stores their results"""
-    def __init__(self):
+    def __init__(self):                     
         """
         """
     def run_comparative_study(self, graphs_zoo, r_values, n_repeats=100, print_time=True, output_path=None):
@@ -152,8 +155,7 @@ class ProcessLab:
         # The worker will use its LSB_JOBINDEX to calculate its start/end.
         # start = (ID - 1) * chunk_size
         
-        worker_script = "worker_wrapper.py" # Must be in current dir
-        python_exec = os.path.abspath(".venv/bin/python")
+        python_exec = sys.executable
         
         cmd_job = [
             "bsub",
@@ -162,12 +164,13 @@ class ProcessLab:
             "-o", os.path.join(logs_dir, "job_%J_%I.out"), # Log stdout
             "-e", os.path.join(logs_dir, "job_%J_%I.err"), # Log stderr
             "-R", f"rusage[mem={memory}]",
-            "-env", "OMP_NUM_THREADS=1, MKL_NUM_THREADS=1, OPENBLAS_NUM_THREADS=1",
+            # "-env", "OMP_NUM_THREADS=1, MKL_NUM_THREADS=1, OPENBLAS_NUM_THREADS=1",
+            "-env", "OMP_NUM_THREADS=1, MKL_NUM_THREADS=1, OPENBLAS_NUM_THREADS=1, PYTHONPATH=src",
         ]
 
         cmd_process = [
             python_exec, "-u",
-            worker_script,
+            "-m", "moran_process.pipeline.worker_wrapper",
             "--zoo-path", str(zoo_path),
             "--manifest-path", str(manifest_path),
             "--batch-dir", str(tmp_dir),
@@ -273,6 +276,8 @@ def register_graphs_job(graph_zoo_path, batch_name, batch_dir, queue='short', me
     logs_dir = os.path.join(batch_dir, "logs")
     os.makedirs(logs_dir, exist_ok=True)
     
+    python_exec = sys.executable
+
     cmd_job = [
             "bsub",
             "-q", queue,
@@ -280,10 +285,11 @@ def register_graphs_job(graph_zoo_path, batch_name, batch_dir, queue='short', me
             "-o", os.path.join(logs_dir, "job_%J_register_graphs.out"), # Log stdout
             "-e", os.path.join(logs_dir, "job_%J_register_graphs.err"), # Log stderr
             "-R", f"rusage[mem={memory}]",
+            "-env", "PYTHONPATH=src",  
         ]
 
     cmd_process = [
-            "uv", "run", 'population_graph.py',
+            python_exec, "-u", "-m", "moran_process.core.population_graph",
             "--register",
             "--batch-dir", str(batch_dir),
             "--graph-zoo-path", str(graph_zoo_path)

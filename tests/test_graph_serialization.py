@@ -7,7 +7,7 @@ import networkx as nx
 
 # # Add parent directory to path to import population_graph
 # sys.path.insert(0, str(Path(__file__).parent.parent))
-from population_graph import PopulationGraph
+from moran_process.population_graph import PopulationGraph
 
 def test_save_load_roundtrip(tmp_path):
     """

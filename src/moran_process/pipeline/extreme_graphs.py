@@ -6,7 +6,8 @@
 import numpy as np
 import joblib
 import pandas as pd
-from population_graph import PopulationGraph
+
+from moran_process.core.population_graph import PopulationGraph
 
 
 def add_new_random_graph(graph_zoo: list[PopulationGraph], 

@@ -1,5 +1,5 @@
 [project]
-name = "moran-process"
+name = "moran_process"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
@@ -23,3 +23,6 @@ dependencies = [
 dev = [
     "pytest>=9.0.2",
 ]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/moran_process"]

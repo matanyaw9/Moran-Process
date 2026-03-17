@@ -3,7 +3,7 @@
 # Moran Process Project Tasks (March 16, 2026)
 
 ## Tasks
-- [ ] Organise the files  
+- [X] Organise the files  
 - [ ] Make the Process an Abstract Class
 - [ ] Write a multi color Moran Process Simulation in C++
 - [ ] Write the Moran Process simulation in C++

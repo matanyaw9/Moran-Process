@@ -202,22 +202,6 @@ def load_all_data():
     
     return data
 
-def setup_analysis_environment():
-    """
-    Set up the analysis environment by adding parent directory to path
-    and importing necessary modules.
-    """
-    # Add parent directory to Python path for imports
-    parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    if parent_dir not in sys.path:
-        sys.path.insert(0, parent_dir)
-    
-    print(f"Analysis environment ready!")
-    print(f"Current directory: {os.getcwd()}")
-    print(f"Data directory: {os.path.abspath(get_data_path())}")
-    
-    return parent_dir
-
 
 def aggregate_results_no_load(batch_dir, delete_temp=False, output_file=None):
     """

@@ -1,7 +1,8 @@
 import numpy as np
 import random
 import time
-from population_graph import PopulationGraph
+
+from moran_process.core.population_graph import PopulationGraph
 
 class ProcessRun:
     def __init__(self, population_graph: PopulationGraph, selection_coefficient=1.0, max_steps=1_000_000):

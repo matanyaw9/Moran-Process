@@ -3,8 +3,8 @@
 Example demonstrating the new ProcessLab output_path feature
 """
 
-from population_graph import PopulationGraph
-from process_lab import ProcessLab
+from moran_process.population_graph import PopulationGraph
+from moran_process.process_lab import ProcessLab
 
 # Create some test graphs
 graphs = [

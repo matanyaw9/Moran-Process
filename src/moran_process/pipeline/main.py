@@ -7,13 +7,14 @@ random graphs. We give the newley created batch a name.
 """
 
 import argparse
-from population_graph import PopulationGraph
-from process_lab import ProcessLab
 from datetime import datetime
 import os
 import time
 import joblib
 from pathlib import Path
+import moran_process
+from moran_process.core.population_graph import PopulationGraph
+from moran_process.pipeline.process_lab import ProcessLab
 
 BATCH_NAME = 'batch_100_nodes'
 
@@ -108,14 +109,14 @@ def main(batch_name=False):
     Main experiment runner for random graphs.
     Similar structure to main.py but for random graphs.
     """
-    # # 1. Toy Examples
-    # n_nodes = list(range(29, 34))
-    # edge_range = 5
-    # n_random_graphs_per_combination = 0  # Number of random graphs per n_edge X n_nodes
+    # 1. Toy Examples
+    n_nodes = list(range(29, 34))
+    edge_range = 3
+    n_random_graphs_per_combination = 0  # Number of random graphs per n_edge X n_nodes
     
-    # r_values = [1.1]  
-    # n_repeats = 10  
-    # n_jobs = 4
+    r_values = [1.1]  
+    n_repeats = 10  
+    n_jobs = 5
     
 
     # # Extreme Graphs  
@@ -144,15 +145,15 @@ def main(batch_name=False):
     # n_repeats = 10_000  
     # n_jobs = 1000
 
-    # 100 node graphs   
-    graph_zoo = []      # I intentionally overwrite graph_zoo
-    n_nodes = [100]
-    edge_range = 4
-    n_random_graphs_per_combination = 50  # Number of random graphs per n_edge X n_nodes
+    # # 100 node graphs   
+    # graph_zoo = []      # I intentionally overwrite graph_zoo
+    # n_nodes = [100]
+    # edge_range = 4
+    # n_random_graphs_per_combination = 50  # Number of random graphs per n_edge X n_nodes
     
-    r_values = [1.1 ]  
-    n_repeats = 10_000  
-    n_jobs = 1000
+    # r_values = [1.1 ]  
+    # n_repeats = 10_000  
+    # n_jobs = 1000
     
 
     SIMULATION_DATA_DIR.mkdir(exist_ok=True)

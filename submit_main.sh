@@ -7,4 +7,4 @@
 
 mkdir -p logs
 echo "Starting Master Submission Job..."
-uv run python -u main.py
+uv run python -u -m moran_process.pipeline.main

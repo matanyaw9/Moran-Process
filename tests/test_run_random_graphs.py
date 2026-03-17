@@ -1,8 +1,8 @@
 # run_random_graphs_test.py
 # Quick test version with fewer repeats
 
-from population_graph import PopulationGraph
-from process_lab import ProcessLab
+from moran_process.population_graph import PopulationGraph
+from moran_process.process_lab import ProcessLab
 import pandas as pd
 import os
 import time

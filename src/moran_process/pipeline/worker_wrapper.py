@@ -4,9 +4,10 @@ import sys
 import pickle
 import pandas as pd
 from datetime import datetime
-from population_graph import PopulationGraph
-from process_run import ProcessRun
 import joblib
+
+from moran_process.core.population_graph import PopulationGraph
+from moran_process.simulations.process_run import ProcessRun
 
 def load_data(zoo_path, task_manifest_path):
     """Loads the Graph Zoo and the Task Manifest."""

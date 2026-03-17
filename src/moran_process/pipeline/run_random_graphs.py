@@ -1,10 +1,11 @@
 # run_random_graphs.py
 # Script to run experiments on random graphs with 31 nodes and varying edge counts
 
-from population_graph import PopulationGraph
-from process_lab import ProcessLab
 import os
 import time
+
+from moran_process.core.population_graph import PopulationGraph
+from moran_process.pipeline.process_lab import ProcessLab
 
 EXPERIMENTS_CSV = 'random_graphs_grand_experiments.csv'
 GRAPH_DATABASE_CSV = 'simulation_data/graph_database.csv'
