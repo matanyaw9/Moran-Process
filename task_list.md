@@ -4,7 +4,7 @@
 
 ## Tasks
 - [X] Organise the files  
-- [ ] Make the Analysis file fit large datasets
+- [X] Make the Analysis file fit large datasets
 - [ ] Make the Process an Abstract Class
 - [ ] Write a multi color Moran Process Simulation in C++
 - [ ] Write the Moran Process simulation in C++
@@ -13,9 +13,9 @@
 
 ## Desired Flow
 1. Create a graph zoo
-2. Run a simulation on a selected graph zoo
+2. Run a simulation on a selected graph zoo as jobs  
 3. Analyze the simulation results
-4. Create ML models from the simulation results
+4. Create ML models from the simulation results (should be tied to the batch they were trained on)
 5. Create Evolutionary Algorithm to get extreme time/prob to fixation Graphs
 
 
