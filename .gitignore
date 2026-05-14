@@ -1,14 +1,17 @@
 # *.ipynb
-__pycache__/
 *.pyc
 *.pyo
 *.pyd
 env/
-venv/
 .vscode/
 .DS_Store
 simulation_data/
+graph_zoos/*.joblib
+ml_models/*.joblib
 logs/
-
+__pycache__/
+venv/
+.pytest_cache/
+*.ipynb_checkpoints
 # directories that start with 'tmp'
 tmp*   

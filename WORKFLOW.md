@@ -97,7 +97,7 @@ Steps for any time I come back to this project after >1 month away:
 5. `uv run pytest tests/` to confirm nothing rotted.
 6. Update the date at the top of `task_list.md`.
 
-## Files that should be in `.gitignore` but might not be
+## Files that should be in `.gitignore`
 
 - `simulation_data/` (or at least `simulation_data/tmp/` and the big result CSVs)
 - `graph_zoos/*.joblib`

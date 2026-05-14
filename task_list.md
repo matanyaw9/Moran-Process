@@ -5,15 +5,16 @@ Last updated: 2026-05-14 (returning after long break)
 ## 0. Pre-flight (do these first, this week)
 
 - [ ] **Decide on the reorg merge.** `organize-files` (and on top of it `polars_branch`) holds the cleaner `src/moran_process/` layout from 2026-03. Master has moved on only to add `*.md` context docs (commit `98c7f2b`). Plan:
-  - [ ] Merge `master` into `organize-files` (brings the new `.md` docs forward; small, low conflict).
-  - [ ] Check out `organize-files`. Run `uv sync`, `uv run pytest tests/`, and a small test batch (`uv run tests/test_run_random_graphs.py`). Smoke-test `main.py` with a tiny `n_repeats` value, not a real submission.
-  - [ ] If green: merge `organize-files` into `master` (fast-forward or `--no-ff` to keep the reorg commit visible). Push.
+  - [x] Merge `master` into `organize-files` (brings the new `.md` docs forward; small, low conflict).
+  - [ ] Check if those ai generated tests are even relevant, might need to delete them. If not: 
+    - [ ] Check out `organize-files`. Run `uv sync`, `uv run pytest tests/`, and a small test batch (`uv run tests/test_run_random_graphs.py`). Smoke-test `main.py` with a tiny `n_repeats` value, not a real submission.
+    - [ ] If green: merge `organize-files` into `master` (fast-forward or `--no-ff` to keep the reorg commit visible). Push.
 - [ ] **Decide what to do with `polars_branch`.** It sits on top of `organize-files` and adds (a) polars in `analysis_utils.py`, (b) a `cli.py`, (c) a `merge_batches` rewrite. After the reorg merge lands, rebase this onto `master` and keep it as the next feature branch.
-- [ ] **Delete clutter:**
+- [x] **Delete clutter:**
   - [x] `git branch -D feature/extreme_graphs` — every commit is already in master (merge base = its own HEAD).
   - [x] `git branch -D feature/add-graphs-to-batch` — same (merge base = its own HEAD).
-  - [ ] `git push origin --delete feature/add-graphs-to-batch docs/context-files feature/add_positions` once you've confirmed nothing in them is missing from master. `docs/context-files` is an earlier copy of the docs already in `master`; `feature/add_positions` is from 2025-12 and looks superseded — open it and double-check before deleting.
-- [ ] **Stash or commit the working-tree noise:** `ORGANIZATION.md` is `D` (you deleted it, makes sense — it overlaps with `PROJECT_OVERVIEW.md`), and `analysis/analyse_tests.ipynb` has a small modification. Commit the deletion (with a short message) and either commit or revert the notebook so the tree is clean before switching branches.
+  - [x] `git push origin --delete feature/add-graphs-to-batch docs/context-files feature/add_positions` once you've confirmed nothing in them is missing from master. `docs/context-files` is an earlier copy of the docs already in `master`; `feature/add_positions` is from 2025-12 and looks superseded — open it and double-check before deleting.
+- [x] **Stash or commit the working-tree noise:** `ORGANIZATION.md` is `D` (you deleted it, makes sense — it overlaps with `PROJECT_OVERVIEW.md`), and `analysis/analyse_tests.ipynb` has a small modification. Commit the deletion (with a short message) and either commit or revert the notebook so the tree is clean before switching branches.
 
 ## 1. Research / science TODOs (from PROJECT_OVERVIEW.md)
 
