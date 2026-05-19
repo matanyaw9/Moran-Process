@@ -311,7 +311,8 @@ def plot_hybrid_density(df,
                         color_dict=None, 
                         density_threshold=100, 
                         with_violin=True,
-                        highlight_categories=None
+                        highlight_categories=None,
+                        size_property=None
                         ):
     """
     Hybrid Plot with Correlation & Description Patches.
@@ -323,6 +324,7 @@ def plot_hybrid_density(df,
         color_dict (dict): Dictionary mapping categories to colors
         density_threshold (int): Minimum number of points to trigger violin plot (default: 100)
         with_violin (bool): If False - this is just a scatter plot. If true, it puts a violin plot for dense x values
+        size_property (str | None): Choose the parameter that will be shown as the size of the marks
     """
     if color_dict is None:
         # Fallback if no dict is provided, though usually passed in
@@ -465,7 +467,7 @@ def plot_hybrid_density(df,
         y=y_outcome,
         hue='category',
         style='r',
-        size='n_edges',
+        size=size_property,
         sizes=(20, 100),
         palette=color_dict,
         alpha=0.7,           # Slightly transparent background points
@@ -486,7 +488,7 @@ def plot_hybrid_density(df,
                 y=y_outcome,
                 hue='category',
                 style='r',           # Keeps your marker shapes consistent!
-                size='n_edges',
+                size=size_property,
                 sizes=(20, 100),
                 palette=color_dict,
                 alpha=1.0,           # Fully opaque
