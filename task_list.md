@@ -2,13 +2,18 @@
 
 Last updated: 2026-05-19 
 
+What I was doing 2026-05-19:
+  1. added graph-zoo class and graph_design.ipynb files for quick graph zoo designing. 
+  2. Cleaned and changed the analysis files, now they work on old batches and new
+  3. small edits in the ml section. nothing big. 
+
 ## 0. Pre-flight (do these first, this week)
 
-- [ ] **Decide on the reorg merge.** `organize-files` (and on top of it `polars_branch`) holds the cleaner `src/moran_process/` layout from 2026-03. Master has moved on only to add `*.md` context docs (commit `98c7f2b`). Plan:
+- [x] **Decide on the reorg merge.** `organize-files` holds the cleaner `src/moran_process/` layout from 2026-03. Master has moved on only to add `*.md` context docs (commit `98c7f2b`). Plan:
   - [x] Merge `master` into `organize-files` (brings the new `.md` docs forward; small, low conflict).
   - [x] AI-generated tests are untrusted and will be ignored. New tests to be written from scratch later.
-    - [ ] Check out `organize-files`. Smoke-test `main.py` with a tiny `n_repeats` value, not a real submission.
-    - [ ] If working: merge `organize-files` into `master` (fast-forward or `--no-ff` to keep the reorg commit visible). Push.
+    - [x] Check out `organize-files`. Smoke-test `main.py` with a tiny `n_repeats` value, not a real submission.
+    - [x] If working: merge `organize-files` into `master`.
 - [x] **Decide what to do with `polars_branch`.** It sits on top of `organize-files` and adds (a) polars in `an
 alysis_utils.py`, (b) a `cli.py`, (c) a `merge_batches` rewrite. After the reorg merge lands, rebase this onto `master` and keep it as the next feature branch. - Decided to abandone this branch
 - [x] **Delete clutter:**
@@ -30,25 +35,14 @@ alysis_utils.py`, (b) a `cli.py`, (c) a `merge_batches` rewrite. After the reorg
   - [ ] Uri Alon — network motifs.
   - [ ] Roy Kishony (2011) — parallel bacterial evolution.
 
-## 2. Engineering / refactor TODOs (carried from old `task_list.md`)
-
+## 2. Engineering / refactor TODOs
+- [ ] Make analysis able to work with large datasets. Maybe switch to polars.
 - [ ] Make `Process` an abstract base class so multi-color / variant rules can subclass it.
 - [ ] Move analysis figures behind a function: notebooks should just import and call, not redefine plotting code per notebook.
-- [ ] Add a proper CLI (Typer or Click). `polars_branch` already has a `src/moran_process/cli.py` start — finish that.
+- [ ] Add a proper CLI (Typer or Click).
 - [ ] Add a built-in `aggregate_batch()` method on `ProcessLab` so we stop hand-rolling the `glob + pd.concat` snippet.
 - [ ] fix the way logs are made. All logs associated to a batch should be in it's directroy with a meaningful name.
-- [ ] Create a graph zoo interface : 
-  1. A thin GraphZoo class at src/moran_process/core/graph_zoo.py
-  - add(graph)
-  - draw_all() -- matplotlib grid showing all graphs at once
-  - save(path) / GraphZoo.load(path) -- pickle to the experiment folder
-  - The saved file is named zoo.pkl and lives in simulation_data/tmp/batch_NAME/
-
-  2. A notebook notebooks/design_zoo.ipynb
-  - Section 1: Add graphs (one cell per graph type, run the ones you want)
-  - Section 2: zoo.draw_all() to visually inspect
-  - Section 3: Name your experiment, zoo.save("simulation_data/tmp/batch_my_study/zoo.pkl")
-  - Section 4: Hand the zoo path to ProcessLab.submit_jobs() or run_comparative_study()
+- [x] Create a graph zoo interface.
 
 
 
