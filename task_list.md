@@ -6,10 +6,11 @@ Last updated: 2026-05-14 (returning after long break)
 
 - [ ] **Decide on the reorg merge.** `organize-files` (and on top of it `polars_branch`) holds the cleaner `src/moran_process/` layout from 2026-03. Master has moved on only to add `*.md` context docs (commit `98c7f2b`). Plan:
   - [x] Merge `master` into `organize-files` (brings the new `.md` docs forward; small, low conflict).
-  - [ ] Check if those ai generated tests are even relevant, might need to delete them. If not: 
-    - [ ] Check out `organize-files`. Run `uv sync`, `uv run pytest tests/`, and a small test batch (`uv run tests/test_run_random_graphs.py`). Smoke-test `main.py` with a tiny `n_repeats` value, not a real submission.
-    - [ ] If green: merge `organize-files` into `master` (fast-forward or `--no-ff` to keep the reorg commit visible). Push.
-- [ ] **Decide what to do with `polars_branch`.** It sits on top of `organize-files` and adds (a) polars in `analysis_utils.py`, (b) a `cli.py`, (c) a `merge_batches` rewrite. After the reorg merge lands, rebase this onto `master` and keep it as the next feature branch.
+  - [x] AI-generated tests are untrusted and will be ignored. New tests to be written from scratch later.
+    - [ ] Check out `organize-files`. Smoke-test `main.py` with a tiny `n_repeats` value, not a real submission.
+    - [ ] If working: merge `organize-files` into `master` (fast-forward or `--no-ff` to keep the reorg commit visible). Push.
+- [x] **Decide what to do with `polars_branch`.** It sits on top of `organize-files` and adds (a) polars in `an
+alysis_utils.py`, (b) a `cli.py`, (c) a `merge_batches` rewrite. After the reorg merge lands, rebase this onto `master` and keep it as the next feature branch. - Decided to abandone this branch
 - [x] **Delete clutter:**
   - [x] `git branch -D feature/extreme_graphs` — every commit is already in master (merge base = its own HEAD).
   - [x] `git branch -D feature/add-graphs-to-batch` — same (merge base = its own HEAD).

@@ -61,8 +61,7 @@ A branch should live **at most a couple of weeks**. If it lives longer:
 4. Commit often          small, named commits
 5. Periodically merge in master   (avoid drift)
 6. When done:
-   a. Run tests          uv run pytest tests/
-   b. Smoke-test the script you touched
+   a. Smoke-test the script you touched
    c. Merge to master    git checkout master && git merge --no-ff feature/<name>
    d. Push               git push
    e. Delete branch      git branch -d feature/<name>
@@ -94,8 +93,9 @@ Steps for any time I come back to this project after >1 month away:
 2. Read `task_list.md` (top of file, where I left the "what I was doing" note).
 3. Look for branches with no recent commits — if they're fully merged into master, delete them. (`git branch --merged master`.)
 4. `uv sync` to make sure the venv matches the lockfile.
-5. `uv run pytest tests/` to confirm nothing rotted.
-6. Update the date at the top of `task_list.md`.
+5. Update the date at the top of `task_list.md`.
+
+**Note:** Do not run `pytest tests/` — the existing tests are untrusted (AI-generated, outdated) and are pending replacement.
 
 ## Files that should be in `.gitignore`
 

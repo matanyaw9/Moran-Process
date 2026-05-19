@@ -17,16 +17,9 @@ uv run main.py
 
 # Run random graph experiments locally
 uv run run_random_graphs.py
-
-# Quick local test (fewer graphs/repeats)
-uv run tests/test_run_random_graphs.py
-
-# Run pytest suite
-uv run pytest tests/
-
-# Run a single test file
-uv run pytest tests/test_csv_append.py
 ```
+
+**Note:** The `tests/` directory exists but all tests are currently untrusted (AI-generated, outdated). Do not run them. New tests will be written from scratch.
 
 ## Architecture
 
