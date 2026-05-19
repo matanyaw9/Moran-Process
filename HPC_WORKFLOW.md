@@ -7,21 +7,40 @@ Full docs: https://hpcwiki.weizmann.ac.il/en/home/lsf/basic
 
 ## Typical Workflow for a Simulation Batch
 
-### Step 1 — Prepare the Batch (on Windows PC or WEXAC login node)
-Run `main.py` (or a modified version). This calls `ProcessLab.submit_jobs()`, which:
-1. Pickles the graph list to `simulation_data/tmp/batch_NAME/graphs.pkl`
-2. Creates `task_manifest.csv` (all tasks enumerated)
-3. Calls `bsub` to submit the job array
+### Step 0 — Design the Graph Zoo (always first)
+Open `notebooks/design_zoo.ipynb`. This is the entry point for every new batch.
+
+1. Set `BATCH_NAME` at the top (e.g. `"2026-05-20_my_study"`).
+2. Run the cells for the graph types you want (mammalian, avian, fish, complete, cycle, random, ...).
+3. Visualize with `zoo.draw_all()` to confirm the topology.
+4. Save: `zoo.save(f"../simulation_data/{BATCH_NAME}/zoo.pkl")`.
+
+The saved `zoo.pkl` is the input to all downstream steps.
+
+### Step 1 — Submit the Batch
+Load the saved zoo and call `ProcessLab.submit_jobs()` (Section 4 of the notebook, or from a script):
 
 ```python
+from moran_process import GraphZoo, ProcessLab
+
+zoo = GraphZoo.load(f"../simulation_data/{BATCH_NAME}/zoo.pkl")
 lab = ProcessLab()
 lab.submit_jobs(
-    graph_zoo, r_values,
-    n_repeats=10_000, n_jobs=1000,
-    queue="short", memory="2048",
-    batch_name="my_experiment"
+    zoo_path=f"../simulation_data/{BATCH_NAME}/zoo.pkl",
+    r_values=[1.0, 1.1, 1.2, 1.3, 2.0],
+    n_repeats=10_000,
+    n_requested_jobs=1000,
+    n_graphs=len(zoo),
+    queue="gsla-cpu",
+    batch_dir=f"../simulation_data/{BATCH_NAME}",
+    batch_name=BATCH_NAME,
 )
 ```
+
+This call:
+1. Submits a short `register_graphs` job that writes graph properties to `<batch_dir>/graph_props.csv`
+2. Creates `task_manifest.csv` (all tasks enumerated)
+3. Submits the main job array via `bsub`
 
 ### Step 2 — Monitor Jobs
 ```bash

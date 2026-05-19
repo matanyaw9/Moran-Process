@@ -90,3 +90,4 @@ Read these files when the task requires deeper context:
 ## Rules
 
 - Never use em dashes
+- Before applying a non-trivial code change that involves a design decision (imputation strategy, algorithm choice, data filtering), explain the reasoning and the alternatives considered, then wait for confirmation before editing the file.
