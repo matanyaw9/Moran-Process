@@ -161,32 +161,29 @@ Runs random graphs only, locally (not HPC). Smaller scale.
 
 ---
 
-## Analysis Notebooks (`analysis/`)
+## Analysis Notebooks (`notebooks/`)
 
 | Notebook | Purpose |
 |---|---|
-| `df_analysis.ipynb` | Load graph database + experiment results; fixation probability plots; median steps; histograms |
-| `compare_random_vs_respiratory.ipynb` | Comparative analysis: random vs respiratory graphs; evolutionary trade-off maps |
-| `experiment_analysis.ipynb` | General experiment analysis |
-| `analyse_tests.ipynb` | Quick analysis on test batches |
+| `experiment_analysis.ipynb` | Main analysis: aggregate batch results, distributions, per-property plots against fixation probability and time |
+| `ml_predictors.ipynb` | ML training and evaluation: LR + XGBoost across all targets in one run, SHAP, cross-model summary |
+| `extreme_graphs.ipynb` | Analysis of graphs generated to maximise/minimise model predictions |
+| `design_zoo.ipynb` | Graph zoo design and inspection |
 
-**Data loading pattern:**
-```python
-from analysis_utils import setup_analysis_environment, load_all_data
-setup_analysis_environment()  # sets working dir to project root
-data = load_all_data()
-df_all = data['all_experiments']  # combined DataFrame
-```
+**Workflow:** run `experiment_analysis.ipynb` first to produce `graph_statistics.csv`, then `ml_predictors.ipynb` to train and save models.
 
 ---
 
-## ML Pipeline (implemented in notebooks)
+## ML Pipeline (`notebooks/ml_predictors.ipynb`)
 
-1. **Feature matrix:** Graph properties from `graph_database.csv` joined to experiment results on `wl_hash` or `graph_name`.
-2. **Target:** Mean fixation time (steps) per graph per r value.
-3. **Linear Regression:** `sklearn.pipeline.Pipeline([StandardScaler(), LinearRegression()])` — standardized coefficients give % contribution to fixation time.
-4. **XGBoost:** `xgboost.XGBRegressor` for non-linear prediction.
-5. **SHAP:** `shap.PermutationExplainer` on XGBoost model to identify true topological drivers.
+1. **Configuration:** set `BATCH_NAME`, `TARGET_COLUMNS` (list), and `R_FILTER` at the top of the notebook.
+2. **Feature matrix:** graph property columns from `graph_statistics.csv`, median-imputed for NaNs. If `R_FILTER=None`, `r` is included as a feature.
+3. **Train/test split:** computed once on `X`; all targets share the same split (`random_state=42`).
+4. **Linear Regression:** `sklearn.pipeline.Pipeline([StandardScaler(), LinearRegression()])` — standardized coefficients give % contribution.
+5. **XGBoost:** `xgboost.XGBRegressor` for non-linear prediction.
+6. **SHAP:** `shap.LinearExplainer` for LR; `shap.PermutationExplainer` for XGBoost.
+7. **Model saving:** saved to `{BATCH_DIR}/ml_models/{target}_{model_type}.joblib`. Loaded dynamically via `MODEL_TYPE_MAP` — adding a new model type requires only updating that dict.
+8. **Cross-model summary:** final section loads all saved models and plots predicted vs true in a dynamic grid (rows = targets, cols = model types).
 
 ---
 
