@@ -1,6 +1,6 @@
 # Moran Process — Task List
 
-Last updated: 2026-05-14 (returning after long break)
+Last updated: 2026-05-19 
 
 ## 0. Pre-flight (do these first, this week)
 
@@ -36,12 +36,27 @@ alysis_utils.py`, (b) a `cli.py`, (c) a `merge_batches` rewrite. After the reorg
 - [ ] Move analysis figures behind a function: notebooks should just import and call, not redefine plotting code per notebook.
 - [ ] Add a proper CLI (Typer or Click). `polars_branch` already has a `src/moran_process/cli.py` start — finish that.
 - [ ] Add a built-in `aggregate_batch()` method on `ProcessLab` so we stop hand-rolling the `glob + pd.concat` snippet.
+- [ ] fix the way logs are made. All logs associated to a batch should be in it's directroy with a meaningful name.
+- [ ] Create a graph zoo interface : 
+  1. A thin GraphZoo class at src/moran_process/core/graph_zoo.py
+  - add(graph)
+  - draw_all() -- matplotlib grid showing all graphs at once
+  - save(path) / GraphZoo.load(path) -- pickle to the experiment folder
+  - The saved file is named zoo.pkl and lives in simulation_data/tmp/batch_NAME/
+
+  2. A notebook notebooks/design_zoo.ipynb
+  - Section 1: Add graphs (one cell per graph type, run the ones you want)
+  - Section 2: zoo.draw_all() to visually inspect
+  - Section 3: Name your experiment, zoo.save("simulation_data/tmp/batch_my_study/zoo.pkl")
+  - Section 4: Hand the zoo path to ProcessLab.submit_jobs() or run_comparative_study()
+
+
+
 
 ## 3. Workflow / habit TODOs
 
-- [ ] Add a one-line "what I was doing" note to the top of this file at the end of each work session, so the next return is easier.
-- [ ] Stop committing notebook output diffs — install `nbstripout` (`uv add --dev nbstripout && nbstripout --install`) so checkpoints stop polluting commits.
-- [ ] Add `simulation_data/tmp/` and `graph_zoos/*.joblib` to `.gitignore` if not already (the joblibs are >80 KB binaries that don't belong in git).
+- Add a one-line "what I was doing" note to the top of this file at the end of each work session, so the next return is easier.
+- Stop committing notebook output diffs — install `nbstripout` (`uv add --dev nbstripout && nbstripout --install`) so checkpoints stop polluting commits.
 
 ---
 
