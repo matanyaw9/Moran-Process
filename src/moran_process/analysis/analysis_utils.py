@@ -605,6 +605,219 @@ def plot_hybrid_density(df,
     plt.show()
 
 
+def plot_outcome_vs_property(
+    df,
+    x_prop,
+    y_outcome='prob_fixation',
+    color_dict=None,
+    density_threshold=50,
+    highlight_categories=None,
+    size_property=None,
+    figures_dir=None,
+    force_recompute=False,
+):
+    """
+    Improved replacement for plot_hybrid_density.
+
+    Fixes over the original:
+    - 1/N neutral line: draws y=1/x curve when x_prop='n_nodes'; draws axhline
+      only when N is homogeneous across graphs; silently omits it when N varies
+      widely (a flat line would be misleading).
+    - Auto-detects whether x is discrete enough to warrant violins -- no manual
+      with_violin flag needed.
+    - Vectorized jitter (numpy) instead of slow row-wise apply().
+    - Consistent fig/ax API throughout (no mixed plt.*/ax.* state).
+    - Single clean title; description embedded in x-axis label.
+    """
+    if color_dict is None:
+        color_dict = {}
+
+    fig_path = _resolve_figure_path(figures_dir, 'plot_outcome_vs_property',
+                                    x=x_prop, y=y_outcome)
+    if not force_recompute and try_load_cached(fig_path):
+        return
+
+    # --- 1. Labels ---
+    prob_label = "Fixation Probability ($P_{fix}$)"
+    is_prob = (y_outcome == 'prob_fixation')
+    ylabel = prob_label if is_prob else y_outcome.replace('_', ' ').title()
+
+    if x_prop == 'prob_fixation':
+        xlabel_base = prob_label
+    elif x_prop == 'std_steps':
+        xlabel_base = 'Std. Steps to Fixation'
+    else:
+        xlabel_base = x_prop.replace('_', ' ').title()
+
+    desc_text = GRAPH_PROPERTY_DESCRIPTION.get(x_prop, '')
+    wrapped_desc = textwrap.fill(desc_text, width=90) if desc_text else ''
+    xlabel = f"{xlabel_base}\n{wrapped_desc}" if wrapped_desc else xlabel_base
+
+    # --- 2. Pearson correlation (per r value, compactly) ---
+    r_values = sorted(df['r'].dropna().unique()) if 'r' in df.columns else []
+    cols_for_corr = [x_prop, y_outcome] + (['r'] if r_values else [])
+    clean_df = df[cols_for_corr].replace([np.inf, -np.inf], np.nan).dropna()
+
+    def _safe_corr(a, b):
+        if len(a) > 1 and a.std() > 0 and b.std() > 0:
+            return a.corr(b)
+        return np.nan
+
+    if len(r_values) > 1:
+        corr_lines = ["Pearson r", "-" * 18]
+        for rv in r_values:
+            sub = clean_df[clean_df['r'] == rv]
+            c = _safe_corr(sub[x_prop], sub[y_outcome])
+            corr_lines.append(f"r={rv}: {c:.3f}" if pd.notna(c) else f"r={rv}: N/A")
+    else:
+        c = _safe_corr(clean_df[x_prop], clean_df[y_outcome])
+        corr_lines = ["Pearson r", f"{c:.3f}" if pd.notna(c) else "N/A"]
+    stats_text = "\n".join(corr_lines)
+
+    # --- 3. X-axis processing ---
+    plot_df = df.copy()
+    is_numeric_x = pd.api.types.is_numeric_dtype(plot_df[x_prop])
+
+    if is_numeric_x:
+        plot_df[x_prop] = pd.to_numeric(plot_df[x_prop], errors='coerce')
+        plot_df['x_plot'] = plot_df[x_prop].round(3)
+        unique_cats = None
+    else:
+        plot_df = plot_df.dropna(subset=[x_prop])
+        unique_cats = sorted(plot_df[x_prop].unique())
+        plot_df['x_plot'] = plot_df[x_prop].map({v: i for i, v in enumerate(unique_cats)})
+
+    # --- 4. Auto-detect discrete x (few unique values relative to data size) ---
+    valid_x = plot_df['x_plot'].dropna()
+    n_unique = valid_x.nunique()
+    n_total = len(valid_x)
+    is_discrete_x = is_numeric_x and (n_unique <= max(20, n_total * 0.02))
+
+    # --- 5. Figure ---
+    fig, ax = plt.subplots(figsize=(9, 6.5))
+
+    dense_x_values = set()
+    if is_discrete_x:
+        counts = valid_x.value_counts()
+        dense_x_values = set(counts[counts >= density_threshold].index)
+
+        # Violin width: smallest gap between any two adjacent x positions
+        all_x_sorted = sorted(valid_x.unique())
+        if len(all_x_sorted) > 1:
+            violin_width = float(np.min(np.diff(all_x_sorted))) * 0.7
+        else:
+            violin_width = 0.5
+        violin_width = max(0.01, violin_width)
+
+        for x_val in dense_x_values:
+            subset = plot_df.loc[plot_df['x_plot'] == x_val, y_outcome].dropna()
+            if len(subset) > 0:
+                parts = ax.violinplot(subset, positions=[x_val], widths=violin_width,
+                                      showmeans=False, showextrema=False)
+                for pc in parts['bodies']:
+                    pc.set_facecolor('whitesmoke')
+                    pc.set_edgecolor('lightgray')
+                    pc.set_alpha(1.0)
+
+        # Vectorized jitter -- much faster than apply(func, axis=1)
+        mask = plot_df['x_plot'].isin(dense_x_values) & plot_df['x_plot'].notna()
+        jitter_half = violin_width * 0.15
+        plot_df['x_jittered'] = plot_df['x_plot'].copy().astype(float)
+        if mask.any():
+            plot_df.loc[mask, 'x_jittered'] = (
+                plot_df.loc[mask, 'x_plot']
+                + np.random.uniform(-jitter_half, jitter_half, size=int(mask.sum()))
+            )
+    else:
+        plot_df['x_jittered'] = plot_df['x_plot']
+
+    # --- 6. Scatter (background) ---
+    sns.scatterplot(
+        data=plot_df, ax=ax,
+        x='x_jittered', y=y_outcome,
+        hue='category',
+        style='r' if len(r_values) > 1 else None,
+        size=size_property, sizes=(20, 100),
+        palette=color_dict,
+        alpha=0.7, edgecolor='w', linewidth=0.5, zorder=2,
+    )
+
+    # --- 7. Highlighted categories (foreground) ---
+    if highlight_categories:
+        hl_df = plot_df[plot_df['category'].isin(highlight_categories)]
+        if not hl_df.empty:
+            sns.scatterplot(
+                data=hl_df, ax=ax,
+                x='x_jittered', y=y_outcome,
+                hue='category',
+                style='r' if len(r_values) > 1 else None,
+                size=size_property, sizes=(20, 100),
+                palette=color_dict,
+                alpha=1.0, edgecolor='black', linewidth=1.8,
+                legend=False, zorder=3,
+            )
+
+    # --- 8. Neutral 1/N reference line ---
+    if is_prob and 'n_nodes' in plot_df.columns:
+        n_col = plot_df['n_nodes'].dropna()
+        if len(n_col) > 0:
+            if x_prop == 'n_nodes':
+                # x encodes N directly: draw the theoretical y = 1/x curve
+                x_range = np.linspace(max(1, n_col.min()), n_col.max(), 300)
+                ax.plot(x_range, 1.0 / x_range, color='black', linestyle='--',
+                        linewidth=1.2, label='Neutral (1/N)', zorder=1)
+            else:
+                # Only draw a flat line when N is homogeneous (CV < 5%)
+                n_mean = n_col.mean()
+                n_cv = n_col.std() / n_mean if n_mean > 0 else 1.0
+                if n_cv < 0.05:
+                    ax.axhline(1.0 / n_mean, color='black', linestyle=':',
+                               linewidth=1.0, label=f'Neutral (1/N={n_mean:.0f})', zorder=1)
+                # else: N varies too much -- a flat line would be misleading, so skip
+
+    # --- 9. Categorical x-axis ticks ---
+    if not is_numeric_x and unique_cats is not None:
+        ax.set_xticks(range(len(unique_cats)))
+        ax.set_xticklabels(unique_cats)
+
+    # --- 10. Titles & labels ---
+    ax.set_title(f'{xlabel_base}  →  {ylabel}', fontsize=13, pad=8)
+    ax.set_xlabel(xlabel, fontsize=10)
+    ax.set_ylabel(ylabel, fontsize=11)
+    ax.grid(True, linestyle='--', alpha=0.4)
+
+    # --- 11. Correlation text box (bottom-right inside axes) ---
+    ax.text(
+        0.97, 0.04, stats_text,
+        transform=ax.transAxes, fontsize=9,
+        verticalalignment='bottom', horizontalalignment='right',
+        bbox=dict(boxstyle='round,pad=0.4', facecolor='white', alpha=0.9, edgecolor='lightgray'),
+        zorder=5,
+    )
+
+    # --- 12. Legend with highlight styling ---
+    handles, labels_leg = ax.get_legend_handles_labels()
+    if highlight_categories:
+        for h, lbl in zip(handles, labels_leg):
+            if lbl in highlight_categories:
+                if hasattr(h, 'set_markeredgecolor'):
+                    h.set_markeredgecolor('black')
+                    h.set_markeredgewidth(1.8)
+                    h.set_alpha(1.0)
+                elif hasattr(h, 'set_edgecolor'):
+                    h.set_edgecolor('black')
+                    h.set_linewidth(1.8)
+                    h.set_alpha(1.0)
+    ax.legend(handles=handles, labels=labels_leg,
+              bbox_to_anchor=(1.02, 1), loc='upper left', borderaxespad=0., fontsize=9)
+
+    fig.tight_layout()
+    if fig_path is not None:
+        fig.savefig(fig_path, bbox_inches='tight', dpi=150)
+        print(f"[cache] Saved: {fig_path.name}")
+    plt.show()
+
+
 def plot_two_property_effect(
     df,
     x_prop,
