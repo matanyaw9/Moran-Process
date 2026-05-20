@@ -79,6 +79,31 @@ GRAPH_PROPERTY_COLUMNS = [
     ]
 
 
+def _resolve_figure_path(figures_dir, func_name: str, **key_kwargs):
+    """Build a descriptive Path for a cached figure, creating the directory if needed."""
+    if figures_dir is None:
+        return None
+    p = Path(figures_dir)
+    p.mkdir(parents=True, exist_ok=True)
+    slug = "__".join(f"{k}={v}" for k, v in key_kwargs.items())
+    slug = slug.replace("/", "-").replace(" ", "_").replace(",", "-")
+    return p / f"{func_name}__{slug}.png"
+
+
+
+def try_load_cached(path) -> bool:
+    """Display a saved PNG from disk and return True; return False if not found."""
+    if path is not None and Path(path).exists():
+        try:
+            from IPython.display import Image, display
+            display(Image(str(path)))
+            print(f"[cache] Loaded: {Path(path).name}")
+            return True
+        except ImportError:
+            pass
+    return False
+
+
 def get_data_path():
     """
     Get the correct path to the simulation_data directory.
@@ -267,11 +292,17 @@ def aggregate_results_no_load(batch_dir, delete_temp=False, output_file=None):
     # Return path instead of loading into memory
     return output_file
 
-def plot_property_effect(df, x_prop, y_outcome='prob_fixation', color_dict=COLOR_DICT):
+def plot_property_effect(df, x_prop, y_outcome='prob_fixation', color_dict=COLOR_DICT,
+                         figures_dir=None, force_recompute=False):
     """
     Plots a specific graph property against an evolutionary outcome.
     Faceted by 'r' to show how the effect varies with selection strength.
     """
+    fig_path = _resolve_figure_path(figures_dir, 'plot_property_effect',
+                                    x=x_prop, y=y_outcome)
+    if not force_recompute and try_load_cached(fig_path):
+        return
+
     plt.figure(figsize=(11,8))
     is_prob = (y_outcome == 'prob_fixation')
     ylabel = "Probability of Fixation ($P_{fix}$)" if is_prob else y_outcome.replace('_', ' ').title()
@@ -299,20 +330,25 @@ def plot_property_effect(df, x_prop, y_outcome='prob_fixation', color_dict=COLOR
     
     # Legend handling: Place outside
     plt.legend(bbox_to_anchor=(1.02, 1), loc='upper left', borderaxespad=0.)
-    
+
     plt.tight_layout()
+    if fig_path is not None:
+        plt.savefig(fig_path, bbox_inches='tight', dpi=150)
+        print(f"[cache] Saved: {fig_path.name}")
     plt.show()
 
 
 
-def plot_hybrid_density(df, 
-                        x_prop, 
-                        y_outcome='prob_fixation', 
-                        color_dict=None, 
-                        density_threshold=100, 
+def plot_hybrid_density(df,
+                        x_prop,
+                        y_outcome='prob_fixation',
+                        color_dict=None,
+                        density_threshold=100,
                         with_violin=True,
                         highlight_categories=None,
-                        size_property=None
+                        size_property=None,
+                        figures_dir=None,
+                        force_recompute=False,
                         ):
     """
     Hybrid Plot with Correlation & Description Patches.
@@ -327,8 +363,12 @@ def plot_hybrid_density(df,
         size_property (str | None): Choose the parameter that will be shown as the size of the marks
     """
     if color_dict is None:
-        # Fallback if no dict is provided, though usually passed in
         color_dict = {}
+
+    fig_path = _resolve_figure_path(figures_dir, 'plot_hybrid_density',
+                                    x=x_prop, y=y_outcome)
+    if not force_recompute and try_load_cached(fig_path):
+        return
 
     plt.figure(figsize=(11, 8.5))
     
@@ -559,6 +599,9 @@ def plot_hybrid_density(df,
     # Manually adjust the layout so the legend is not cropped
     plt.subplots_adjust(right=0.75)
 
+    if fig_path is not None:
+        plt.savefig(fig_path, bbox_inches='tight', dpi=150)
+        print(f"[cache] Saved: {fig_path.name}")
     plt.show()
 
 
@@ -570,6 +613,8 @@ def plot_two_property_effect(
     color_dict=None,
     highlight_categories=None,
     cmap='viridis',
+    figures_dir=None,
+    force_recompute=False,
 ):
     """
     Shows the combined effect of two graph properties on an outcome.
@@ -588,6 +633,11 @@ def plot_two_property_effect(
     """
     if color_dict is None:
         color_dict = {}
+
+    fig_path = _resolve_figure_path(figures_dir, 'plot_two_property_effect',
+                                    x=x_prop, y=y_prop, outcome=outcome)
+    if not force_recompute and try_load_cached(fig_path):
+        return
 
     cols = [x_prop, y_prop, outcome, 'category']
     plot_df = df[cols].replace([np.inf, -np.inf], np.nan).dropna()
@@ -658,6 +708,9 @@ def plot_two_property_effect(
         ax.legend(title="Category", bbox_to_anchor=(1.18, 1), loc='upper left')
 
     plt.tight_layout()
+    if fig_path is not None:
+        plt.savefig(fig_path, bbox_inches='tight', dpi=150)
+        print(f"[cache] Saved: {fig_path.name}")
     plt.show()
 
 
@@ -671,6 +724,8 @@ def plot_two_property_effect_hexbin(
     cmap='viridis',
     gridsize=25,
     reduce_C_function=np.mean,
+    figures_dir=None,
+    force_recompute=False,
 ):
     """
     Hexbin version of plot_two_property_effect.
@@ -693,6 +748,11 @@ def plot_two_property_effect_hexbin(
     """
     if color_dict is None:
         color_dict = {}
+
+    fig_path = _resolve_figure_path(figures_dir, 'plot_two_property_effect_hexbin',
+                                    x=x_prop, y=y_prop, outcome=outcome)
+    if not force_recompute and try_load_cached(fig_path):
+        return
 
     cols = [x_prop, y_prop, outcome, 'category']
     plot_df = df[cols].replace([np.inf, -np.inf], np.nan).dropna()
@@ -768,4 +828,7 @@ def plot_two_property_effect_hexbin(
         ax.legend(title="Category", bbox_to_anchor=(1.18, 1), loc='upper left')
 
     plt.tight_layout()
+    if fig_path is not None:
+        plt.savefig(fig_path, bbox_inches='tight', dpi=150)
+        print(f"[cache] Saved: {fig_path.name}")
     plt.show()
