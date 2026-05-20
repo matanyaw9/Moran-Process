@@ -476,7 +476,7 @@ def plot_hybrid_density(df,
         zorder=2
     )
 
-    # --- NEW: Highlight Specific Categories ---
+    # --- Highlight Specific Categories ---
     if highlight_categories:
         # Filter only the categories you want to pop out
         highlight_df = plot_df[plot_df['category'].isin(highlight_categories)]
@@ -555,8 +555,217 @@ def plot_hybrid_density(df,
     )
 
     plt.grid(True, linestyle='--', alpha=0.4)
-    
+
     # Manually adjust the layout so the legend is not cropped
-    plt.subplots_adjust(right=0.75) 
-    
+    plt.subplots_adjust(right=0.75)
+
+    plt.show()
+
+
+def plot_two_property_effect(
+    df,
+    x_prop,
+    y_prop,
+    outcome='mean_steps',
+    color_dict=None,
+    highlight_categories=None,
+    cmap='viridis',
+):
+    """
+    Shows the combined effect of two graph properties on an outcome.
+
+    Each point is one graph; position encodes (x_prop, y_prop); color encodes outcome.
+    Animal / special categories can be highlighted with black outlines.
+
+    Args:
+        df: graph-statistics DataFrame (one row per graph per r value)
+        x_prop: column name for the x-axis structural property
+        y_prop: column name for the y-axis structural property
+        outcome: column name for the outcome to color by (default: 'mean_steps')
+        color_dict: category -> color mapping (used only for highlight outlines)
+        highlight_categories: list of category names to draw with black outlines on top
+        cmap: matplotlib colormap name for the outcome gradient
+    """
+    if color_dict is None:
+        color_dict = {}
+
+    cols = [x_prop, y_prop, outcome, 'category']
+    plot_df = df[cols].replace([np.inf, -np.inf], np.nan).dropna()
+
+    if plot_df.empty:
+        print(f"No valid data for ({x_prop}, {y_prop}) -> {outcome}")
+        return
+
+    fig, ax = plt.subplots(figsize=(10, 8))
+
+    norm = mcolors.Normalize(vmin=plot_df[outcome].min(), vmax=plot_df[outcome].max())
+
+    sc = ax.scatter(
+        plot_df[x_prop], plot_df[y_prop],
+        c=plot_df[outcome], norm=norm, cmap=cmap,
+        alpha=0.6, s=40, linewidths=0, zorder=2,
+    )
+    fig.colorbar(sc, ax=ax, label=outcome.replace("_", " ").title())
+
+    # --- Highlight specific categories on top ---
+    if highlight_categories:
+        hl_df = plot_df[plot_df['category'].isin(highlight_categories)]
+        if not hl_df.empty:
+            for cat, grp in hl_df.groupby('category'):
+                ax.scatter(
+                    grp[x_prop], grp[y_prop],
+                    c=grp[outcome], norm=norm, cmap=cmap,
+                    s=120, linewidths=1.8,
+                    edgecolors=color_dict.get(cat, 'black'),
+                    zorder=3, label=cat,
+                )
+
+    # --- Correlations text ---
+    def _safe_corr(a, b):
+        mask = pd.notna(a) & pd.notna(b)
+        if mask.sum() > 1 and a[mask].std() > 0 and b[mask].std() > 0:
+            return a[mask].corr(b[mask])
+        return np.nan
+
+    corr_x = _safe_corr(plot_df[x_prop], plot_df[outcome])
+    corr_y = _safe_corr(plot_df[y_prop], plot_df[outcome])
+    corr_text = (
+        f"Pearson r with {outcome.replace('_', ' ')}\n"
+        + "-" * 30 + "\n"
+        + f"{x_prop}: {corr_x:.3f}\n"
+        + f"{y_prop}: {corr_y:.3f}"
+    )
+    ax.text(
+        0.03, 0.97, corr_text,
+        transform=ax.transAxes, fontsize=9,
+        verticalalignment='top',
+        bbox=dict(boxstyle="round,pad=0.4", facecolor="white", alpha=0.9, edgecolor="lightgray"),
+        zorder=5,
+    )
+
+    # --- Labels & formatting ---
+    outcome_label = outcome.replace("_", " ").title()
+    ax.set_xlabel(x_prop.replace("_", " ").title(), fontsize=12)
+    ax.set_ylabel(y_prop.replace("_", " ").title(), fontsize=12)
+    ax.set_title(
+        f"Combined effect of {x_prop.replace('_', ' ').title()} & "
+        f"{y_prop.replace('_', ' ').title()}\non {outcome_label}",
+        fontsize=13,
+    )
+    ax.grid(True, linestyle='--', alpha=0.4)
+
+    if highlight_categories:
+        ax.legend(title="Category", bbox_to_anchor=(1.18, 1), loc='upper left')
+
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_two_property_effect_hexbin(
+    df,
+    x_prop,
+    y_prop,
+    outcome='mean_steps',
+    color_dict=None,
+    highlight_categories=None,
+    cmap='viridis',
+    gridsize=25,
+    reduce_C_function=np.mean,
+):
+    """
+    Hexbin version of plot_two_property_effect.
+
+    Each hex cell aggregates the outcome for all graphs whose (x_prop, y_prop)
+    falls inside it, using reduce_C_function (default: np.mean). Useful when
+    points are dense and the population distribution matters more than individual
+    graph identity.
+
+    Args:
+        df: graph-statistics DataFrame (one row per graph per r value)
+        x_prop: column name for the x-axis structural property
+        y_prop: column name for the y-axis structural property
+        outcome: column name for the outcome to color by (default: 'mean_steps')
+        color_dict: category -> color mapping (used for highlight outlines)
+        highlight_categories: list of category names to draw as scatter on top
+        cmap: matplotlib colormap name for the outcome gradient
+        gridsize: number of hexagons across the x-axis (higher = finer grid)
+        reduce_C_function: aggregation applied per bin (np.mean, np.median, etc.)
+    """
+    if color_dict is None:
+        color_dict = {}
+
+    cols = [x_prop, y_prop, outcome, 'category']
+    plot_df = df[cols].replace([np.inf, -np.inf], np.nan).dropna()
+
+    if plot_df.empty:
+        print(f"No valid data for ({x_prop}, {y_prop}) -> {outcome}")
+        return
+
+    fig, ax = plt.subplots(figsize=(10, 8))
+
+    hb = ax.hexbin(
+        plot_df[x_prop], plot_df[y_prop],
+        C=plot_df[outcome],
+        gridsize=gridsize,
+        cmap=cmap,
+        reduce_C_function=reduce_C_function,
+        mincnt=1,
+        linewidths=0.2,
+    )
+    fig.colorbar(hb, ax=ax, label=outcome.replace("_", " ").title())
+
+    # --- Highlight specific categories on top ---
+    norm = mcolors.Normalize(vmin=plot_df[outcome].min(), vmax=plot_df[outcome].max())
+    if highlight_categories:
+        hl_df = plot_df[plot_df['category'].isin(highlight_categories)]
+        if not hl_df.empty:
+            for cat, grp in hl_df.groupby('category'):
+                ax.scatter(
+                    grp[x_prop], grp[y_prop],
+                    c=grp[outcome], norm=norm, cmap=cmap,
+                    s=120, linewidths=1.8,
+                    edgecolors=color_dict.get(cat, 'black'),
+                    zorder=3, label=cat,
+                )
+
+    # --- Correlations text ---
+    def _safe_corr(a, b):
+        mask = pd.notna(a) & pd.notna(b)
+        if mask.sum() > 1 and a[mask].std() > 0 and b[mask].std() > 0:
+            return a[mask].corr(b[mask])
+        return np.nan
+
+    corr_x = _safe_corr(plot_df[x_prop], plot_df[outcome])
+    corr_y = _safe_corr(plot_df[y_prop], plot_df[outcome])
+    reduce_name = getattr(reduce_C_function, '__name__', str(reduce_C_function))
+    corr_text = (
+        f"Pearson r with {outcome.replace('_', ' ')}\n"
+        + "-" * 30 + "\n"
+        + f"{x_prop}: {corr_x:.3f}\n"
+        + f"{y_prop}: {corr_y:.3f}"
+    )
+    ax.text(
+        0.03, 0.97, corr_text,
+        transform=ax.transAxes, fontsize=9,
+        verticalalignment='top',
+        bbox=dict(boxstyle="round,pad=0.4", facecolor="white", alpha=0.9, edgecolor="lightgray"),
+        zorder=5,
+    )
+
+    # --- Labels & formatting ---
+    outcome_label = outcome.replace("_", " ").title()
+    ax.set_xlabel(x_prop.replace("_", " ").title(), fontsize=12)
+    ax.set_ylabel(y_prop.replace("_", " ").title(), fontsize=12)
+    ax.set_title(
+        f"Combined effect of {x_prop.replace('_', ' ').title()} & "
+        f"{y_prop.replace('_', ' ').title()}\non {outcome_label}"
+        f" (hex={reduce_name})",
+        fontsize=13,
+    )
+    ax.grid(True, linestyle='--', alpha=0.4)
+
+    if highlight_categories:
+        ax.legend(title="Category", bbox_to_anchor=(1.18, 1), loc='upper left')
+
+    plt.tight_layout()
     plt.show()

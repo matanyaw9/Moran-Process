@@ -25,7 +25,7 @@ alysis_utils.py`, (b) a `cli.py`, (c) a `merge_batches` rewrite. After the reorg
 ## 1. Research / science TODOs (from PROJECT_OVERVIEW.md)
 
 - [ ] Count steps to **extinction**, not just steps to fixation (currently both end the run; only fixation time is recorded distinctly).
-- [ ] Make analysis pipeline scale to >10 GB batches (the notebooks `pd.concat` everything in memory today).
+- [x] Make analysis pipeline scale to >10 GB batches (the notebooks `pd.concat` everything in memory today).
 - [ ] Speed up the simulation. Options: C++ rewrite of the Moran step; Cython/Numba on `process_run.step()`; multiprocessing for `n_repeats`. Pick one and prototype.
 - [ ] Multi-color / multi-type Moran (more than 2 species). Implies abstracting `ProcessRun` (your task list already flagged this).
 - [ ] Explore a GNN approach (Yael's suggestion). Decide first: train on fixed-size N=31 graphs, or variable-size?
