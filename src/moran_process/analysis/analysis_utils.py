@@ -350,6 +350,7 @@ def plot_steps_violin(
     figures_dir=None,
     force_recompute=False,
     batch_name=None,
+    fig_title=None,
 ):
     """Violin plot of steps-to-fixation distribution, one violin per graph category.
 
@@ -407,10 +408,11 @@ def plot_steps_violin(
         linewidth=1.2,
         ax=ax,
     )
+    fig_title = fig_title or f'Distribution of Steps to Fixation by Category{r_suffix}'
     plt.setp(ax.get_xticklabels(), rotation=45, ha='right', fontsize=10)
     ax.set_xlabel('Category', fontsize=13)
     ax.set_ylabel('Steps to Fixation', fontsize=13)
-    ax.set_title(f'Distribution of Steps to Fixation by Category{r_suffix}', fontsize=14)
+    ax.set_title(fig_title, fontsize=14)
     if batch_name:
         _stamp_batch(fig, batch_name)
     fig.tight_layout()
