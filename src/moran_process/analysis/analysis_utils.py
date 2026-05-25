@@ -15,9 +15,11 @@ from pathlib import Path
 import matplotlib.colors as mcolors
 import seaborn as sns
 import hashlib
+import json
+from datetime import datetime
 
 
-COLOR_DICT = dict({
+CATEGORY_COLOR_DICT = dict({
     'Random': 'lightgray',     
     'Avian': "#2DB806",       
     'Fish': '#1f77b4',        
@@ -102,6 +104,44 @@ def try_load_cached(path) -> bool:
         except ImportError:
             pass
     return False
+
+
+def load_batch_info(batch_dir) -> dict:
+    """Read batch_info.json from batch_dir; returns name-only fallback if not found."""
+    path = Path(batch_dir) / "batch_info.json"
+    if path.exists():
+        with open(path) as f:
+            return json.load(f)
+    return {"name": Path(batch_dir).name, "description": ""}
+
+
+def create_batch_info(batch_dir, name, description, graph_types=None, r_values=None,
+                      n_repeats=None, n_nodes_range=None, notes="") -> dict:
+    """Write batch_info.json in batch_dir. Safe to re-run -- overwrites existing file."""
+    info = {
+        "name": name,
+        "description": description,
+        "date_created": datetime.now().strftime("%Y-%m-%d"),
+        "graph_types": graph_types or [],
+        "r_values": r_values or [],
+        "n_repeats": n_repeats,
+        "n_nodes_range": n_nodes_range or {},
+        "notes": notes,
+    }
+    path = Path(batch_dir) / "batch_info.json"
+    with open(path, "w") as f:
+        json.dump(info, f, indent=2)
+    print(f"[batch_info] Written: {path}")
+    return info
+
+
+def stamp_batch(fig, batch_name: str) -> None:
+    """Add a source label to the bottom-right corner of the figure."""
+    fig.text(
+        0.99, 0.01, f"source: {batch_name}",
+        fontsize=8, color="#666666", ha="right", va="bottom",
+        style="italic", transform=fig.transFigure,
+    )
 
 
 def get_data_path():
@@ -292,8 +332,130 @@ def aggregate_results_no_load(batch_dir, delete_temp=False, output_file=None):
     # Return path instead of loading into memory
     return output_file
 
-def plot_property_effect(df, x_prop, y_outcome='prob_fixation', color_dict=COLOR_DICT,
-                         figures_dir=None, force_recompute=False):
+
+def plot_steps_violin(
+    results_csv_path,
+    df_graphs,
+    color_dict=None,
+    categories=None,
+    figures_dir=None,
+    force_recompute=False,
+    batch_name=None,
+):
+    """
+    Violin plot of steps-to-fixation distribution, one violin per graph category.
+
+    Uses polars lazy scan so only three columns are pulled from the (potentially huge) CSV.
+    categories controls the x-axis order; defaults to sorted unique values in df_graphs.
+    """
+    import polars as pl
+
+    if color_dict is None:
+        color_dict = {}
+
+    fig_path = _resolve_figure_path(figures_dir, 'plot_steps_violin')
+    if not force_recompute and try_load_cached(fig_path):
+        return
+
+    if categories is None:
+        categories = sorted(df_graphs['category'].dropna().unique().tolist())
+
+    merged_raw = (
+        pl.scan_csv(results_csv_path)
+        .select(['wl_hash', 'steps', 'fixation'])
+        .with_columns(
+            pl.when(pl.col('fixation')).then(pl.col('steps')).otherwise(None).alias('steps_success')
+        )
+        .join(
+            pl.from_pandas(df_graphs[['wl_hash', 'category']]).lazy(),
+            on='wl_hash',
+            how='left',
+        )
+        .collect()
+        .to_pandas()
+    )
+
+    palette = {cat: color_dict[cat] for cat in categories if cat in color_dict}
+
+    fig, ax = plt.subplots(figsize=(max(12, len(categories) * 1.1), 7))
+    sns.violinplot(
+        data=merged_raw,
+        x='category',
+        y='steps_success',
+        order=categories,
+        palette=palette,
+        inner='box',
+        linewidth=1.2,
+        ax=ax,
+    )
+    plt.setp(ax.get_xticklabels(), rotation=45, ha='right', fontsize=10)
+    ax.set_xlabel('Category', fontsize=13)
+    ax.set_ylabel('Steps to Fixation', fontsize=13)
+    ax.set_title('Distribution of Steps to Fixation by Category', fontsize=14)
+    if batch_name:
+        stamp_batch(fig, batch_name)
+    fig.tight_layout()
+    if fig_path is not None:
+        fig.savefig(fig_path, bbox_inches='tight', dpi=150)
+        print(f"[cache] Saved: {fig_path.name}")
+    plt.show()
+
+
+def plot_steps_histogram(
+    df,
+    metric='mean_steps',
+    category=None,
+    color_dict=None,
+    bins=50,
+    figures_dir=None,
+    force_recompute=False,
+    batch_name=None,
+):
+    """
+    Histogram of a steps/outcome metric, optionally filtered to one graph category.
+
+    metric: column in df to histogram (default: 'mean_steps')
+    category: if given, restricts to rows where df['category'] == category; None = all graphs
+    color_dict: category -> color mapping; uses the category's color for the bars when available
+    """
+    if color_dict is None:
+        color_dict = {}
+
+    cat_key = category or 'all'
+    fig_path = _resolve_figure_path(figures_dir, 'plot_steps_histogram',
+                                    metric=metric, category=cat_key)
+    if not force_recompute and try_load_cached(fig_path):
+        return
+
+    plot_df = df if category is None else df.loc[df['category'] == category]
+    data = plot_df[metric].dropna()
+
+    if data.empty:
+        print(f"[plot_steps_histogram] No data for metric={metric!r}, category={category!r}")
+        return
+
+    label = category or 'All Graphs'
+    metric_label = metric.replace('_', ' ').title()
+    bar_color = color_dict.get(category, '#4c72b0') if category else '#4c72b0'
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.hist(data, bins=bins, color=bar_color, edgecolor='black', alpha=0.7)
+    ax.set_xlabel(metric_label, fontsize=12)
+    ax.set_ylabel('Frequency', fontsize=12)
+    ax.set_title(f'Distribution of {metric_label} — {label}', fontsize=14)
+    ax.grid(axis='y', alpha=0.3)
+
+    if batch_name:
+        stamp_batch(fig, batch_name)
+    fig.tight_layout()
+    if fig_path is not None:
+        fig.savefig(fig_path, bbox_inches='tight', dpi=150)
+        print(f"[cache] Saved: {fig_path.name}")
+    plt.show()
+
+
+def plot_property_effect(df, x_prop, y_outcome='prob_fixation', color_dict=CATEGORY_COLOR_DICT,
+                         figures_dir=None, force_recompute=False, batch_name=None):
     """
     Plots a specific graph property against an evolutionary outcome.
     Faceted by 'r' to show how the effect varies with selection strength.
@@ -331,6 +493,8 @@ def plot_property_effect(df, x_prop, y_outcome='prob_fixation', color_dict=COLOR
     # Legend handling: Place outside
     plt.legend(bbox_to_anchor=(1.02, 1), loc='upper left', borderaxespad=0.)
 
+    if batch_name:
+        stamp_batch(plt.gcf(), batch_name)
     plt.tight_layout()
     if fig_path is not None:
         plt.savefig(fig_path, bbox_inches='tight', dpi=150)
@@ -349,6 +513,7 @@ def plot_hybrid_density(df,
                         size_property=None,
                         figures_dir=None,
                         force_recompute=False,
+                        batch_name=None,
                         ):
     """
     Hybrid Plot with Correlation & Description Patches.
@@ -599,6 +764,8 @@ def plot_hybrid_density(df,
     # Manually adjust the layout so the legend is not cropped
     plt.subplots_adjust(right=0.75)
 
+    if batch_name:
+        stamp_batch(plt.gcf(), batch_name)
     if fig_path is not None:
         plt.savefig(fig_path, bbox_inches='tight', dpi=150)
         print(f"[cache] Saved: {fig_path.name}")
@@ -615,6 +782,7 @@ def plot_outcome_vs_property(
     size_property=None,
     figures_dir=None,
     force_recompute=False,
+    batch_name=None,
 ):
     """
     Improved replacement for plot_hybrid_density.
@@ -811,6 +979,8 @@ def plot_outcome_vs_property(
     ax.legend(handles=handles, labels=labels_leg,
               bbox_to_anchor=(1.02, 1), loc='upper left', borderaxespad=0., fontsize=9)
 
+    if batch_name:
+        stamp_batch(fig, batch_name)
     fig.tight_layout()
     if fig_path is not None:
         fig.savefig(fig_path, bbox_inches='tight', dpi=150)
@@ -828,6 +998,7 @@ def plot_two_property_effect(
     cmap='viridis',
     figures_dir=None,
     force_recompute=False,
+    batch_name=None,
 ):
     """
     Shows the combined effect of two graph properties on an outcome.
@@ -920,6 +1091,8 @@ def plot_two_property_effect(
     if highlight_categories:
         ax.legend(title="Category", bbox_to_anchor=(1.18, 1), loc='upper left')
 
+    if batch_name:
+        stamp_batch(fig, batch_name)
     plt.tight_layout()
     if fig_path is not None:
         plt.savefig(fig_path, bbox_inches='tight', dpi=150)
@@ -939,6 +1112,7 @@ def plot_two_property_effect_hexbin(
     reduce_C_function=np.mean,
     figures_dir=None,
     force_recompute=False,
+    batch_name=None,
 ):
     """
     Hexbin version of plot_two_property_effect.
@@ -1040,6 +1214,8 @@ def plot_two_property_effect_hexbin(
     if highlight_categories:
         ax.legend(title="Category", bbox_to_anchor=(1.18, 1), loc='upper left')
 
+    if batch_name:
+        stamp_batch(fig, batch_name)
     plt.tight_layout()
     if fig_path is not None:
         plt.savefig(fig_path, bbox_inches='tight', dpi=150)
