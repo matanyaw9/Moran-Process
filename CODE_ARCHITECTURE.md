@@ -1,20 +1,23 @@
 # Code Architecture
 
-All code lives in `Moran-Process/`. Run with `uv run <script.py>` or activate `.venv`.
+Code is an installable package under `src/moran_process/`. Run modules with
+`uv run python -m moran_process.<subpackage>.<module>` (the cluster sets `PYTHONPATH=src`).
+Public API is re-exported from `moran_process/__init__.py`: `PopulationGraph`, `GraphZoo`,
+`ProcessRun`, `ProcessLab`, `GRAPH_PROPS`, and the analysis constants.
 
 ---
 
-## Class: `PopulationGraph` (`population_graph.py`)
+## Class: `PopulationGraph` (`core/population_graph.py`)
 
-A wrapper around a `networkx.Graph`. Central object for graph topology and the graph database.
+A wrapper around a `networkx.Graph`. Central object for graph topology and properties.
 
 ### Constructor
 ```python
-PopulationGraph(graph: nx.Graph, name: str, category: str, params: dict|None, register_in_graph_props=True)
+PopulationGraph(graph: nx.Graph, name: str, category: str, params: dict|None = None, labeled_edges: bool = False)
 ```
-- `name`: e.g., `"mammalian_b2_d4"`, `"avian_r4_l7"`, `"random_n31_e34_5"`
+- `name`: e.g., `"mammalian_b2_d4"`, `"avian_r4_l7"`, `"random_n31_e34_s42"`
 - `category`: `"Mammalian"`, `"Avian"`, `"Fish"`, `"Complete"`, `"Cycle"`, `"Random"`
-- `register_in_graph_props=True`: auto-registers in `simulation_data/graph_database.csv`
+- Construction computes `wl_hash` and (optionally) edge labels. It does NOT write any database.
 
 ### Factory Methods (use these to create graphs)
 ```python
@@ -28,7 +31,7 @@ PopulationGraph.random_connected_graph(n_nodes=31, n_edges=34, seed=42)
 
 ### Key Attributes
 - `self.graph`: networkx Graph object
-- `self.N`: number of nodes
+- `self.n_nodes`: number of nodes (also `number_of_nodes()`)
 - `self.wl_hash`: Weisfeiler-Lehman graph hash (str) — used for deduplication
 - `self.is_directed`: bool
 - `self.name`, `self.category`, `self.params`
