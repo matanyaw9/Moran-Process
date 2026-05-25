@@ -112,7 +112,18 @@ def load_batch_info(batch_dir) -> dict:
 
 def create_batch_info(batch_dir, name, description, graph_types=None, r_values=None,
                       n_repeats=None, n_nodes_range=None, notes="") -> dict:
-    """Write batch_info.json in batch_dir. Safe to re-run -- overwrites existing file."""
+    """Write batch_info.json in batch_dir. Safe to re-run -- overwrites existing file.
+
+    Args:
+        batch_dir: path to the batch directory (must already exist)
+        name: short human-readable batch identifier, e.g. 'MergedBatch06'
+        description: one-sentence summary of what this batch tests
+        graph_types: list of graph category names present, e.g. ['Mammalian', 'Random']
+        r_values: list of selection coefficients used, e.g. [1.1, 1.5, 2.0]
+        n_repeats: number of Moran process runs per graph per r value
+        n_nodes_range: dict describing node-count range, e.g. {'min': 10, 'max': 100}
+        notes: free-text field for caveats or TODOs
+    """
     info = {
         "name": name,
         "description": description,
@@ -130,6 +141,83 @@ def create_batch_info(batch_dir, name, description, graph_types=None, r_values=N
     return info
 
 
+def plot_batch_info_card(
+    batch_info,
+    figures_dir=None,
+    force_recompute=False,
+):
+    """Generate a standalone title-card figure for a batch, suitable as a first/catalog slide.
+
+    Args:
+        batch_info: dict returned by load_batch_info() or create_batch_info()
+        figures_dir: directory where PNG is saved; None = display only, no save
+        force_recompute: skip cache and regenerate even if PNG already exists
+    """
+    fig_path = _resolve_figure_path(figures_dir, 'batch_info_card')
+    if not force_recompute and try_load_cached(fig_path):
+        return
+
+    name        = batch_info.get('name', 'Unknown Batch')
+    description = batch_info.get('description', '')
+    date_str    = batch_info.get('date_created', '')
+    graph_types = batch_info.get('graph_types', [])
+    r_values    = batch_info.get('r_values', [])
+    n_repeats   = batch_info.get('n_repeats')
+    n_nodes_rng = batch_info.get('n_nodes_range', {})
+    notes       = batch_info.get('notes', '')
+
+    fig, ax = plt.subplots(figsize=(12, 7))
+    ax.axis('off')
+    fig.patch.set_facecolor('white')
+
+    # Title
+    ax.text(0.05, 0.93, name, transform=ax.transAxes,
+            fontsize=22, fontweight='bold', va='top', ha='left', color='#222222')
+
+    # Horizontal rule under title
+    ax.plot([0.04, 0.96], [0.84, 0.84], transform=ax.transAxes,
+            color='#cccccc', linewidth=1.2, solid_capstyle='butt')
+
+    # Description
+    if description:
+        wrapped = textwrap.fill(description, width=90)
+        ax.text(0.05, 0.80, wrapped, transform=ax.transAxes,
+                fontsize=12, va='top', ha='left', color='#333333',
+                style='italic', linespacing=1.5)
+
+    # Metadata rows
+    def _meta_row(label, value, y):
+        ax.text(0.05, y, label, transform=ax.transAxes,
+                fontsize=10, va='top', ha='left', fontweight='bold', color='#555555')
+        ax.text(0.22, y, value, transform=ax.transAxes,
+                fontsize=10, va='top', ha='left', color='#333333')
+
+    y = 0.58
+    row_h = 0.09
+    if date_str:
+        _meta_row('Date:', date_str, y);  y -= row_h
+    if graph_types:
+        _meta_row('Graph types:', textwrap.fill(', '.join(graph_types), width=70), y);  y -= row_h
+    if r_values:
+        _meta_row('r values:', ', '.join(str(r) for r in r_values), y);  y -= row_h
+    if n_repeats is not None:
+        _meta_row('Repeats:', f'{int(n_repeats):,}', y);  y -= row_h
+    if n_nodes_rng:
+        _meta_row('Node range:', ', '.join(f'{k}: {v}' for k, v in n_nodes_rng.items()), y)
+
+    # Notes (bottom, muted)
+    if notes:
+        ax.text(0.05, 0.08, textwrap.fill(f'Notes: {notes}', width=100),
+                transform=ax.transAxes,
+                fontsize=9, va='top', ha='left', color='#999999', style='italic')
+
+    fig.tight_layout()
+    if fig_path is not None:
+        fig.savefig(fig_path, bbox_inches='tight', dpi=150, facecolor='white')
+        print(f"[cache] Saved: {fig_path.name}")
+    plt.show()
+
+
 def _stamp_batch(fig, batch_name: str) -> None:
     """Add a source label to the bottom-right corner of the figure."""
     fig.text(
@@ -140,9 +228,12 @@ def _stamp_batch(fig, batch_name: str) -> None:
 
 
 def generate_robust_color_dict(df, existing_colors, default_palette='husl'):
-    """
-    Generates a color dictionary ensuring all categories have a unique color.
-    Uses existing colors where available, and generates distinct colors for new ones.
+    """Build a category -> color dict covering every category in df['category'].
+
+    Args:
+        df: DataFrame with a 'category' column
+        existing_colors: base mapping (e.g. CATEGORY_COLOR_DICT); known categories keep their color
+        default_palette: seaborn palette name used to generate colors for unknown categories
     """
     # 1. Get unique, non-null categories
     categories = sorted(df['category'].dropna().unique().tolist())
@@ -183,11 +274,15 @@ def generate_robust_color_dict(df, existing_colors, default_palette='husl'):
 
 
 def aggregate_results_no_load(batch_dir, delete_temp=False, output_file=None):
-    """
-    Version that doesn't load the result into memory - just creates the file.
-    Use this for very large datasets where you don't need the DataFrame immediately.
-    
-    Returns the path to the output file instead of a DataFrame.
+    """Concatenate per-job CSVs from batch_dir/tmp/results/ into a single file without loading it.
+
+    Args:
+        batch_dir: path to the batch directory containing tmp/results/result_job_*.csv
+        delete_temp: if True, removes batch_dir/tmp/ after successful aggregation
+        output_file: destination path; defaults to batch_dir/full_results.csv
+
+    Returns:
+        Path to the output CSV, or None if no result files were found.
     """
     batch_path = Path(batch_dir)
     if not output_file:
@@ -256,11 +351,16 @@ def plot_steps_violin(
     force_recompute=False,
     batch_name=None,
 ):
-    """
-    Violin plot of steps-to-fixation distribution, one violin per graph category.
+    """Violin plot of steps-to-fixation distribution, one violin per graph category.
 
-    Uses polars lazy scan so only three columns are pulled from the (potentially huge) CSV.
-    categories controls the x-axis order; defaults to sorted unique values in df_graphs.
+    Args:
+        results_csv_path: path to the raw full_results.csv (can be 100M+ rows; read lazily)
+        df_graphs: DataFrame with at least 'wl_hash' and 'category' columns
+        color_dict: category -> hex color mapping for violin fills
+        categories: x-axis order; defaults to sorted unique values in df_graphs['category']
+        figures_dir: directory where PNG is saved; None = display only, no save
+        force_recompute: skip cache and regenerate even if PNG already exists
+        batch_name: batch label stamped in the bottom-right corner of the figure
     """
     import polars as pl
 
@@ -274,9 +374,11 @@ def plot_steps_violin(
     if categories is None:
         categories = sorted(df_graphs['category'].dropna().unique().tolist())
 
+    _scanner = pl.scan_csv(results_csv_path)
+    _select = ['wl_hash', 'steps', 'fixation'] + (['r'] if 'r' in _scanner.columns else [])
     merged_raw = (
-        pl.scan_csv(results_csv_path)
-        .select(['wl_hash', 'steps', 'fixation'])
+        _scanner
+        .select(_select)
         .with_columns(
             pl.when(pl.col('fixation')).then(pl.col('steps')).otherwise(None).alias('steps_success')
         )
@@ -288,6 +390,9 @@ def plot_steps_violin(
         .collect()
         .to_pandas()
     )
+
+    r_vals = sorted(merged_raw['r'].dropna().unique().tolist()) if 'r' in merged_raw.columns else []
+    r_suffix = f"  (r={r_vals[0]})" if len(r_vals) == 1 else ""
 
     palette = {cat: color_dict[cat] for cat in categories if cat in color_dict}
 
@@ -305,7 +410,7 @@ def plot_steps_violin(
     plt.setp(ax.get_xticklabels(), rotation=45, ha='right', fontsize=10)
     ax.set_xlabel('Category', fontsize=13)
     ax.set_ylabel('Steps to Fixation', fontsize=13)
-    ax.set_title('Distribution of Steps to Fixation by Category', fontsize=14)
+    ax.set_title(f'Distribution of Steps to Fixation by Category{r_suffix}', fontsize=14)
     if batch_name:
         _stamp_batch(fig, batch_name)
     fig.tight_layout()
@@ -325,15 +430,23 @@ def plot_steps_histogram(
     force_recompute=False,
     batch_name=None,
 ):
-    """
-    Histogram of a steps/outcome metric, optionally filtered to one graph category.
+    """Histogram of a steps/outcome metric, optionally filtered to one graph category.
 
-    metric: column in df to histogram (default: 'mean_steps')
-    category: if given, restricts to rows where df['category'] == category; None = all graphs
-    color_dict: category -> color mapping; uses the category's color for the bars when available
+    Args:
+        df: aggregated graph-statistics DataFrame (output of the groupby/merge block)
+        metric: column to histogram, e.g. 'mean_steps', 'prob_fixation'
+        category: if given, restricts to df['category'] == category; None plots all graphs
+        color_dict: category -> hex color; the category's color is used for the bars when set
+        bins: number of histogram bins
+        figures_dir: directory where PNG is saved; None = display only, no save
+        force_recompute: skip cache and regenerate even if PNG already exists
+        batch_name: batch label stamped in the bottom-right corner of the figure
     """
     if color_dict is None:
         color_dict = {}
+
+    r_vals = sorted(df['r'].dropna().unique().tolist()) if 'r' in df.columns else []
+    r_suffix = f"  (r={r_vals[0]})" if len(r_vals) == 1 else ""
 
     cat_key = category or 'all'
     fig_path = _resolve_figure_path(figures_dir, 'plot_steps_histogram',
@@ -356,7 +469,7 @@ def plot_steps_histogram(
     ax.hist(data, bins=bins, color=bar_color, edgecolor='black', alpha=0.7)
     ax.set_xlabel(metric_label, fontsize=12)
     ax.set_ylabel('Frequency', fontsize=12)
-    ax.set_title(f'Distribution of {metric_label} — {label}', fontsize=14)
+    ax.set_title(f'Distribution of {metric_label} — {label}{r_suffix}', fontsize=14)
     ax.grid(axis='y', alpha=0.3)
 
     if batch_name:
@@ -380,18 +493,23 @@ def plot_outcome_vs_property(
     force_recompute=False,
     batch_name=None,
 ):
-    """
-    Improved replacement for plot_hybrid_density.
+    """Scatter plot of one graph property vs an evolutionary outcome, with auto-detected violins.
 
-    Fixes over the original:
-    - 1/N neutral line: draws y=1/x curve when x_prop='n_nodes'; draws axhline
-      only when N is homogeneous across graphs; silently omits it when N varies
-      widely (a flat line would be misleading).
-    - Auto-detects whether x is discrete enough to warrant violins -- no manual
-      with_violin flag needed.
-    - Vectorized jitter (numpy) instead of slow row-wise apply().
-    - Consistent fig/ax API throughout (no mixed plt.*/ax.* state).
-    - Single clean title; description embedded in x-axis label.
+    Violins are drawn automatically for discrete x values that have >= density_threshold points.
+    The 1/N neutral drift line is drawn as a curve when x_prop='n_nodes', as a flat line when
+    N is homogeneous (CV < 5%), and omitted when N varies widely.
+
+    Args:
+        df: aggregated graph-statistics DataFrame (one row per graph per r value)
+        x_prop: structural property column for the x-axis (e.g. 'n_nodes', 'avg_degree')
+        y_outcome: outcome column for the y-axis; 'prob_fixation' triggers neutral-line logic
+        color_dict: category -> hex color mapping
+        density_threshold: min points at an x position before a violin is drawn (default 50). If None, no violins will be drawn.
+        highlight_categories: list of categories drawn with black outlines on top of scatter
+        size_property: column name to encode as marker size; None = uniform size
+        figures_dir: directory where PNG is saved; None = display only, no save
+        force_recompute: skip cache and regenerate even if PNG already exists
+        batch_name: batch label stamped in the bottom-right corner of the figure
     """
     if color_dict is None:
         color_dict = {}
@@ -461,17 +579,30 @@ def plot_outcome_vs_property(
     fig, ax = plt.subplots(figsize=(9, 6.5))
 
     dense_x_values = set()
-    if is_discrete_x:
+    if is_discrete_x and density_threshold is not None:
         counts = valid_x.value_counts()
         dense_x_values = set(counts[counts >= density_threshold].index)
 
-        # Violin width: smallest gap between any two adjacent x positions
+        # Violin width: Smart proportional calculation
         all_x_sorted = sorted(valid_x.unique())
         if len(all_x_sorted) > 1:
-            violin_width = float(np.min(np.diff(all_x_sorted))) * 0.7
+            diffs = np.diff(all_x_sorted)
+            total_span = all_x_sorted[-1] - all_x_sorted[0]
+            if total_span == 0: 
+                total_span = 1.0 
+            
+            # Filter out tiny sub-gaps (threshold: 2% of total span)
+            min_valid_gap_threshold = total_span * 0.02 
+            valid_gaps = diffs[diffs > min_valid_gap_threshold]
+            
+            if len(valid_gaps) > 0:
+                dist_basis = np.min(valid_gaps)
+            else:
+                dist_basis = total_span * 0.1
+                
+            violin_width = dist_basis * 0.7 
         else:
             violin_width = 0.5
-        violin_width = max(0.01, violin_width)
 
         for x_val in dense_x_values:
             subset = plot_df.loc[plot_df['x_plot'] == x_val, y_outcome].dropna()
@@ -545,7 +676,8 @@ def plot_outcome_vs_property(
         ax.set_xticklabels(unique_cats)
 
     # --- 10. Titles & labels ---
-    ax.set_title(f'{xlabel_base}  →  {ylabel}', fontsize=13, pad=8)
+    r_suffix = f"  (r={r_values[0]})" if len(r_values) == 1 else ""
+    ax.set_title(f'{xlabel_base}  →  {ylabel}{r_suffix}', fontsize=13, pad=8)
     ax.set_xlabel(xlabel, fontsize=10)
     ax.set_ylabel(ylabel, fontsize=11)
     ax.grid(True, linestyle='--', alpha=0.4)
@@ -614,6 +746,9 @@ def plot_two_property_effect(
     if color_dict is None:
         color_dict = {}
 
+    r_vals = sorted(df['r'].dropna().unique().tolist()) if 'r' in df.columns else []
+    r_suffix = f"  (r={r_vals[0]})" if len(r_vals) == 1 else ""
+
     fig_path = _resolve_figure_path(figures_dir, 'plot_two_property_effect',
                                     x=x_prop, y=y_prop, outcome=outcome)
     if not force_recompute and try_load_cached(fig_path):
@@ -679,7 +814,7 @@ def plot_two_property_effect(
     ax.set_ylabel(y_prop.replace("_", " ").title(), fontsize=12)
     ax.set_title(
         f"Combined effect of {x_prop.replace('_', ' ').title()} & "
-        f"{y_prop.replace('_', ' ').title()}\non {outcome_label}",
+        f"{y_prop.replace('_', ' ').title()}\non {outcome_label}{r_suffix}",
         fontsize=13,
     )
     ax.grid(True, linestyle='--', alpha=0.4)
@@ -731,6 +866,9 @@ def plot_two_property_effect_hexbin(
     """
     if color_dict is None:
         color_dict = {}
+
+    r_vals = sorted(df['r'].dropna().unique().tolist()) if 'r' in df.columns else []
+    r_suffix = f"  (r={r_vals[0]})" if len(r_vals) == 1 else ""
 
     fig_path = _resolve_figure_path(figures_dir, 'plot_two_property_effect_hexbin',
                                     x=x_prop, y=y_prop, outcome=outcome)
@@ -802,7 +940,7 @@ def plot_two_property_effect_hexbin(
     ax.set_title(
         f"Combined effect of {x_prop.replace('_', ' ').title()} & "
         f"{y_prop.replace('_', ' ').title()}\non {outcome_label}"
-        f" (hex={reduce_name})",
+        f" (hex={reduce_name}){r_suffix}",
         fontsize=13,
     )
     ax.grid(True, linestyle='--', alpha=0.4)
