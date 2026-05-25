@@ -88,7 +88,6 @@ moran-process/
 ├── notebooks/                # analysis and design notebooks (run on a compute node)
 ├── graph_zoos/               # saved zoos (*.joblib), gitignored
 ├── simulation_data/          # batch outputs, gitignored; one subdir per batch
-├── tests/                    # AI-generated, UNTRUSTED, do not run
 └── src/moran_process/
     ├── __init__.py           # re-exports the public API (see below)
     ├── core/
@@ -368,6 +367,3 @@ uv sync                                              # install deps
 uv run python -m moran_process.pipeline.main --batch-name <name>   # submit a batch (HPC)
 # analysis: open notebooks/ via ijup on a compute node
 ```
-
-Do not run `pytest tests/`. Those tests are untrusted and outdated; new
-tests are to be written from scratch.

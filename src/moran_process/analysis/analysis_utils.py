@@ -1,19 +1,14 @@
 """
 Utility functions for analysis notebooks
 """
-import os
-import sys
 import pandas as pd
 import numpy as np
-import glob
 import matplotlib.pyplot as plt
 import seaborn as sns
 import shutil
 import textwrap
-from collections import defaultdict
 from pathlib import Path
 import matplotlib.colors as mcolors
-import seaborn as sns
 import hashlib
 import json
 from datetime import datetime
@@ -144,57 +139,6 @@ def _stamp_batch(fig, batch_name: str) -> None:
     )
 
 
-def get_data_path():
-    """
-    Get the correct path to the simulation_data directory.
-    Works from any subdirectory in the project.
-    """
-    current_dir = os.getcwd()
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    
-    # Try different possible locations
-    possible_paths = [
-        'simulation_data',           # From project root
-        '../simulation_data',        # From analysis/ or tests/
-        '../../simulation_data',     # From deeper subdirectories
-    ]
-    
-    # Also try relative to script location
-    script_parent = os.path.dirname(script_dir)  # Go up from analysis/
-    possible_paths.append(os.path.join(script_parent, 'simulation_data'))
-    
-    for path in possible_paths:
-        abs_path = os.path.abspath(path)
-        if os.path.exists(abs_path):
-            return path
-    
-    # If none found, default to ../simulation_data and let the error handling deal with it
-    return '../simulation_data'
-
-def load_experiment_data(csv_filename):
-    """
-    Load experiment data from the simulation_data directory.
-    
-    Args:
-        csv_filename (str): Name of the CSV file to load
-        
-    Returns:
-        pd.DataFrame: Loaded data, or empty DataFrame if file not found
-    """
-    data_dir = get_data_path()
-    file_path = os.path.join(data_dir, os.path.basename(csv_filename))
-    
-    try:
-        df = pd.read_csv(file_path)
-        print(f"✓ Loaded {csv_filename}: {df.shape}")
-        return df
-    except FileNotFoundError:
-        print(f"✗ Could not find {file_path}")
-        print(f"  Current directory: {os.getcwd()}")
-        print(f"  Looking for data in: {os.path.abspath(data_dir)}")
-        return pd.DataFrame()
-
-
 def generate_robust_color_dict(df, existing_colors, default_palette='husl'):
     """
     Generates a color dictionary ensuring all categories have a unique color.
@@ -236,36 +180,6 @@ def generate_robust_color_dict(df, existing_colors, default_palette='husl'):
                 final_color_dict[cat] = mcolors.to_hex(large_palette[color_idx])
                 
     return final_color_dict
-
-
-# TODO Not sure I want this function... 
-def load_all_data():
-    """
-    Load all common data files used in analysis.
-    
-    Returns:
-        dict: Dictionary with DataFrames for different data types
-    """
-    data = {}
-    
-    # Load graph database
-    data['graphs'] = load_experiment_data('graph_database.csv')
-    
-    # Load experiment results
-    data['respiratory'] = load_experiment_data('respiratory_runs.csv')
-    data['random_test'] = load_experiment_data('random_graphs_experiments_test.csv')
-    data['random_full'] = load_experiment_data('random_graphs_grand_experiments.csv')
-    
-    # Combine experiment data
-    experiment_dfs = [df for df in [data['respiratory'], data['random_test'], data['random_full']] if not df.empty]
-    if experiment_dfs:
-        data['all_experiments'] = pd.concat(experiment_dfs, ignore_index=True)
-        print(f"✓ Combined experiments: {data['all_experiments'].shape}")
-    else:
-        data['all_experiments'] = pd.DataFrame()
-        print("✗ No experiment data found")
-    
-    return data
 
 
 def aggregate_results_no_load(batch_dir, delete_temp=False, output_file=None):
@@ -454,324 +368,6 @@ def plot_steps_histogram(
     plt.show()
 
 
-def plot_property_effect(df, x_prop, y_outcome='prob_fixation', color_dict=CATEGORY_COLOR_DICT,
-                         figures_dir=None, force_recompute=False, batch_name=None):
-    """
-    Plots a specific graph property against an evolutionary outcome.
-    Faceted by 'r' to show how the effect varies with selection strength.
-    """
-    fig_path = _resolve_figure_path(figures_dir, 'plot_property_effect',
-                                    x=x_prop, y=y_outcome)
-    if not force_recompute and try_load_cached(fig_path):
-        return
-
-    plt.figure(figsize=(11,8))
-    is_prob = (y_outcome == 'prob_fixation')
-    ylabel = "Probability of Fixation ($P_{fix}$)" if is_prob else y_outcome.replace('_', ' ').title()
-    sns.scatterplot(
-        data=df,
-        x=x_prop,
-        y=y_outcome,
-        hue='category',     # Color by Category
-        style='r',          # Shape by r
-        palette=color_dict,
-        s=120,              # Marker size
-        alpha=0.85,         # Transparency
-        edgecolor='w',      # White edge to make points pop
-        linewidth=0.5
-    )
-    # Add Neutral Limit Line if plotting Probability
-    if is_prob:
-        avg_n = df['n_nodes'].mean()
-        plt.axhline(1/avg_n, color='black', linestyle=':', label=f'Neutral (1/N)')
-
-    plt.title(f'Effect of {x_prop.replace('_', ' ').title()} on {ylabel}', fontsize=16)
-    plt.xlabel(x_prop.replace('_', ' ').title())
-    plt.ylabel(ylabel)
-    plt.grid(True, linestyle='--', alpha=0.4)
-    
-    # Legend handling: Place outside
-    plt.legend(bbox_to_anchor=(1.02, 1), loc='upper left', borderaxespad=0.)
-
-    if batch_name:
-        _stamp_batch(plt.gcf(), batch_name)
-    plt.tight_layout()
-    if fig_path is not None:
-        plt.savefig(fig_path, bbox_inches='tight', dpi=150)
-        print(f"[cache] Saved: {fig_path.name}")
-    plt.show()
-
-
-
-def plot_hybrid_density(df,
-                        x_prop,
-                        y_outcome='prob_fixation',
-                        color_dict=None,
-                        density_threshold=100,
-                        with_violin=True,
-                        highlight_categories=None,
-                        size_property=None,
-                        figures_dir=None,
-                        force_recompute=False,
-                        batch_name=None,
-                        ):
-    """
-    Hybrid Plot with Correlation & Description Patches.
-
-    Args:
-        df (pd.DataFrame): The dataframe containing graph properties and outcomes
-        x_prop (str): Name of the graph property to plot on x-axis
-        y_outcome (str): Name of the outcome variable to plot on y-axis (default: 'prob_fixation')
-        color_dict (dict): Dictionary mapping categories to colors
-        density_threshold (int): Minimum number of points to trigger violin plot (default: 100)
-        with_violin (bool): If False - this is just a scatter plot. If true, it puts a violin plot for dense x values
-        size_property (str | None): Choose the parameter that will be shown as the size of the marks
-    """
-    if color_dict is None:
-        color_dict = {}
-
-    fig_path = _resolve_figure_path(figures_dir, 'plot_hybrid_density',
-                                    x=x_prop, y=y_outcome)
-    if not force_recompute and try_load_cached(fig_path):
-        return
-
-    plt.figure(figsize=(11, 8.5))
-    
-    # --- 1. Labeling & Setup ---
-    prob_label = "Probability of Fixation ($P_{fix}$)"
-    is_prob = False
-    if y_outcome == 'prob_fixation':
-        ylabel = prob_label
-        is_prob = True  
-    else: 
-        ylabel = y_outcome.replace("_", " ").title()
-    
-    if x_prop == 'prob_fixation':
-        xlabel = prob_label
-    elif x_prop == "std_steps":
-        xlabel = "STD Steps to Fixation"
-    else: 
-        xlabel = x_prop.replace("_", " ").title()
-    
-    # PATCH 1: Calculate Correlation (Pearson)
-    # Ensure we only use rows where both x and y are valid numbers
-    clean_df = df[[x_prop, y_outcome, 'r']].replace([np.inf, -np.inf], np.nan).dropna()
-
-    # Calculate correlations by 'r'
-    r_groups = clean_df.groupby('r')
-    
-    # Handle cases where correlation can't be calculated (e.g., constant values)
-    def safe_corr(g):
-        if len(g) > 1 and g[x_prop].std() > 0 and g[y_outcome].std() > 0:
-             return g[x_prop].corr(g[y_outcome])
-        return np.nan
-        
-    corrs_by_r = r_groups.apply(safe_corr)
-
-    # Construct the text string for the box
-    stats_lines = ["Pearson Correlation"]
-    stats_lines.append("-" * 28)
-    for r_val, r_corr in corrs_by_r.items():
-         if pd.notna(r_corr):
-            stats_lines.append(f"(r={r_val}): {r_corr:.3f}")
-         else:
-            stats_lines.append(f"(r={r_val}): N/A")
-
-    stats_text = "\n".join(stats_lines)
-
-    # Copy data for plotting
-    plot_df = df.copy()
-    
-    # --- 2. X-Axis Processing ---
-    is_numeric_x = pd.api.types.is_numeric_dtype(plot_df[x_prop])
-    
-    if is_numeric_x:
-        # Coerce to numeric, turning errors into NaNs, then drop them
-        plot_df[x_prop] = pd.to_numeric(plot_df[x_prop], errors='coerce')
-        plot_df['x_plot'] = plot_df[x_prop].round(3)
-    else:
-        # For categorical, drop NaNs before mapping
-        plot_df = plot_df.dropna(subset=[x_prop])
-        unique_cats = sorted(plot_df[x_prop].unique())
-        cat_map = {val: i for i, val in enumerate(unique_cats)}
-        plot_df['x_plot'] = plot_df[x_prop].map(cat_map)
-
-    if with_violin:
-        # --- 3. Identify Dense Locations ---
-        # Only consider rows where x_plot is not NaN
-        valid_x_df = plot_df.dropna(subset=['x_plot'])
-        counts = valid_x_df['x_plot'].value_counts()
-        dense_x_values = counts[counts > density_threshold].index.tolist()
-        
-        # === SMART WIDTH CALCULATION ===
-        # CRITICAL FIX: Ensure no NaNs are in the unique array before sorting
-        valid_x_values = valid_x_df['x_plot'].unique()
-        unique_x_sorted = sorted(valid_x_values)
-        
-        if len(unique_x_sorted) > 1:
-            diffs = np.diff(unique_x_sorted)
-            total_span = unique_x_sorted[-1] - unique_x_sorted[0]
-            if total_span == 0: 
-                total_span = 1.0 
-            
-            # Threshold: 2% of total span
-            min_valid_gap_threshold = total_span * 0.02 
-            valid_gaps = diffs[diffs > min_valid_gap_threshold]
-            
-            if len(valid_gaps) > 0:
-                dist_basis = np.min(valid_gaps)
-            else:
-                dist_basis = total_span * 0.1
-                
-            violin_width = dist_basis * 0.7 
-        else:
-            violin_width = 0.5
-            
-        # Fallback if violin_width somehow became invalid
-        if not (isinstance(violin_width, (int, float)) and violin_width > 0 and not np.isnan(violin_width) and not np.isinf(violin_width)):
-             violin_width = 0.5
-
-        # --- 4. Draw Violins (Background) ---
-        for x_val in dense_x_values:
-            # Drop NaNs in y_outcome as well before passing to violinplot
-            subset = plot_df[(plot_df['x_plot'] == x_val)][y_outcome].dropna()
-            
-            # Only draw if there's actually data left
-            if len(subset) > 0:
-                parts = plt.violinplot(
-                    dataset=subset,
-                    positions=[x_val],
-                    widths=violin_width,
-                    showmeans=False,
-                    showextrema=False
-                )
-                for pc in parts['bodies']:
-                    pc.set_facecolor('whitesmoke')
-                    pc.set_edgecolor('lightgray')
-                    pc.set_alpha(1) 
-
-    # --- 5. Draw Scatter (Foreground) ---
-    def apply_jitter(row):
-        # Only apply jitter if x_plot is a valid number and it's in the dense list
-        if pd.notna(row['x_plot']) and row['x_plot'] in dense_x_values:
-             # Ensure violin_width is valid before using it for random boundaries
-             if pd.notna(violin_width) and violin_width > 0:
-                 noise = np.random.uniform(-violin_width * 0.15, violin_width * 0.15)
-                 return row['x_plot'] + noise
-        return row['x_plot']
-
-    if with_violin:
-        plot_df['x_jittered'] = plot_df.apply(apply_jitter, axis=1)
-    else: 
-        plot_df['x_jittered'] = plot_df['x_plot']
-
-    # Draw normal scatterplot
-    sns.scatterplot(
-        data=plot_df,
-        x='x_jittered',
-        y=y_outcome,
-        hue='category',
-        style='r',
-        size=size_property,
-        sizes=(20, 100),
-        palette=color_dict,
-        alpha=0.7,           # Slightly transparent background points
-        edgecolor='w',
-        linewidth=0.5,
-        zorder=2
-    )
-
-    # --- Highlight Specific Categories ---
-    if highlight_categories:
-        # Filter only the categories you want to pop out
-        highlight_df = plot_df[plot_df['category'].isin(highlight_categories)]
-        
-        if not highlight_df.empty:
-            sns.scatterplot(
-                data=highlight_df,
-                x='x_jittered',
-                y=y_outcome,
-                hue='category',
-                style='r',           # Keeps your marker shapes consistent!
-                size=size_property,
-                sizes=(20, 100),
-                palette=color_dict,
-                alpha=1.0,           # Fully opaque
-                edgecolor='black',   # The highlight outline color
-                linewidth=1.8,       # Thicker outline to make it pop
-                legend=False,        # Don't duplicate legend entries
-                zorder=3             # Draw firmly on top of the base scatter
-            )
-   # --- 6. Final Formatting ---
-    if not is_numeric_x:
-        plt.xticks(ticks=range(len(unique_cats)), labels=unique_cats)
-    
-    if is_prob and 'n_nodes' in df.columns:
-        avg_n = df['n_nodes'].dropna().mean()
-        if pd.notna(avg_n) and avg_n > 0:
-            plt.axhline(1/avg_n, color='black', linestyle=':', label=f'Neutral (1/N)')
-
-    # Titles & Labels
-    plt.xlabel(xlabel)
-    plt.ylabel(ylabel)
-    
-    # PATCH 2: Add Description as Subtitle
-    try:
-        desc_text = GRAPH_PROPERTY_DESCRIPTION.get(x_prop, "")
-    except NameError:
-        desc_text = ""
-        
-    plt.suptitle(f'Effect of {x_prop.replace("_", " ").title()} on {ylabel}', fontsize=16, y=0.96)
-    
-    if desc_text:
-        wrapped_desc = "\n".join(textwrap.wrap(desc_text, width=80))
-        plt.title(wrapped_desc, fontsize=10, style='italic', color='#555555', pad=15)
-
-    # --- UPDATE LEGEND HANDLES ---
-    handles, labels = plt.gca().get_legend_handles_labels()
-
-    if highlight_categories:
-        for handle, label in zip(handles, labels):
-            if label in highlight_categories:
-                # Seaborn legend markers are Line2D objects
-                if hasattr(handle, 'set_markeredgecolor'):
-                    handle.set_markeredgecolor('black')
-                    handle.set_markeredgewidth(1.8)
-                    handle.set_alpha(1.0)
-                # Fallback for other plot types
-                elif hasattr(handle, 'set_edgecolor'):
-                    handle.set_edgecolor('black')
-                    handle.set_linewidth(1.8)
-                    handle.set_alpha(1.0)
-
-    # 1. Place Legend OUTSIDE the plot on the right
-    plt.legend(handles=handles, labels=labels, bbox_to_anchor=(1.02, 1), loc='upper left', borderaxespad=0.)
-
-    # 2. Place Correlation Text INSIDE the plot (bottom right)
-    plt.gca().text(
-        0.96, 0.04,  # X, Y coordinates inside the axes
-        stats_text, 
-        transform=plt.gca().transAxes, 
-        fontsize=10, 
-        verticalalignment='bottom',   # Anchor to bottom
-        horizontalalignment='right',  # Anchor to right
-        bbox=dict(boxstyle="round,pad=0.4", facecolor="white", alpha=0.9, edgecolor="lightgray"),
-        zorder=5
-    )
-
-    plt.grid(True, linestyle='--', alpha=0.4)
-
-    # Manually adjust the layout so the legend is not cropped
-    plt.subplots_adjust(right=0.75)
-
-    if batch_name:
-        _stamp_batch(plt.gcf(), batch_name)
-    if fig_path is not None:
-        plt.savefig(fig_path, bbox_inches='tight', dpi=150)
-        print(f"[cache] Saved: {fig_path.name}")
-    plt.show()
-
-
 def plot_outcome_vs_property(
     df,
     x_prop,
@@ -832,14 +428,14 @@ def plot_outcome_vs_property(
         return np.nan
 
     if len(r_values) > 1:
-        corr_lines = ["Pearson r", "-" * 18]
+        corr_lines = ["Pearson corr", "-" * 18]
         for rv in r_values:
             sub = clean_df[clean_df['r'] == rv]
             c = _safe_corr(sub[x_prop], sub[y_outcome])
             corr_lines.append(f"r={rv}: {c:.3f}" if pd.notna(c) else f"r={rv}: N/A")
     else:
         c = _safe_corr(clean_df[x_prop], clean_df[y_outcome])
-        corr_lines = ["Pearson r", f"{c:.3f}" if pd.notna(c) else "N/A"]
+        corr_lines = ["Pearson corr", f"{c:.3f}" if pd.notna(c) else "N/A"]
     stats_text = "\n".join(corr_lines)
 
     # --- 3. X-axis processing ---
@@ -1064,7 +660,7 @@ def plot_two_property_effect(
     corr_x = _safe_corr(plot_df[x_prop], plot_df[outcome])
     corr_y = _safe_corr(plot_df[y_prop], plot_df[outcome])
     corr_text = (
-        f"Pearson r with {outcome.replace('_', ' ')}\n"
+        f"Pearson corr with {outcome.replace('_', ' ')}\n"
         + "-" * 30 + "\n"
         + f"{x_prop}: {corr_x:.3f}\n"
         + f"{y_prop}: {corr_y:.3f}"
@@ -1186,7 +782,7 @@ def plot_two_property_effect_hexbin(
     corr_y = _safe_corr(plot_df[y_prop], plot_df[outcome])
     reduce_name = getattr(reduce_C_function, '__name__', str(reduce_C_function))
     corr_text = (
-        f"Pearson r with {outcome.replace('_', ' ')}\n"
+        f"Pearson corr with {outcome.replace('_', ' ')}\n"
         + "-" * 30 + "\n"
         + f"{x_prop}: {corr_x:.3f}\n"
         + f"{y_prop}: {corr_y:.3f}"
