@@ -14,17 +14,35 @@ import json
 from datetime import datetime
 
 
-CATEGORY_COLOR_DICT = dict({
-    'Random': 'lightgray',     
-    'Avian': "#2DB806",       
-    'Fish': '#1f77b4',        
-    'Mammalian': "#833105",   
-    'Complete': 'black',
-    'Decelerator': "#5e54e0",   
-    'Accelerator': "#d1234e",       
+CATEGORY_COLOR_DICT = {
+    # Biological reference graphs
+    'Mammalian': '#833105',   # brown
+    'Avian':     '#2DB806',   # green
+    'Fish':      '#1f77b4',   # blue
 
-    'Other': 'yellow'          
-})
+    # Structural reference topologies
+    'Random':    'lightgray',
+    'Complete':  'black',
+    'Cycle':     '#888888',   # mid-gray
+
+    # ML-maximizers: warm palette (red = probability, orange = time)
+    # LR -- deeper/more saturated; XGBOOST -- lighter shade of the same family
+    'maximize LR Fixation Probability':      '#c62828',  # deep red
+    'maximize XGBOOST Fixation Probability': '#ffb300',  # light red
+    'maximize LR Fixation Time':             "#da7c0000",  # deep orange
+    'maximize XGBOOST Fixation Time':        '#ef9a9a',  # amber
+
+    # ML-minimizers: cool palette (blue = probability, teal = time)
+    'minimize LR Fixation Probability':      '#1565c0',  # deep blue
+    'minimize XGBOOST Fixation Probability': '#64b5f6',  # light blue
+    'minimize LR Fixation Time':             '#00695c',  # deep teal
+    'minimize XGBOOST Fixation Time':        '#4db6ac',  # light teal
+
+    # Legacy / fallback
+    'Decelerator': '#5e54e0',
+    'Accelerator': '#d1234e',
+    'Other':       'yellow',
+}
 
 # Use a defaultdict to return 'lightgray' for unknown categories
 # Paste your dictionary here (or ensure it's in the global scope)
@@ -227,6 +245,17 @@ def _stamp_batch(fig, batch_name: str) -> None:
     )
 
 
+def _sort_categories(categories):
+    """Return categories sorted: Avian/Fish/Mammalian first, Random last, rest alphabetically."""
+    BIOLOGICAL = ['Avian', 'Fish', 'Mammalian']
+    LAST = ['Random']
+    cat_set = set(categories)
+    bio    = [c for c in BIOLOGICAL if c in cat_set]
+    last   = [c for c in LAST if c in cat_set]
+    middle = sorted(c for c in cat_set if c not in BIOLOGICAL and c not in LAST)
+    return bio + middle + last
+
+
 def generate_robust_color_dict(df, existing_colors, default_palette='husl'):
     """Build a category -> color dict covering every category in df['category'].
 
@@ -373,7 +402,7 @@ def plot_steps_violin(
         return
 
     if categories is None:
-        categories = sorted(df_graphs['category'].dropna().unique().tolist())
+        categories = _sort_categories(df_graphs['category'].dropna().unique().tolist())
 
     _scanner = pl.scan_csv(results_csv_path)
     _select = ['wl_hash', 'steps', 'fixation'] + (['r'] if 'r' in _scanner.columns else [])
@@ -629,10 +658,11 @@ def plot_outcome_vs_property(
         plot_df['x_jittered'] = plot_df['x_plot']
 
     # --- 6. Scatter (background) ---
+    hue_order = _sort_categories(plot_df['category'].dropna().unique().tolist())
     sns.scatterplot(
         data=plot_df, ax=ax,
         x='x_jittered', y=y_outcome,
-        hue='category',
+        hue='category', hue_order=hue_order,
         style='r' if len(r_values) > 1 else None,
         size=size_property, sizes=(20, 100),
         palette=color_dict,
@@ -646,7 +676,7 @@ def plot_outcome_vs_property(
             sns.scatterplot(
                 data=hl_df, ax=ax,
                 x='x_jittered', y=y_outcome,
-                hue='category',
+                hue='category', hue_order=hue_order,
                 style='r' if len(r_values) > 1 else None,
                 size=size_property, sizes=(20, 100),
                 palette=color_dict,
@@ -693,7 +723,7 @@ def plot_outcome_vs_property(
         zorder=5,
     )
 
-    # --- 12. Legend with highlight styling ---
+    # --- 12. Legend with highlight styling and sorted order ---
     handles, labels_leg = ax.get_legend_handles_labels()
     if highlight_categories:
         for h, lbl in zip(handles, labels_leg):
@@ -706,6 +736,15 @@ def plot_outcome_vs_property(
                     h.set_edgecolor('black')
                     h.set_linewidth(1.8)
                     h.set_alpha(1.0)
+
+    # Sort category entries; non-category entries (neutral line, r marker styles) follow
+    _cat_set = set(plot_df['category'].dropna().unique())
+    _handle_map = dict(zip(labels_leg, handles))
+    _sorted_cats = [(l, _handle_map[l]) for l in hue_order if l in _handle_map]
+    _others      = [(l, h) for l, h in zip(labels_leg, handles) if l not in _cat_set]
+    labels_leg = [l for l, _ in _sorted_cats + _others]
+    handles    = [h for _, h in _sorted_cats + _others]
+
     ax.legend(handles=handles, labels=labels_leg,
               bbox_to_anchor=(1.02, 1), loc='upper left', borderaxespad=0., fontsize=9)
 
