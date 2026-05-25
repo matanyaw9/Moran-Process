@@ -340,27 +340,7 @@ xgboost, shap, jupyterlab, ipykernel, nbstripout. Dev: pytest. Pillow pinned <11
 
 ---
 
-## 9. Corrections to older docs (read this before trusting the background .md files)
-
-The files PROJECT_OVERVIEW.md, CODE_ARCHITECTURE.md, and HPC_WORKFLOW.md predate the
-current package layout. Where they conflict with this file or the code, trust the code.
-Specific stale claims:
-- "PopulationGraph auto-registers in `simulation_data/graph_database.csv` on construction"
-  is no longer true. Construction has no DB side effect. Registration is per batch into
-  `graph_props.csv` via `batch_register` / the `register_graphs` LSF job.
-  `graph_database.csv` survives only in a legacy helper (`analysis_utils.load_all_data`,
-  flagged as maybe-unwanted) and in `run_random_graphs.py`.
-- The worker no longer takes `--chunk-size` and does not slice by index arithmetic. It
-  filters `task_manifest.csv` by `worker_id` and takes `--zoo-path` / `--manifest-path` /
-  `--batch-dir`.
-- "No built-in aggregation method" is outdated. Use
-  `analysis_utils.aggregate_results_no_load(batch_dir)`.
-- Code is not flat in a `Moran-Process/` directory. It is the `src/moran_process/` package.
-- Analysis notebooks live in `notebooks/`, not `analysis/`.
-
----
-
-## 10. Status and open work
+## 9. Status and open work
 
 Done: all three respiratory topologies; WL-hash dedup; LSF batch pipeline; random-graph
 null model; streaming aggregation; per-graph statistics; LR + XGBoost + SHAP; figure
@@ -381,7 +361,7 @@ Open (from `task_list.md` and PROJECT_OVERVIEW.md):
 
 ---
 
-## 11. How to run, quickly
+## 10. How to run, quickly
 
 ```bash
 uv sync                                              # install deps
@@ -389,5 +369,5 @@ uv run python -m moran_process.pipeline.main --batch-name <name>   # submit a ba
 # analysis: open notebooks/ via ijup on a compute node
 ```
 
-Do not run `pytest tests/`. Those tests are AI-generated, untrusted, and outdated; new
+Do not run `pytest tests/`. Those tests are untrusted and outdated; new
 tests are to be written from scratch.

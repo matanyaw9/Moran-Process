@@ -135,7 +135,7 @@ def create_batch_info(batch_dir, name, description, graph_types=None, r_values=N
     return info
 
 
-def stamp_batch(fig, batch_name: str) -> None:
+def _stamp_batch(fig, batch_name: str) -> None:
     """Add a source label to the bottom-right corner of the figure."""
     fig.text(
         0.99, 0.01, f"source: {batch_name}",
@@ -393,7 +393,7 @@ def plot_steps_violin(
     ax.set_ylabel('Steps to Fixation', fontsize=13)
     ax.set_title('Distribution of Steps to Fixation by Category', fontsize=14)
     if batch_name:
-        stamp_batch(fig, batch_name)
+        _stamp_batch(fig, batch_name)
     fig.tight_layout()
     if fig_path is not None:
         fig.savefig(fig_path, bbox_inches='tight', dpi=150)
@@ -446,7 +446,7 @@ def plot_steps_histogram(
     ax.grid(axis='y', alpha=0.3)
 
     if batch_name:
-        stamp_batch(fig, batch_name)
+        _stamp_batch(fig, batch_name)
     fig.tight_layout()
     if fig_path is not None:
         fig.savefig(fig_path, bbox_inches='tight', dpi=150)
@@ -494,7 +494,7 @@ def plot_property_effect(df, x_prop, y_outcome='prob_fixation', color_dict=CATEG
     plt.legend(bbox_to_anchor=(1.02, 1), loc='upper left', borderaxespad=0.)
 
     if batch_name:
-        stamp_batch(plt.gcf(), batch_name)
+        _stamp_batch(plt.gcf(), batch_name)
     plt.tight_layout()
     if fig_path is not None:
         plt.savefig(fig_path, bbox_inches='tight', dpi=150)
@@ -765,7 +765,7 @@ def plot_hybrid_density(df,
     plt.subplots_adjust(right=0.75)
 
     if batch_name:
-        stamp_batch(plt.gcf(), batch_name)
+        _stamp_batch(plt.gcf(), batch_name)
     if fig_path is not None:
         plt.savefig(fig_path, bbox_inches='tight', dpi=150)
         print(f"[cache] Saved: {fig_path.name}")
@@ -980,7 +980,7 @@ def plot_outcome_vs_property(
               bbox_to_anchor=(1.02, 1), loc='upper left', borderaxespad=0., fontsize=9)
 
     if batch_name:
-        stamp_batch(fig, batch_name)
+        _stamp_batch(fig, batch_name)
     fig.tight_layout()
     if fig_path is not None:
         fig.savefig(fig_path, bbox_inches='tight', dpi=150)
@@ -1092,7 +1092,7 @@ def plot_two_property_effect(
         ax.legend(title="Category", bbox_to_anchor=(1.18, 1), loc='upper left')
 
     if batch_name:
-        stamp_batch(fig, batch_name)
+        _stamp_batch(fig, batch_name)
     plt.tight_layout()
     if fig_path is not None:
         plt.savefig(fig_path, bbox_inches='tight', dpi=150)
@@ -1215,7 +1215,7 @@ def plot_two_property_effect_hexbin(
         ax.legend(title="Category", bbox_to_anchor=(1.18, 1), loc='upper left')
 
     if batch_name:
-        stamp_batch(fig, batch_name)
+        _stamp_batch(fig, batch_name)
     plt.tight_layout()
     if fig_path is not None:
         plt.savefig(fig_path, bbox_inches='tight', dpi=150)
