@@ -92,7 +92,7 @@ GRAPH_PROPERTY_COLUMNS = [
     'max_closeness_centrality'
     ]
 
-DEFAULT_FIG_SIZE = (7.5,6)
+DEFAULT_FIG_SIZE = (8.7,6)
 
 
 def _resolve_figure_path(figures_dir, func_name: str, **key_kwargs):
