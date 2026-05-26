@@ -23,7 +23,7 @@ CATEGORY_COLOR_DICT = {
     # Structural
     'Random':    '#E0E0E0',
     'Complete':  '#000000',
-    'Cycle':     '#9E9E9E',
+    'Cycle':     '#5C6BC0',
 
     # --- PROBABILITY (Blues/Purples) ---
     'maximize LR Fixation Probability':      '#08519C',  # Navy Blue
@@ -37,10 +37,6 @@ CATEGORY_COLOR_DICT = {
     'minimize LR Fixation Time':             '#D94801',  # Burnt Orange
     'minimize XGBOOST Fixation Time':        '#FDBB84',  # Peach
 
-    # Legacy
-    'Decelerator': '#5C6BC0',
-    'Accelerator': '#26A69A',
-    'Other':       '#FFEB3B',
 }
 
 # Use a defaultdict to return 'lightgray' for unknown categories
