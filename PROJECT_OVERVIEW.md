@@ -59,73 +59,77 @@ The respiratory graphs are compared against random graphs with a **similar numbe
 ## Directory Structure
 
 ```
-Evolutionary_Graph_Theory_Project/
-├── Moran-Process/                  # Main code directory
-│   ├── population_graph.py         # Graph definitions + database
-│   ├── process_run.py              # Single simulation engine
-│   ├── process_lab.py              # Batch runner + HPC submission
-│   ├── worker_wrapper.py           # HPC worker script (run by bsub)
-│   ├── main.py                     # Respiratory graph experiment runner
-│   ├── run_random_graphs.py        # Random graph experiment runner
-│   ├── gemini_script.py            # Early prototype (fractal lung, different approach)
-│   ├── analysis/
-│   │   ├── df_analysis.ipynb
-│   │   ├── compare_random_vs_respiratory.ipynb
-│   │   ├── experiment_analysis.ipynb
-│   │   ├── analyse_tests.ipynb
-│   │   └── analysis_utils.py
-│   ├── tests/
-│   │   ├── run_random_graphs_test.py
-│   │   ├── test_csv_append.py
-│   │   ├── example_usage.py
-│   │   └── testing_scripts.ipynb
-│   └── simulation_data/            # CSVs of results and graph database
-│       ├── graph_database.csv
-│       ├── respiratory_runs.csv
-│       └── random_graphs_*.csv
-└── TasksVault/                     # Obsidian notes vault
-    ├── Context Prompt.md           # Short context summary
-    ├── PROJECT_OVERVIEW.md         # THIS FILE
-    ├── CODE_ARCHITECTURE.md        # Detailed code docs
-    ├── HPC_WORKFLOW.md             # WEXAC/LSF how-to
-    ├── RESEARCH_BACKGROUND.md      # Biology + math background
-    ├── WEXAC Cheat Sheet.md        # LSF commands reference
-    ├── Weekly Road Map.md          # Weekly task tracking
-    └── Project Road Map.md         # High-level roadmap
+moran-process/
+├── pyproject.toml                  # package moran_process (hatchling), deps via uv
+├── uv.lock
+├── AI_CONTEXT.md                   # comprehensive up-to-date context primer
+├── CLAUDE.md                       # project instructions for Claude
+├── PROJECT_OVERVIEW.md             # THIS FILE
+├── CODE_ARCHITECTURE.md            # class API and pipeline
+├── HPC_WORKFLOW.md                 # WEXAC/LSF how-to
+├── RESEARCH_BACKGROUND.md          # biology + math background
+├── VSCODE_WEXAC_WORKFLOW.md        # where code runs (login vs compute node)
+├── WORKFLOW.md                     # solo-dev branching/run habits
+├── task_list.md                    # running TODO + work log
+├── submit_main.sh                  # bsub entry point for main.py
+├── notebooks/                      # design + analysis notebooks (run on compute node)
+├── graph_zoos/                     # saved zoos (*.joblib), gitignored
+├── simulation_data/                # batch outputs, gitignored; one subdir per batch
+├── tests/                          # AI-generated, untrusted, do not run
+└── src/moran_process/
+    ├── __init__.py                 # public API re-exports
+    ├── core/
+    │   ├── population_graph.py     # PopulationGraph + GRAPH_PROPS + register CLI
+    │   └── graph_zoo.py            # GraphZoo collection
+    ├── simulations/
+    │   └── process_run.py          # single Moran simulation
+    ├── pipeline/
+    │   ├── process_lab.py          # local study + HPC submission
+    │   ├── worker_wrapper.py       # LSF array worker
+    │   ├── main.py                 # respiratory + random batch builder
+    │   ├── run_random_graphs.py    # local random-only runner
+    │   ├── merge_batches.py        # merge two batches
+    │   └── extreme_graphs.py       # mutation/GA search for extreme graphs
+    └── analysis/
+        └── analysis_utils.py       # plotting, aggregation, batch_info helpers
 ```
+
+A single batch lives at `simulation_data/<batch_name>/` and contains `graph_props.csv`,
+`full_results.csv`, `graph_statistics.csv`, `batch_info.json`, `logs/`, and a `tmp/`
+holding `graph_zoo.joblib`, `task_manifest.csv`, and `results/result_job_*.csv`.
 
 ---
 
-## Current Status (as of ~Week 8, early 2026)
+## Current Status (mid 2026)
 
 ### Completed
-- All three respiratory graph topologies implemented (mammalian, avian, fish)
-- Graph database with WL hashing for isomorphism detection and deduplication
+- All three respiratory graph topologies (mammalian, avian, fish)
+- WL hashing for isomorphism detection and deduplication
 - HPC batch submission pipeline (LSF job arrays via `bsub`)
 - Random graph generation for comparison (null model)
+- Streaming aggregation of per-job results into `full_results.csv`
+- Per-graph statistics (`graph_statistics.csv`) merged with structural properties
 - Linear regression with standardized coefficients for feature importance
-- XGBoost regressor for fixation time prediction
-- SHAP (PermutationExplainer) for model interpretability
-- Simulated annealing to generate graphs that extremize specific topological properties
-- Comparative analysis notebooks
+- XGBoost regressor for fixation time prediction, with SHAP interpretability
+- Evolutionary/mutation search for graphs that extremize fixation time/probability
+- Figure caching and per-batch metadata (`batch_info.json`)
+- A scaling study across N (see `notebooks/scaling_experiment_analysis.ipynb`)
 
 ### In Progress / Next Steps
-- [ ] Count steps to extinction (not only steps to fixation)
-- [ ] Make analysis pipeline work for large batches (>10 GB)
-- [ ] Make simulation faster (C++? Multiprocessing?)
-- [ ] Multi-color/multi-type simulation (more than 2 types)
-- [ ] Explore GNN approach (Yael's suggestion: train on fixed-size or variable-size graphs)
-- [ ] Justify/minimize graph size (is N=31 meaningful? Can we show results are consistent across sizes?)
-- [ ] Add fixation probability formula to plot axes
-- [ ] Read Uri Alon's paper on network motifs
-- [ ] Read Roy Kishony's paper on parallel bacterial evolution
+- [ ] Record steps to extinction separately, not only steps to fixation
+- [ ] Make the simulation faster (C++/Cython/Numba on the step, or multiprocessing)
+- [ ] Multi-color/multi-type simulation (more than 2 types); likely needs a Process ABC
+- [ ] Explore a GNN approach (fixed-size vs variable-size graphs)
+- [ ] Justify N=31 with a size sweep showing qualitative consistency
+- [ ] Add the analytical fixation-probability reference line to plots
+- [ ] Read Uri Alon (network motifs) and Kishony 2011 (parallel bacterial evolution)
 
 ---
 
 ## Key Design Decisions
 
-1. **WL Graph Hashing:** Each graph gets a Weisfeiler-Lehman hash on creation. This detects topologically equivalent (isomorphic) graphs and avoids re-registering them in the database.
-2. **Graph Database:** `simulation_data/graph_database.csv` stores all graph topologies with their computed properties. New graphs auto-register on instantiation (unless `register_in_db=False`).
-3. **HPC Parallelism:** Jobs are submitted as LSF job arrays. A `task_manifest.csv` enumerates all (graph, r, repeat) combinations; each worker processes a contiguous chunk indexed by `LSB_JOBINDEX`.
-4. **Serialization:** Graphs are pickled to `graphs.pkl` in the batch directory; workers unpickle and run their slice.
-5. **Metric cutoffs:** Expensive graph metrics (diameter, ASPL, betweenness) are only computed for N ≤ 100–500 to avoid freezing.
+1. **WL Graph Hashing:** Each graph gets a Weisfeiler-Lehman hash on creation. This detects topologically equivalent (isomorphic) graphs and is the dedup/join key (`wl_hash`).
+2. **Per-batch properties:** There is no global graph database. `PopulationGraph.batch_register` computes properties once per unique graph and writes them to `<batch>/graph_props.csv`. Construction itself has no database side effect.
+3. **HPC Parallelism:** Jobs are submitted as LSF job arrays. A `task_manifest.csv` enumerates the work and assigns each row a `worker_id`; each worker processes the rows whose `worker_id` matches its `LSB_JOBINDEX`.
+4. **Serialization:** The graph zoo is serialized with joblib to `<batch>/tmp/graph_zoo.joblib`; workers load it and run their assigned rows.
+5. **Metric cutoffs:** Expensive metrics (diameter, ASPL, betweenness, closeness) are only computed below N thresholds (roughly 100 to 500) to avoid freezing.
