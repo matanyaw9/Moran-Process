@@ -222,6 +222,26 @@ class PopulationGraph:
         return cls(nx.cycle_graph(n_nodes), name=name, category='Cycle', labeled_edges=labeled_edges)
     
     @classmethod
+    def star_graph(cls, n_nodes: int, labeled_edges: bool = False):
+        """
+        Creates a star graph: one central hub connected to all other nodes.
+        Node 0 is the hub; nodes 1..n_nodes-1 are leaves.
+        Classic selective amplifier in evolutionary graph theory (Lieberman et al. 2005).
+        """
+        # nx.star_graph(k) produces k+1 nodes (hub + k leaves), so pass n_nodes-1
+        G = nx.star_graph(n_nodes - 1)
+
+        # Layout: hub at center, leaves on a unit circle
+        angles = np.linspace(0, 2 * np.pi, n_nodes - 1, endpoint=False)
+        pos = {0: np.array([0.0, 0.0])}
+        for i, angle in enumerate(angles):
+            pos[i + 1] = np.array([np.cos(angle), np.sin(angle)])
+        nx.set_node_attributes(G, pos, 'pos')
+
+        name = f'star_n{n_nodes}'
+        return cls(G, name=name, category='Star', params={'n_nodes': n_nodes}, labeled_edges=labeled_edges)
+
+    @classmethod
     def mammalian_lung_graph(cls, branching_factor:int=2, depth:int=3, name='mammalian', labeled_edges: bool = False):
         """Generates a tree shaped population graph mimicking mammalian lung topology."""
         G = nx.balanced_tree(branching_factor, depth)

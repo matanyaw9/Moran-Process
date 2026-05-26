@@ -24,6 +24,7 @@ CATEGORY_COLOR_DICT = {
     'Random':    '#E0E0E0',
     'Complete':  '#000000',
     'Cycle':     '#5C6BC0',
+    'Star': "#FFE656FF",
 
     # --- PROBABILITY (Blues/Purples) ---
     'maximize LR Fixation Probability':      '#08519C',  # Navy Blue
