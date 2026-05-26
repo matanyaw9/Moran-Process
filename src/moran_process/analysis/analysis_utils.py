@@ -92,6 +92,8 @@ GRAPH_PROPERTY_COLUMNS = [
     'max_closeness_centrality'
     ]
 
+DEFAULT_FIG_SIZE = (7.5,6)
+
 
 def _resolve_figure_path(figures_dir, func_name: str, **key_kwargs):
     """Build a descriptive Path for a cached figure, creating the directory if needed."""
@@ -183,7 +185,7 @@ def plot_batch_info_card(
     n_nodes_rng = batch_info.get('n_nodes_range', {})
     notes       = batch_info.get('notes', '')
 
-    fig, ax = plt.subplots(figsize=(12, 7))
+    fig, ax = plt.subplots(figsize=DEFAULT_FIG_SIZE)
     ax.axis('off')
     fig.patch.set_facecolor('white')
 
@@ -501,7 +503,7 @@ def plot_steps_histogram(
     metric_label = metric.replace('_', ' ').title()
     bar_color = color_dict.get(category, '#4c72b0') if category else '#4c72b0'
 
-    fig, ax = plt.subplots(figsize=(10, 6))
+    fig, ax = plt.subplots(figsize=DEFAULT_FIG_SIZE)
     ax.hist(data, bins=bins, color=bar_color, edgecolor='black', alpha=0.7)
     ax.set_xlabel(metric_label, fontsize=12)
     ax.set_ylabel('Frequency', fontsize=12)
@@ -617,7 +619,7 @@ def plot_outcome_vs_property(
     is_discrete_x = is_numeric_x and (n_unique <= max(20, n_total * 0.02))
 
     # --- 5. Figure ---
-    fig, ax = plt.subplots(figsize=(9, 6.5))
+    fig, ax = plt.subplots(figsize=DEFAULT_FIG_SIZE)
 
     dense_x_values = set()
     if is_discrete_x and density_threshold is not None:
@@ -817,7 +819,7 @@ def plot_two_property_effect(
         print(f"No valid data for ({x_prop}, {y_prop}) -> {outcome}")
         return
 
-    fig, ax = plt.subplots(figsize=(10, 8))
+    fig, ax = plt.subplots(figsize=DEFAULT_FIG_SIZE)
 
     norm = mcolors.Normalize(vmin=plot_df[outcome].min(), vmax=plot_df[outcome].max())
 
@@ -942,7 +944,7 @@ def plot_two_property_effect_hexbin(
         print(f"No valid data for ({x_prop}, {y_prop}) -> {outcome}")
         return
 
-    fig, ax = plt.subplots(figsize=(10, 8))
+    fig, ax = plt.subplots(figsize=DEFAULT_FIG_SIZE)
 
     hb = ax.hexbin(
         plot_df[x_prop], plot_df[y_prop],
