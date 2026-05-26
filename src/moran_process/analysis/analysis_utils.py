@@ -112,7 +112,7 @@ def try_load_cached(path) -> bool:
     if path is not None and Path(path).exists():
         try:
             from IPython.display import Image, display
-            display(Image(str(path)))
+            display(Image(str(path), width=int(DEFAULT_FIG_SIZE[0] * 100)))
             print(f"[cache] Loaded: {Path(path).name}")
             return True
         except ImportError:
