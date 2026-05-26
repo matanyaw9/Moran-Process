@@ -379,6 +379,7 @@ def plot_steps_violin(
     force_recompute=False,
     batch_name=None,
     fig_title=None,
+    show=True,
 ):
     """Violin plot of steps-to-fixation distribution, one violin per graph category.
 
@@ -390,6 +391,7 @@ def plot_steps_violin(
         figures_dir: directory where PNG is saved; None = display only, no save
         force_recompute: skip cache and regenerate even if PNG already exists
         batch_name: batch label stamped in the bottom-right corner of the figure
+        show: change this to flase if you want the fig to be made but not shown
     """
     import polars as pl
 
@@ -447,7 +449,8 @@ def plot_steps_violin(
     if fig_path is not None:
         fig.savefig(fig_path, bbox_inches='tight', dpi=150)
         print(f"[cache] Saved: {fig_path.name}")
-    plt.show()
+    if show: 
+        plt.show()
 
 
 def plot_steps_histogram(
@@ -459,6 +462,7 @@ def plot_steps_histogram(
     figures_dir=None,
     force_recompute=False,
     batch_name=None,
+    show=True,
 ):
     """Histogram of a steps/outcome metric, optionally filtered to one graph category.
 
@@ -471,6 +475,8 @@ def plot_steps_histogram(
         figures_dir: directory where PNG is saved; None = display only, no save
         force_recompute: skip cache and regenerate even if PNG already exists
         batch_name: batch label stamped in the bottom-right corner of the figure
+        show: change this to flase if you want the fig to be made but not shown
+
     """
     if color_dict is None:
         color_dict = {}
@@ -508,7 +514,8 @@ def plot_steps_histogram(
     if fig_path is not None:
         fig.savefig(fig_path, bbox_inches='tight', dpi=150)
         print(f"[cache] Saved: {fig_path.name}")
-    plt.show()
+    if show: 
+        plt.show()
 
 
 def plot_outcome_vs_property(
@@ -523,6 +530,7 @@ def plot_outcome_vs_property(
     force_recompute=False,
     batch_name=None,
     fig_title=None,
+    show=True,
 ):
     """Scatter plot of one graph property vs an evolutionary outcome, with auto-detected violins.
 
@@ -541,6 +549,8 @@ def plot_outcome_vs_property(
         figures_dir: directory where PNG is saved; None = display only, no save
         force_recompute: skip cache and regenerate even if PNG already exists
         batch_name: batch label stamped in the bottom-right corner of the figure
+        show: change this to flase if you want the fig to be made but not shown
+
     """
     if color_dict is None:
         color_dict = {}
@@ -755,7 +765,8 @@ def plot_outcome_vs_property(
     if fig_path is not None:
         fig.savefig(fig_path, bbox_inches='tight', dpi=150)
         print(f"[cache] Saved: {fig_path.name}")
-    plt.show()
+    if show:
+        plt.show()
 
 
 def plot_two_property_effect(
@@ -769,6 +780,7 @@ def plot_two_property_effect(
     figures_dir=None,
     force_recompute=False,
     batch_name=None,
+    show=True,
 ):
     """
     Shows the combined effect of two graph properties on an outcome.
@@ -784,6 +796,8 @@ def plot_two_property_effect(
         color_dict: category -> color mapping (used only for highlight outlines)
         highlight_categories: list of category names to draw with black outlines on top
         cmap: matplotlib colormap name for the outcome gradient
+        show: change this to flase if you want the fig to be made but not shown
+
     """
     if color_dict is None:
         color_dict = {}
@@ -870,7 +884,8 @@ def plot_two_property_effect(
     if fig_path is not None:
         plt.savefig(fig_path, bbox_inches='tight', dpi=150)
         print(f"[cache] Saved: {fig_path.name}")
-    plt.show()
+    if show:
+        plt.show()
 
 
 def plot_two_property_effect_hexbin(
@@ -886,6 +901,7 @@ def plot_two_property_effect_hexbin(
     figures_dir=None,
     force_recompute=False,
     batch_name=None,
+    show=True,
 ):
     """
     Hexbin version of plot_two_property_effect.
@@ -905,6 +921,8 @@ def plot_two_property_effect_hexbin(
         cmap: matplotlib colormap name for the outcome gradient
         gridsize: number of hexagons across the x-axis (higher = finer grid)
         reduce_C_function: aggregation applied per bin (np.mean, np.median, etc.)
+        show: change this to flase if you want the fig to be made but not shown
+
     """
     if color_dict is None:
         color_dict = {}
@@ -996,4 +1014,5 @@ def plot_two_property_effect_hexbin(
     if fig_path is not None:
         plt.savefig(fig_path, bbox_inches='tight', dpi=150)
         print(f"[cache] Saved: {fig_path.name}")
-    plt.show()
+    if show:
+        plt.show()
