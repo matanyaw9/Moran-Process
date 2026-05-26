@@ -15,33 +15,32 @@ from datetime import datetime
 
 
 CATEGORY_COLOR_DICT = {
-    # Biological reference graphs
-    'Mammalian': '#833105',   # brown
-    'Avian':     '#2DB806',   # green
-    'Fish':      '#1f77b4',   # blue
+    # Biological (Earthy/Natural)
+    'Mammalian': '#8C510A',   # Deep Brown
+    'Avian':     '#2E7D32',   # Forest Green
+    'Fish':      "#084182",   # Dark Blue
 
-    # Structural reference topologies
-    'Random':    'lightgray',
-    'Complete':  'black',
-    'Cycle':     '#888888',   # mid-gray
+    # Structural
+    'Random':    '#E0E0E0',
+    'Complete':  '#000000',
+    'Cycle':     '#9E9E9E',
 
-    # ML-maximizers: warm palette (red = probability, orange = time)
-    # LR -- deeper/more saturated; XGBOOST -- lighter shade of the same family
-    'maximize LR Fixation Probability':      '#c62828',  # deep red
-    'maximize XGBOOST Fixation Probability': '#ffb300',  # light red
-    'maximize LR Fixation Time':             "#da7c0000",  # deep orange
-    'maximize XGBOOST Fixation Time':        '#ef9a9a',  # amber
+    # --- PROBABILITY (Blues/Purples) ---
+    'maximize LR Fixation Probability':      '#08519C',  # Navy Blue
+    'maximize XGBOOST Fixation Probability': '#6BAED6',  # Soft Sky Blue
+    'minimize LR Fixation Probability':      '#54278F',  # Deep Indigo
+    'minimize XGBOOST Fixation Probability': '#9E9AC8',  # Lavender
 
-    # ML-minimizers: cool palette (blue = probability, teal = time)
-    'minimize LR Fixation Probability':      '#1565c0',  # deep blue
-    'minimize XGBOOST Fixation Probability': '#64b5f6',  # light blue
-    'minimize LR Fixation Time':             '#00695c',  # deep teal
-    'minimize XGBOOST Fixation Time':        '#4db6ac',  # light teal
+    # --- TIME (Reds/Oranges) ---
+    'maximize LR Fixation Time':             '#A50F15',  # Blood Red
+    'maximize XGBOOST Fixation Time':        '#FC9272',  # Salmon
+    'minimize LR Fixation Time':             '#D94801',  # Burnt Orange
+    'minimize XGBOOST Fixation Time':        '#FDBB84',  # Peach
 
-    # Legacy / fallback
-    'Decelerator': '#5e54e0',
-    'Accelerator': '#d1234e',
-    'Other':       'yellow',
+    # Legacy
+    'Decelerator': '#5C6BC0',
+    'Accelerator': '#26A69A',
+    'Other':       '#FFEB3B',
 }
 
 # Use a defaultdict to return 'lightgray' for unknown categories
@@ -523,6 +522,7 @@ def plot_outcome_vs_property(
     figures_dir=None,
     force_recompute=False,
     batch_name=None,
+    fig_title=None,
 ):
     """Scatter plot of one graph property vs an evolutionary outcome, with auto-detected violins.
 
@@ -709,7 +709,8 @@ def plot_outcome_vs_property(
 
     # --- 10. Titles & labels ---
     r_suffix = f"  (r={r_values[0]})" if len(r_values) == 1 else ""
-    ax.set_title(f'{xlabel_base}  →  {ylabel}{r_suffix}', fontsize=13, pad=8)
+    fig_title = fig_title or f'{xlabel_base}  →  {ylabel}{r_suffix}' 
+    ax.set_title(fig_title, fontsize=13, pad=8)
     ax.set_xlabel(xlabel, fontsize=10)
     ax.set_ylabel(ylabel, fontsize=11)
     ax.grid(True, linestyle='--', alpha=0.4)
