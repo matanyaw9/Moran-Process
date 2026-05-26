@@ -126,8 +126,10 @@ def load_batch_info(batch_dir) -> dict:
     return {"name": Path(batch_dir).name, "description": ""}
 
 
-def create_batch_info(batch_dir, name, description, graph_types=None, r_values=None,
-                      n_repeats=None, n_nodes_range=None, notes="") -> dict:
+def create_batch_info(batch_dir, name, description="", graph_types=None, r_values=None,
+                      n_repeats=None, node_sizes=None, notes="",
+                      n_graphs=None, total_simulations=None, n_requested_jobs=None,
+                      queue=None, memory_mb=None, zoo_path=None) -> dict:
     """Write batch_info.json in batch_dir. Safe to re-run -- overwrites existing file.
 
     Args:
@@ -137,8 +139,14 @@ def create_batch_info(batch_dir, name, description, graph_types=None, r_values=N
         graph_types: list of graph category names present, e.g. ['Mammalian', 'Random']
         r_values: list of selection coefficients used, e.g. [1.1, 1.5, 2.0]
         n_repeats: number of Moran process runs per graph per r value
-        n_nodes_range: dict describing node-count range, e.g. {'min': 10, 'max': 100}
+        node_sizes: distinct node counts in the zoo, e.g. [10, 20, 30, 50, 100]
         notes: free-text field for caveats or TODOs
+        n_graphs: total number of graphs in the zoo
+        total_simulations: n_graphs * len(r_values) * n_repeats
+        n_requested_jobs: number of LSF array jobs submitted
+        queue: LSF queue name
+        memory_mb: memory requested per job in MB
+        zoo_path: path to the serialized graph zoo file
     """
     info = {
         "name": name,
@@ -147,7 +155,13 @@ def create_batch_info(batch_dir, name, description, graph_types=None, r_values=N
         "graph_types": graph_types or [],
         "r_values": r_values or [],
         "n_repeats": n_repeats,
-        "n_nodes_range": n_nodes_range or {},
+        "node_sizes": node_sizes or [],
+        "n_graphs": n_graphs,
+        "total_simulations": total_simulations,
+        "n_requested_jobs": n_requested_jobs,
+        "queue": queue,
+        "memory_mb": memory_mb,
+        "zoo_path": str(zoo_path) if zoo_path is not None else None,
         "notes": notes,
     }
     path = Path(batch_dir) / "batch_info.json"
@@ -173,14 +187,19 @@ def plot_batch_info_card(
     if not force_recompute and try_load_cached(fig_path):
         return
 
-    name        = batch_info.get('name', 'Unknown Batch')
-    description = batch_info.get('description', '')
-    date_str    = batch_info.get('date_created', '')
-    graph_types = batch_info.get('graph_types', [])
-    r_values    = batch_info.get('r_values', [])
-    n_repeats   = batch_info.get('n_repeats')
-    n_nodes_rng = batch_info.get('n_nodes_range', {})
-    notes       = batch_info.get('notes', '')
+    name              = batch_info.get('name', 'Unknown Batch')
+    description       = batch_info.get('description', '')
+    date_str          = batch_info.get('date_created', '')
+    graph_types       = batch_info.get('graph_types', [])
+    r_values          = batch_info.get('r_values', [])
+    n_repeats         = batch_info.get('n_repeats')
+    node_sizes        = batch_info.get('node_sizes', [])
+    n_graphs          = batch_info.get('n_graphs')
+    total_simulations = batch_info.get('total_simulations')
+    n_requested_jobs  = batch_info.get('n_requested_jobs')
+    queue             = batch_info.get('queue')
+    memory_mb         = batch_info.get('memory_mb')
+    notes             = batch_info.get('notes', '')
 
     fig, ax = plt.subplots(figsize=DEFAULT_FIG_SIZE)
     ax.axis('off')
@@ -209,7 +228,7 @@ def plot_batch_info_card(
                 fontsize=10, va='top', ha='left', color='#333333')
 
     y = 0.58
-    row_h = 0.09
+    row_h = 0.075
     if date_str:
         _meta_row('Date:', date_str, y);  y -= row_h
     if graph_types:
@@ -217,9 +236,19 @@ def plot_batch_info_card(
     if r_values:
         _meta_row('r values:', ', '.join(str(r) for r in r_values), y);  y -= row_h
     if n_repeats is not None:
-        _meta_row('Repeats:', f'{int(n_repeats):,}', y);  y -= row_h
-    if n_nodes_rng:
-        _meta_row('Node range:', ', '.join(f'{k}: {v}' for k, v in n_nodes_rng.items()), y)
+        _meta_row('Repeats / config:', f'{int(n_repeats):,}', y);  y -= row_h
+    if node_sizes:
+        _meta_row('Node sizes:', ', '.join(str(n) for n in node_sizes), y);  y -= row_h
+    if n_graphs is not None:
+        total_str = f'  (total sims: {int(total_simulations):,})' if total_simulations is not None else ''
+        _meta_row('Graphs:', f'{int(n_graphs):,}{total_str}', y);  y -= row_h
+    if n_requested_jobs is not None:
+        hpc_str = f'{int(n_requested_jobs):,} jobs'
+        if queue:
+            hpc_str += f'  |  queue: {queue}'
+        if memory_mb is not None:
+            hpc_str += f'  |  {int(memory_mb):,} MB/job'
+        _meta_row('HPC:', hpc_str, y);  y -= row_h
 
     # Notes (bottom, muted)
     if notes:

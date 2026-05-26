@@ -14,6 +14,7 @@ import itertools
 
 from moran_process.core.population_graph import PopulationGraph
 from moran_process.simulations.process_run import ProcessRun
+from moran_process.analysis.analysis_utils import create_batch_info
 
 class ProcessLab:
     """ Manages multiple process runs and stores their results"""
@@ -104,16 +105,20 @@ class ProcessLab:
      
 
     # --- HPC SUBMISSION ENGINE ---
-    def submit_jobs(self, 
-                    zoo_path, 
-                    n_graphs,  
-                    r_values, 
-                    batch_name, 
-                    batch_dir, 
-                    n_repeats=10, 
-                    n_requested_jobs=1, 
-                    queue="short", 
-                    memory="2048", 
+    def submit_jobs(self,
+                    zoo_path,
+                    n_graphs,
+                    r_values,
+                    batch_name,
+                    batch_dir,
+                    n_repeats=10,
+                    n_requested_jobs=1,
+                    queue="short",
+                    memory="2048",
+                    graph_types=None,
+                    node_sizes=None,
+                    description="",
+                    notes="",
                     ):
         """
         1. Dumps all graphs to 'graphs.pkl'
@@ -185,6 +190,23 @@ class ProcessLab:
             print(f"❌ Command failed with return code {result.returncode}")
         print(f"Error message: {result.stderr}")
         print(f"Batch submitted! \n > Logs: {logs_dir} \n > Results: {results_dir}")
+
+        create_batch_info(
+            batch_dir=batch_dir,
+            name=batch_name,
+            description=description,
+            graph_types=graph_types,
+            r_values=r_values,
+            n_repeats=n_repeats,
+            node_sizes=node_sizes,
+            notes=notes,
+            n_graphs=n_graphs,
+            total_simulations=n_graphs * len(r_values) * n_repeats,
+            n_requested_jobs=n_requested_jobs,
+            queue=queue,
+            memory_mb=int(memory),
+            zoo_path=zoo_path,
+        )
 
 
     # @staticmethod
