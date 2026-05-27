@@ -7,7 +7,7 @@ from datetime import datetime
 import joblib
 
 from moran_process.core.population_graph import PopulationGraph
-from moran_process.simulations.process_run import ProcessRun
+from moran_process.simulations.moran_simulation_process import MoranProcess
 
 def load_data(zoo_path, task_manifest_path):
     """Loads the Graph Zoo and the Task Manifest."""
@@ -74,7 +74,7 @@ def run_worker_slice(batch_dir, zoo_path, manifest_path, worker_index):
             
             for rep in range(n_repeats):
                 # B. Initialize Simulation
-                sim = ProcessRun(population_graph=target_graph, selection_coefficient=r_val)
+                sim = MoranProcess(population_graph=target_graph, selection_coefficient=r_val)
                 sim.initialize_random_mutant()
                 
                 # C. Run

@@ -1,0 +1,76 @@
+import numpy as np
+import random
+import time
+
+from moran_process.simulations.simulation_process import SimulationProcess
+
+
+class MoranProcess(SimulationProcess):
+    """
+    Moran process: fitness-weighted birth, uniform-random neighbor replacement.
+    Wild-type fitness = 1.0; mutant fitness = r (selection_coefficient).
+
+    State encoding: 0 = wild-type, 1 = mutant.
+    Terminates at fixation (all 1) or extinction (all 0).
+    """
+
+    def initialize_random_mutant(self, n_mutants: int = 1, seed=None) -> list[int]:
+        """Place n_mutants mutants at randomly chosen nodes. Returns chosen node indices."""
+        self.state.fill(0)
+        if seed is not None:
+            random.seed(seed)
+        if n_mutants > self.n_nodes:
+            raise ValueError("Number of mutants exceeds number of nodes in the graph.")
+        chosen = random.sample(range(self.n_nodes), k=n_mutants)
+        self.state[chosen] = 1
+        return chosen
+
+    def step(self) -> None:
+        fitness = np.where(self.state == 1, self.r, 1.0)
+        probs = fitness / fitness.sum()
+        reproducer = np.random.choice(self.n_nodes, p=probs)
+        neighbors = self.adj_list[reproducer]
+        if neighbors:
+            victim = random.choice(neighbors)
+            self.state[victim] = self.state[reproducer]
+
+    def run(self, track_history: bool = False) -> dict:
+        """
+        Run until fixation, extinction, or max_steps.
+
+        Returns keys: fixation, steps, initial_mutants, selection_coeff, duration,
+        and (if track_history=True) history (array of mutant counts per step).
+        """
+        start_time = time.perf_counter()
+        steps = 0
+        fixation = False
+        initial_mutants = int(np.sum(self.state))
+        history = []
+
+        while steps < self.max_steps:
+            mutant_count = int(np.sum(self.state))
+
+            if track_history:
+                history.append(mutant_count)
+
+            if mutant_count == 0:
+                break
+            if mutant_count == self.n_nodes:
+                fixation = True
+                break
+
+            self.step()
+            steps += 1
+
+        end_time = time.perf_counter()
+
+        result = {
+            "fixation": fixation,
+            "steps": steps,
+            "initial_mutants": initial_mutants,
+            "selection_coeff": self.r,
+            "duration": end_time - start_time,
+        }
+        if track_history:
+            result["history"] = np.array(history)
+        return result

@@ -13,7 +13,7 @@ from pathlib import Path
 import itertools
 
 from moran_process.core.population_graph import PopulationGraph
-from moran_process.simulations.process_run import ProcessRun
+from moran_process.simulations.moran_simulation_process import MoranProcess
 from moran_process.analysis.analysis_utils import create_batch_info
 
 class ProcessLab:
@@ -50,7 +50,7 @@ class ProcessLab:
                 # Run Repeats
                 for _ in range(n_repeats):
                     # Initialize Engine
-                    sim = ProcessRun(population_graph=graph_obj, selection_coefficient=r)
+                    sim = MoranProcess(population_graph=graph_obj, selection_coefficient=r)
                     sim.initialize_random_mutant() # You might want to seed this for reproducibility
                     
                     # Run
