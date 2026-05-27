@@ -885,9 +885,10 @@ def plot_two_property_effect(
         + f"{y_prop}: {corr_y:.3f}"
     )
     ax.text(
-        0.03, 0.97, corr_text,
+        0.0, -0.14, corr_text,
         transform=ax.transAxes, fontsize=9,
         verticalalignment='top',
+        clip_on=False,
         bbox=dict(boxstyle="round,pad=0.4", facecolor="white", alpha=0.9, edgecolor="lightgray"),
         zorder=5,
     )
