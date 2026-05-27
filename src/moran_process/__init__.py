@@ -7,6 +7,7 @@ from moran_process.core.graph_zoo import GraphZoo
 from moran_process.core.population_graph import GRAPH_PROPS, PopulationGraph
 from moran_process.pipeline.process_lab import ProcessLab
 from moran_process.simulations.moran_simulation_process import MoranProcess
+from moran_process.simulations.multi_color_simulation_process import MultiColorMoranProcess
 from moran_process.simulations.simulation_process import SimulationProcess
 
 __all__ = [
@@ -18,5 +19,6 @@ __all__ = [
     "PopulationGraph",
     "ProcessLab",
     "MoranProcess",
+    "MultiColorMoranProcess",
     "SimulationProcess",
 ]
