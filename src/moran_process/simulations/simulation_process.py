@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 import numpy as np
 
-from moran_process.core.population_graph import PopulationGraph
+from moran_process.core.population_graph import GraphCore
 
 
 class SimulationProcess(ABC):
@@ -9,18 +9,16 @@ class SimulationProcess(ABC):
 
     def __init__(
         self,
-        population_graph: PopulationGraph,
+        graph_core: GraphCore,
         selection_coefficient: float = 1.0,
         max_steps: int = 1_000_000,
     ):
-        self.pop_graph = population_graph
         self.r = selection_coefficient
         self.max_steps = max_steps
-        self.n_nodes = self.pop_graph.number_of_nodes()
+        self.n_nodes = graph_core.n_nodes
+        self.nbrs = graph_core.nbrs
+        self.offsets = graph_core.offsets
         self.state = np.zeros(self.n_nodes, dtype=int)
-        self.adj_list = [
-            list(self.pop_graph.graph.neighbors(n)) for n in range(self.n_nodes)
-        ]
 
     @abstractmethod
     def step(self) -> None:

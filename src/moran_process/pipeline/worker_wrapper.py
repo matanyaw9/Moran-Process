@@ -69,32 +69,29 @@ def run_worker_slice(batch_dir, zoo_path, manifest_path, worker_index):
             # A. Get Parameters from the Table
             # row.graph_idx corresponds to the list index in graphs.pkl
             target_graph = graph_zoo[row.graph_idx]
+            graph_core = target_graph.to_simulation_struct()
             r_val = row.r_value
             n_repeats = row.n_repeats
-            
+
             for rep in range(n_repeats):
                 # B. Initialize Simulation
-                sim = MoranProcess(population_graph=target_graph, selection_coefficient=r_val)
+                sim = MoranProcess(graph_core=graph_core, selection_coefficient=r_val)
                 sim.initialize_random_mutant()
-                
+
                 # C. Run
                 raw_result = sim.run()
-                
+
                 # D. Save Record
                 record = {
                     "task_id": row.task_id,
                     "job_id": worker_index,
-                    "wl_hash": target_graph.wl_hash,
-                    "graph_name": target_graph.name,
+                    "wl_hash": graph_core.wl_hash,
+                    "graph_name": graph_core.name,
                     "r": r_val,
                     "fixation": raw_result["fixation"],
                     "steps": raw_result["steps"],
                     "initial_mutants": raw_result["initial_mutants"],
                     "duration": raw_result["duration"],
-
-                    # Add any other graph properties you need for analysis
-                    # **target_graph.metadata # (Optional) expands WL hash, etc.
-
                 }
                 results_buffer.append(record)
             

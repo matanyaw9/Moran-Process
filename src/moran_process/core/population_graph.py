@@ -8,8 +8,23 @@ import warnings
 import pickle
 import argparse
 import joblib
+from dataclasses import dataclass
 # import pydot
 warnings.filterwarnings("ignore", message="The hashes produced for graphs")
+
+
+@dataclass(eq=False)
+class GraphCore:
+    """Compact CSR representation of a graph for HPC simulation workers.
+
+    Replaces the heavy NetworkX/PopulationGraph objects in zoo shards.
+    Node i's neighbours are nbrs[offsets[i] : offsets[i+1]].
+    """
+    n_nodes: int
+    nbrs: np.ndarray    # int32, concatenated neighbour lists (length 2E for undirected)
+    offsets: np.ndarray # int32, length N+1
+    wl_hash: str
+    name: str
 
 
 # COLOR_DICT = {
@@ -620,6 +635,23 @@ class PopulationGraph:
     def get_wl_hash(self):
         return nx.weisfeiler_lehman_graph_hash(self.graph)
     
+
+    def to_simulation_struct(self) -> GraphCore:
+        """Convert to a compact CSR GraphCore for HPC serialization.
+
+        Builds adjacency once from NetworkX and packs it into two flat int32
+        arrays so workers never need to inflate the full NetworkX graph.
+        """
+        G = self.graph
+        n = self.n_nodes
+        adj = [list(G.neighbors(i)) for i in range(n)]
+        offsets = np.zeros(n + 1, dtype=np.int32)
+        for i in range(n):
+            offsets[i + 1] = offsets[i] + len(adj[i])
+        nbrs = np.empty(int(offsets[n]), dtype=np.int32)
+        for i in range(n):
+            nbrs[offsets[i] : offsets[i + 1]] = adj[i]
+        return GraphCore(n_nodes=n, nbrs=nbrs, offsets=offsets, wl_hash=self.wl_hash, name=self.name)
 
     # --- HPC SERIALIZATION ---
     def save(self, filepath: str):

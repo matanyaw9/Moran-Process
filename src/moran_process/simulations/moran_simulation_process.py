@@ -29,8 +29,8 @@ class MoranProcess(SimulationProcess):
         fitness = np.where(self.state == 1, self.r, 1.0)
         probs = fitness / fitness.sum()
         reproducer = np.random.choice(self.n_nodes, p=probs)
-        neighbors = self.adj_list[reproducer]
-        if neighbors:
+        neighbors = self.nbrs[self.offsets[reproducer] : self.offsets[reproducer + 1]]
+        if len(neighbors) > 0:
             victim = random.choice(neighbors)
             self.state[victim] = self.state[reproducer]
 
