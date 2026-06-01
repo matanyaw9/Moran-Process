@@ -21,6 +21,7 @@ class MultiColorMoranProcess(SimulationProcess):
             self.state[i] = i
 
     def step(self) -> None:
+        # Chossing the reproducer is uniformly random.
         reproducer = np.random.randint(self.n_nodes)
         neighbors = self.nbrs[self.offsets[reproducer] : self.offsets[reproducer + 1]]
         if len(neighbors) > 0:

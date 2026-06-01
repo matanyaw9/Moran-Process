@@ -11,19 +11,16 @@ from moran_process.simulations.moran_simulation_process import MoranProcess
 
 def load_data(zoo_path, task_manifest_path):
     """Loads the Graph Zoo and the Task Manifest."""
-    
-    # 1. Load the Graph Zoo (The "Frozen" Graphs)
+
     if not os.path.exists(zoo_path):
         raise FileNotFoundError(f"Could not find {zoo_path}")
+    if not os.path.exists(task_manifest_path):
+        raise FileNotFoundError(f"Could not find task_manifest.csv at {task_manifest_path}")
     
     with open(zoo_path, "rb") as f:
         graph_zoo = joblib.load(f)
     print(f"[Worker] Loaded {len(graph_zoo)} graphs from Zoo.")
 
-    # 2. Load the Task Manifest (The "Huge Table")
-    if not os.path.exists(task_manifest_path):
-        raise FileNotFoundError(f"Could not find task_manifest.csv at {task_manifest_path}")
-        
     manifest_df = pd.read_csv(task_manifest_path)
     print(f"[Worker] Loaded Manifest with {len(manifest_df)} total tasks.")
     
@@ -41,19 +38,11 @@ def run_worker_slice(batch_dir, zoo_path, manifest_path, worker_index):
     # 1. Load Data
     graph_zoo, manifest_df = load_data(zoo_path, manifest_path)
     
-    # 2. Calculate My Slice
-    # LSF Job Indices are 1-based (1, 2, 3...)
-    # We convert to 0-based for array slicing
-
-    
-    # Handle the last job (which might not have a full chunk)
-
+    # 2. Get My Slice
     my_tasks = manifest_df[manifest_df['worker_id'] == worker_index]
-
     print('='*60)
     print(my_tasks)
     print('='*60)
-
 
     if my_tasks.empty:
         print(f"[Worker] No tasks found. Exiting.")
@@ -63,7 +52,6 @@ def run_worker_slice(batch_dir, zoo_path, manifest_path, worker_index):
     # 3. Run The Simulations
     results_buffer = []
     # Iterate over the rows in my slice
-    # iterrows is slow, but fine for 500 tasks. itertuples is faster.
     for row in my_tasks.itertuples():
         try:
             # A. Get Parameters from the Table
