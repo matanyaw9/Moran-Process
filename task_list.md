@@ -38,6 +38,7 @@ alysis_utils.py`, (b) a `cli.py`, (c) a `merge_batches` rewrite. After the reorg
 ## 2. Engineering / refactor TODOs
 - [x] Create a graph zoo interface.
 - [ ] Should selection_coeffisient be in the abstract class? I think not.
+- [ ] Add a job at the end that preprocesses the data ready for presenting. Basically running the experiment_analysis on it in advance. 
 - [ ] Make analysis able to work with large datasets. Maybe switch to polars.
 - [ ] Treat Future Warning in violin plots.
 - [ ] Instead of calculating every time the figures again in a notebook, make a script that makes it as a job maybe and saves the figures. 
@@ -46,9 +47,6 @@ alysis_utils.py`, (b) a `cli.py`, (c) a `merge_batches` rewrite. After the reorg
 - [ ] Add a proper CLI (Typer or Click).
 - [ ] Add a built-in `aggregate_batch()` method on `ProcessLab` so we stop hand-rolling the `glob + pd.concat` snippet.
 - [ ] fix the way logs are made. All logs associated to a batch should be in it's directroy with a meaningful name.
-
-
-
 
 ## 3. Workflow / habit TODOs
 
