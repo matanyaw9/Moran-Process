@@ -99,8 +99,11 @@ def run_worker_slice(batch_dir, zoo_shard_dir, manifest_path, worker_index):
                 steps_arr = np.empty(n_repeats, dtype=np.int64)
                 durations = np.empty(n_repeats, dtype=np.float64)
 
+                # Seed from manifest: int → reproducible task, NaN → OS entropy.
+                task_seed = None if pd.isna(row.seed) else int(row.seed)
+                sim = MoranProcess(graph_core=graph_core, selection_coefficient=r_val,
+                                   seed=task_seed)
                 for i in range(n_repeats):
-                    sim = MoranProcess(graph_core=graph_core, selection_coefficient=r_val)
                     sim.initialize_random_mutant()
                     raw = sim.run()
                     fixations[i] = raw["fixation"]

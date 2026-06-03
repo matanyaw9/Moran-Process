@@ -137,6 +137,7 @@ class ProcessLab:
                     node_sizes=None,
                     description="",
                     notes="",
+                    batch_seed=None,
                     ):
         """
         1. Dumps all graphs to 'graphs.pkl'
@@ -167,7 +168,8 @@ class ProcessLab:
                                                    r_values,
                                                    n_repeats,
                                                    n_requested_jobs,
-                                                   output_path=manifest_path)
+                                                   output_path=manifest_path,
+                                                   batch_seed=batch_seed)
 
         print(f"Created manifest with {len(manifest_df)} rows.")
 
@@ -235,6 +237,7 @@ class ProcessLab:
             queue=queue,
             memory_mb=memory_mb,
             zoo_path=zoo_path,
+            batch_seed=batch_seed,
         )
 
 
@@ -260,11 +263,21 @@ class ProcessLab:
     #     return pd.DataFrame(tasks)
 
 
-    def _create_task_list(n_graphs, r_values, repeats_per_config, num_workers, output_path="task_manifest.csv"):
+    def _create_task_list(n_graphs, r_values, repeats_per_config, num_workers,
+                          output_path="task_manifest.csv", batch_seed=None):
         """
         Allocates simulations to workers as evenly as possible.
         Splits a single configuration across multiple workers if necessary.
+
+        batch_seed: integer seed for reproducible batches. A per-task seed is derived
+                    from a batch-level RNG so the batch can be exactly replayed by
+                    storing batch_seed in batch_info.json. None = random (no seeds stored).
         """
+        import numpy as np
+        # None → seeds from OS entropy; int → deterministic. Either way, seeds are
+        # stored in the manifest so any batch can be replayed from its manifest alone.
+        task_rng = np.random.default_rng(batch_seed)
+
         # 1. Generate all unique configurations (Graph X, r Y)
         configs = list(itertools.product(range(n_graphs), r_values))
         num_configs = len(configs)
@@ -301,7 +314,8 @@ class ProcessLab:
                     'worker_id': worker_id+1,
                     'graph_idx': graph_idx,
                     'r_value': r,
-                    'n_repeats': take
+                    'n_repeats': take,
+                    'seed': int(task_rng.integers(0, 2**31)),
                 })
                 
                 # Update counters

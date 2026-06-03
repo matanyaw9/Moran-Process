@@ -129,7 +129,7 @@ def load_batch_info(batch_dir) -> dict:
 def create_batch_info(batch_dir, name, description="", graph_types=None, r_values=None,
                       n_repeats=None, node_sizes=None, notes="",
                       n_graphs=None, total_simulations=None, n_requested_jobs=None,
-                      queue=None, memory_mb=None, zoo_path=None) -> dict:
+                      queue=None, memory_mb=None, zoo_path=None, batch_seed=None) -> dict:
     """Write batch_info.json in batch_dir. Safe to re-run -- overwrites existing file.
 
     Args:
@@ -163,6 +163,7 @@ def create_batch_info(batch_dir, name, description="", graph_types=None, r_value
         "memory_mb": memory_mb,
         "zoo_path": str(zoo_path) if zoo_path is not None else None,
         "notes": notes,
+        "batch_seed": batch_seed,
     }
     path = Path(batch_dir) / "batch_info.json"
     with open(path, "w") as f:

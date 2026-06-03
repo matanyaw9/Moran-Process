@@ -1,5 +1,4 @@
 import numpy as np
-import random
 import time
 
 from moran_process.simulations.simulation_process import SimulationProcess
@@ -14,25 +13,42 @@ class MoranProcess(SimulationProcess):
     Terminates at fixation (all 1) or extinction (all 0).
     """
 
+    def __init__(self, graph_core, selection_coefficient: float = 1.0,
+                 max_steps: int = 1_000_000, seed=None):
+        super().__init__(graph_core, selection_coefficient, max_steps, seed=seed)
+        self.mutant_count: int = 0
+
+    def reset(self) -> None:
+        """Reset all nodes to wild-type and zero the mutant counter."""
+        super().reset()
+        self.mutant_count = 0
+
     def initialize_random_mutant(self, n_mutants: int = 1, seed=None) -> list[int]:
-        """Place n_mutants mutants at randomly chosen nodes. Returns chosen node indices."""
-        self.state.fill(0)
+        """Place n_mutants mutants at randomly chosen nodes. Returns chosen node indices.
+
+        seed: if given, re-anchors this instance's RNG from that point forward,
+              making the placement and all subsequent steps reproducible.
+        """
         if seed is not None:
-            random.seed(seed)
+            self._rng = np.random.default_rng(seed)
+        self.state.fill(0)
         if n_mutants > self.n_nodes:
             raise ValueError("Number of mutants exceeds number of nodes in the graph.")
-        chosen = random.sample(range(self.n_nodes), k=n_mutants)
+        chosen = self._rng.choice(self.n_nodes, size=n_mutants, replace=False)
         self.state[chosen] = 1
-        return chosen
+        self.mutant_count = n_mutants
+        return list(chosen)
 
     def step(self) -> None:
         fitness = np.where(self.state == 1, self.r, 1.0)
         probs = fitness / fitness.sum()
-        reproducer = np.random.choice(self.n_nodes, p=probs)
+        reproducer = self._rng.choice(self.n_nodes, p=probs)
         neighbors = self.nbrs[self.offsets[reproducer] : self.offsets[reproducer + 1]]
         if len(neighbors) > 0:
-            victim = random.choice(neighbors)
+            victim = self._rng.choice(neighbors)
+            old_state = self.state[victim]
             self.state[victim] = self.state[reproducer]
+            self.mutant_count += self.state[reproducer] - old_state
 
     def run(self, track_history: bool = False) -> dict:
         """
@@ -44,18 +60,16 @@ class MoranProcess(SimulationProcess):
         start_time = time.perf_counter()
         steps = 0
         fixation = False
-        initial_mutants = int(np.sum(self.state))
+        initial_mutants = self.mutant_count
         history = []
 
         while steps < self.max_steps:
-            mutant_count = int(np.sum(self.state))
-
             if track_history:
-                history.append(mutant_count)
+                history.append(self.mutant_count)
 
-            if mutant_count == 0:
+            if self.mutant_count == 0:
                 break
-            if mutant_count == self.n_nodes:
+            if self.mutant_count == self.n_nodes:
                 fixation = True
                 break
 

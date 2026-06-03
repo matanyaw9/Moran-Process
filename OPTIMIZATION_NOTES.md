@@ -42,7 +42,7 @@ Confirmation from `simulation_data/2026-05-26_scaling_study_4/logs`:
 
 ---
 
-## 1. Memory: stop shipping the whole zoo to every worker  *(HIGHEST IMPACT)*
+## 1. Done - Memory: stop shipping the whole zoo to every worker  *(HIGHEST IMPACT)*
 
 **Where.** `src/moran_process/pipeline/process_lab.py` (`submit_jobs`,
 `_create_task_list`) and `src/moran_process/pipeline/worker_wrapper.py`
@@ -74,7 +74,7 @@ current batch in 4 GB instead of 16 GB.
 
 ---
 
-## 2. Memory: convert graphs to a compact CSR form before pickling
+## 2. Done - Memory: convert graphs to a compact CSR form before pickling
 
 **Where.** `src/moran_process/core/population_graph.py` (add a method
 `to_simulation_struct()`) and `src/moran_process/simulations/`
@@ -110,7 +110,7 @@ nice speed-up in `step()` because neighbour lookup becomes
 
 ---
 
-## 3. Memory: stream results to disk; do not buffer 500k dicts
+## 3. Done - Memory: stream results to disk; do not buffer 500k dicts
 
 **Where.** `src/moran_process/pipeline/worker_wrapper.py` (`run_worker_slice`).
 
@@ -134,7 +134,7 @@ itself a momentary 2x copy.
 
 ---
 
-## 4. Memory + Speed: stop rebuilding `MoranProcess` and `adj_list` per repeat
+## 4. Done - Memory + Speed: stop rebuilding `MoranProcess` and `adj_list` per repeat
 
 **Where.** `src/moran_process/pipeline/worker_wrapper.py` lines 75-77 and
 `src/moran_process/simulations/simulation_process.py` lines 20-23.
@@ -189,7 +189,7 @@ if neighbors:
 And `run()` calls `int(np.sum(self.state))` every loop iteration to check
 fixation/extinction.
 
-### 5a. Track mutant count incrementally (always)
+### 5a. Done - Track mutant count incrementally (always)
 
 Maintain `self.mutant_count` and update it whenever `state[victim]` actually
 changes type. Termination check becomes two integer comparisons. The current

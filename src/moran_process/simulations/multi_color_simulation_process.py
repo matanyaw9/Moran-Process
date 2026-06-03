@@ -1,5 +1,4 @@
 import numpy as np
-import random
 import time
 
 from moran_process.simulations.simulation_process import SimulationProcess
@@ -21,11 +20,10 @@ class MultiColorMoranProcess(SimulationProcess):
             self.state[i] = i
 
     def step(self) -> None:
-        # Chossing the reproducer is uniformly random.
-        reproducer = np.random.randint(self.n_nodes)
+        reproducer = self._rng.integers(self.n_nodes)
         neighbors = self.nbrs[self.offsets[reproducer] : self.offsets[reproducer + 1]]
         if len(neighbors) > 0:
-            victim = random.choice(neighbors)
+            victim = self._rng.choice(neighbors)
             self.state[victim] = self.state[reproducer]
 
     def run(self, track_history: bool = False) -> dict:
