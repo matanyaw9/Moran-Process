@@ -330,76 +330,184 @@ def generate_robust_color_dict(df, existing_colors, default_palette='husl'):
 
 
 def aggregate_results_no_load(batch_dir, delete_temp=False, output_file=None):
-    """Concatenate per-job CSVs from batch_dir/tmp/results/ into a single file without loading it.
+    """Concatenate per-job result files from batch_dir/tmp/results/ without loading all rows.
+
+    Detects the output format automatically: Parquet files (result_job_*.parquet) take
+    priority over legacy CSV files (result_job_*.csv). The output format matches the input.
 
     Args:
-        batch_dir: path to the batch directory containing tmp/results/result_job_*.csv
+        batch_dir: path to the batch directory containing tmp/results/result_job_*
         delete_temp: if True, removes batch_dir/tmp/ after successful aggregation
-        output_file: destination path; defaults to batch_dir/full_results.csv
+        output_file: destination path; defaults to batch_dir/full_results.parquet (or .csv)
 
     Returns:
-        Path to the output CSV, or None if no result files were found.
+        Path to the output file, or None if no result files were found.
     """
+    import pyarrow.parquet as pq
+
     batch_path = Path(batch_dir)
+    tmp_results_path = batch_path / "tmp" / "results"
+
+    # Detect format: Parquet takes priority over CSV
+    parquet_files = sorted(
+        tmp_results_path.glob("result_job_*.parquet"),
+        key=lambda p: int(p.stem.split('_')[-1]),
+    )
+    csv_files = sorted(
+        tmp_results_path.glob("result_job_*.csv"),
+        key=lambda p: int(p.stem.split('_')[-1]),
+    )
+
+    # --- Parquet path ---
+    if parquet_files:
+        if not output_file:
+            output_file = batch_path / "full_results.parquet"
+        else:
+            output_file = Path(output_file)
+
+        if output_file.exists():
+            print(f"File {output_file} already exists!")
+            return output_file
+
+        print(f"Found {len(parquet_files)} Parquet files. Aggregating...")
+        try:
+            schema = pq.read_schema(str(parquet_files[0]))
+            with pq.ParquetWriter(str(output_file), schema) as writer:
+                for i, fpath in enumerate(parquet_files):
+                    if i > 0 and i % 100 == 0:
+                        print(f"  Processed {i}/{len(parquet_files)} files...")
+                    pf = pq.ParquetFile(str(fpath))
+                    for batch in pf.iter_batches():
+                        writer.write_batch(batch)
+            print(f"Master Parquet saved at: {output_file}")
+        except Exception as e:
+            print(f"Error during Parquet aggregation: {e}")
+            if output_file.exists():
+                output_file.unlink()
+            raise
+
+        if delete_temp:
+            tmp_dir = batch_path / "tmp"
+            if tmp_dir.exists():
+                shutil.rmtree(tmp_dir)
+                print(f"Deleted temporary directory: {tmp_dir}")
+        return output_file
+
+    # --- Legacy CSV path ---
+    if not csv_files:
+        print(f"No result files found in {tmp_results_path}")
+        return None
+
     if not output_file:
         output_file = batch_path / "full_results.csv"
     else:
         output_file = Path(output_file)
-    
-    tmp_results_path = batch_path / "tmp" / "results"
-    
-    # Check if already done
+
     if output_file.exists():
         print(f"File {output_file} already exists!")
         return output_file
 
-    # Find and sort files
-    all_files = sorted(
-        tmp_results_path.glob("result_job_*.csv"),
-        key=lambda p: int(p.stem.split('_')[-1])
-    )
-    
-    if not all_files:
-        print(f"No result files found in {tmp_results_path}")
-        return None
-
-    print(f"Found {len(all_files)} files. Aggregating...")
-
-    # Stream aggregation
+    print(f"Found {len(csv_files)} CSV files. Aggregating...")
     try:
         with open(output_file, 'w', encoding='utf-8') as outfile:
-            for i, fpath in enumerate(all_files):
+            for i, fpath in enumerate(csv_files):
                 if i > 0 and i % 100 == 0:
-                    print(f"  Processed {i}/{len(all_files)} files...")
-                
+                    print(f"  Processed {i}/{len(csv_files)} files...")
                 with open(fpath, 'r', encoding='utf-8') as infile:
                     if i == 0:
                         shutil.copyfileobj(infile, outfile)
                     else:
                         next(infile)
                         shutil.copyfileobj(infile, outfile)
-        
-        print(f"✓ Master file saved at: {output_file}")
-    
+        print(f"Master CSV saved at: {output_file}")
     except Exception as e:
-        print(f"Error during aggregation: {e}")
+        print(f"Error during CSV aggregation: {e}")
         if output_file.exists():
             output_file.unlink()
         raise
 
-    # Delete temp files
     if delete_temp:
         tmp_dir = batch_path / "tmp"
         if tmp_dir.exists():
             shutil.rmtree(tmp_dir)
             print(f"Deleted temporary directory: {tmp_dir}")
-    
-    # Return path instead of loading into memory
     return output_file
 
 
+def build_graph_statistics(results_path, df_graphs, graph_statistics_path, category_filter=None):
+    """Aggregate raw simulation results to one row per (graph, r) with fixation statistics.
+
+    If graph_statistics_path already exists, loads it directly. Otherwise streams results
+    from results_path (Parquet or CSV), merges with df_graphs, sorts, and saves.
+
+    Args:
+        results_path: path to full_results.parquet (or .csv for legacy batches)
+        df_graphs: DataFrame with graph structural properties (must have 'wl_hash', 'graph_name')
+        graph_statistics_path: path where graph_statistics.csv is saved / loaded from
+        category_filter: if given, returns only rows where category == category_filter
+
+    Returns:
+        analysis_df: aggregated DataFrame ready for plotting
+    """
+    import polars as pl
+
+    graph_statistics_path = Path(graph_statistics_path)
+
+    if graph_statistics_path.exists():
+        print(f"Aggregated statistics already exist -- loading {graph_statistics_path}...")
+        analysis_df = pd.read_csv(graph_statistics_path)
+    else:
+        results_path = Path(results_path)
+        if results_path.suffix == '.parquet':
+            lazy_df = pl.scan_parquet(str(results_path))
+        else:
+            lazy_df = pl.scan_csv(str(results_path))
+
+        agg_results_df = (
+            lazy_df
+            .with_columns(
+                pl.when(pl.col('fixation')).then(pl.col('steps')).otherwise(None).alias('steps_success')
+            )
+            .group_by(['wl_hash', 'r', 'graph_name'])
+            .agg([
+                pl.col('fixation').mean().alias('prob_fixation'),
+                pl.col('steps_success').median().alias('median_steps'),
+                pl.col('steps_success').mean().alias('mean_steps'),
+                pl.col('steps_success').std().alias('std_steps'),
+                pl.col('steps_success').quantile(0.25).alias('q25_steps'),
+                pl.col('steps_success').quantile(0.75).alias('q75_steps'),
+                (pl.col('steps_success').quantile(0.75) - pl.col('steps_success').quantile(0.25)).alias('iqr_steps'),
+                pl.col('fixation').count().alias('n_grouped'),
+            ])
+            .collect(engine='streaming')
+            .to_pandas()
+        )
+
+        print("Shape before merging: ", agg_results_df.shape)
+
+        analysis_df = pd.merge(
+            agg_results_df,
+            df_graphs,
+            on=['wl_hash', 'graph_name'],
+            how='left',
+            suffixes=('', '_db')
+        )
+        analysis_df['z_order'] = (analysis_df['category'] != 'Random').astype(int)
+        analysis_df = analysis_df.sort_values('z_order').drop(columns='z_order')
+        analysis_df.to_csv(graph_statistics_path, index=False)
+
+    print("Shape after merging: ", analysis_df.shape)
+
+    if category_filter is not None:
+        analysis_df = analysis_df[analysis_df['category'] == category_filter].copy()
+        print(f"Filtered to '{category_filter}': {len(analysis_df):,} rows")
+
+    print(f"Graph statistics columns: {list(analysis_df.columns)}")
+    return analysis_df
+
+
 def plot_steps_violin(
-    results_csv_path,
+    results_path,
     df_graphs,
     color_dict=None,
     categories=None,
@@ -408,11 +516,12 @@ def plot_steps_violin(
     batch_name=None,
     fig_title=None,
     show=True,
+    results_csv_path=None,  # deprecated alias for results_path
 ):
     """Violin plot of steps-to-fixation distribution, one violin per graph category.
 
     Args:
-        results_csv_path: path to the raw full_results.csv (can be 100M+ rows; read lazily)
+        results_path: path to the raw full_results.parquet or full_results.csv (read lazily)
         df_graphs: DataFrame with at least 'wl_hash' and 'category' columns
         color_dict: category -> hex color mapping for violin fills
         categories: x-axis order; defaults to sorted unique values in df_graphs['category']
@@ -426,6 +535,10 @@ def plot_steps_violin(
     if color_dict is None:
         color_dict = {}
 
+    # Support deprecated alias
+    if results_path is None and results_csv_path is not None:
+        results_path = results_csv_path
+
     fig_path = _resolve_figure_path(figures_dir, 'plot_steps_violin')
     if not force_recompute and try_load_cached(fig_path):
         return
@@ -433,7 +546,8 @@ def plot_steps_violin(
     if categories is None:
         categories = _sort_categories(df_graphs['category'].dropna().unique().tolist())
 
-    _scanner = pl.scan_csv(results_csv_path)
+    _rp = Path(results_path)
+    _scanner = pl.scan_parquet(str(_rp)) if _rp.suffix == '.parquet' else pl.scan_csv(str(_rp))
     _select = ['wl_hash', 'steps', 'fixation'] + (['r'] if 'r' in _scanner.columns else [])
     merged_raw = (
         _scanner

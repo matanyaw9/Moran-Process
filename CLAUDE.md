@@ -97,3 +97,4 @@ Read these files when the task requires deeper context:
 
 - Never use em dashes
 - Before applying a non-trivial code change that involves a design decision (imputation strategy, algorithm choice, data filtering), explain the reasoning and the alternatives considered, then wait for confirmation before editing the file.
+- If you want to remove some part of the code, that's okay but justify it first and don't do it silently.

@@ -77,7 +77,9 @@ class ProcessLab:
                     record = {
                         **graph_obj.metadata,
                         "r": r,
-                        **raw_result
+                        "fixation": raw_result["fixation"],
+                        "steps": raw_result["steps"],
+                        "duration": raw_result["duration"],
                     }
                     all_results.append(record)
                     if print_time:
