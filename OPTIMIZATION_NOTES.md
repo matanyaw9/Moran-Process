@@ -231,7 +231,7 @@ and a barrier to anyone else (including future-you) modifying the kernel.
 If you do go to C++ later, the right entry point is to keep the Numba
 kernel as the reference implementation and only port hot loops.
 
-### 5d. RNG hygiene
+### 5d. Done - RNG hygiene
 
 Today the code mixes `numpy.random.choice` (uses the global legacy RNG),
 Python's `random.choice`, and `random.sample`. Three RNG state machines for

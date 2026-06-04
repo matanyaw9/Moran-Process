@@ -114,11 +114,16 @@ holding `graph_zoo.joblib`, `task_manifest.csv`, and `results/result_job_*.csv`.
 - Evolutionary/mutation search for graphs that extremize fixation time/probability
 - Figure caching and per-batch metadata (`batch_info.json`)
 - A scaling study across N (see `notebooks/scaling_experiment_analysis.ipynb`)
+- Per-worker zoo shards + CSR `GraphCore` struct (eliminates NetworkX from workers; ~10x RAM reduction)
+- Parquet output with streaming results (constant-memory workers; ~5x smaller files vs CSV)
+- `SimulationProcess` ABC with `MoranProcess` and `MultiColorMoranProcess` subclasses
+- Incremental mutant-count tracking; unified per-instance RNG with optional batch seed for reproducibility
+- Polars streaming aggregation in `analysis_utils.build_graph_statistics`
 
 ### In Progress / Next Steps
 - [ ] Record steps to extinction separately, not only steps to fixation
-- [ ] Make the simulation faster (C++/Cython/Numba on the step, or multiprocessing)
-- [ ] Multi-color/multi-type simulation (more than 2 types); likely needs a Process ABC
+- [ ] Make the simulation faster (C++/Cython/Numba on the inner loop; pipeline RAM already fixed)
+- [x] Multi-color/multi-type simulation -- `MultiColorMoranProcess` subclasses `SimulationProcess` ABC
 - [ ] Explore a GNN approach (fixed-size vs variable-size graphs)
 - [ ] Justify N=31 with a size sweep showing qualitative consistency
 - [ ] Add the analytical fixation-probability reference line to plots

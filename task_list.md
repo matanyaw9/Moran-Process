@@ -39,7 +39,7 @@ alysis_utils.py`, (b) a `cli.py`, (c) a `merge_batches` rewrite. After the reorg
 - [x] Create a graph zoo interface.
 - [ ] Should selection_coeffisient be in the abstract class? I think not.
 - [ ] Add a job at the end that preprocesses the data ready for presenting. Basically running the experiment_analysis on it in advance. 
-- [ ] Make analysis able to work with large datasets. Maybe switch to polars.
+- [x] Make analysis able to work with large datasets. Maybe switch to polars.
 - [ ] Treat Future Warning in violin plots.
 - [ ] Instead of calculating every time the figures again in a notebook, make a script that makes it as a job maybe and saves the figures. 
 - [x] Make `Process` an abstract base class so multi-color / variant rules can subclass it.
