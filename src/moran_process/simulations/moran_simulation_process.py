@@ -23,14 +23,8 @@ class MoranProcess(SimulationProcess):
         super().reset()
         self.mutant_count = 0
 
-    def initialize_random_mutant(self, n_mutants: int = 1, seed=None) -> list[int]:
-        """Place n_mutants mutants at randomly chosen nodes. Returns chosen node indices.
-
-        seed: if given, re-anchors this instance's RNG from that point forward,
-              making the placement and all subsequent steps reproducible.
-        """
-        if seed is not None:
-            self._rng = np.random.default_rng(seed)
+    def initialize_random_mutant(self, n_mutants: int = 1) -> list[int]:
+        """Place n_mutants mutants at randomly chosen nodes. Returns chosen node indices."""
         self.state.fill(0)
         if n_mutants > self.n_nodes:
             raise ValueError("Number of mutants exceeds number of nodes in the graph.")
