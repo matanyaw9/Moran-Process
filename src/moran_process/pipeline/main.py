@@ -11,9 +11,12 @@ from datetime import datetime
 import os
 import time
 import joblib
+import numpy as np
 from pathlib import Path
 from moran_process.core.population_graph import PopulationGraph
 from moran_process.pipeline.process_lab import ProcessLab
+
+GRAPH_ZOO_SEED = 42  # controls random graph topology generation; fix for reproducible zoos
 
 BATCH_NAME = 'testing_large_batch_17_03_2026-03'
 
@@ -58,35 +61,42 @@ def print_configuration(n_nodes, min_edges, max_edges, n_graphs_per_combination,
     print("="*60)
 
 
-def generate_random_graphs(n_nodes:int, edge_range:int, n_graphs_per_combination:int, forbidden_wl_hashes: set[str]=set()):
+def generate_random_graphs(n_nodes:int, edge_range:int, n_graphs_per_combination:int,
+                           forbidden_wl_hashes: set[str]=set(), rng=None):
     """
     Generate random connected graphs and add them to the graph zoo.
-    
+
     Args:
-        graph_zoo: List of existing PopulationGraph objects
         n_nodes: List of node counts to generate graphs for
         edge_range: Range of edge counts relative to node count
         n_graphs_per_combination: Number of random graphs to generate per (n_nodes, n_edges) combination
-    
+        forbidden_wl_hashes: Set of wl_hashes already in the zoo (dedup guard)
+        rng: numpy Generator to derive graph seeds from; defaults to GRAPH_ZOO_SEED
+
     Returns:
         Updated graph_zoo list with random graphs added
     """
+    if rng is None:
+        rng = np.random.default_rng(GRAPH_ZOO_SEED)
+
     new_random_graph_zoo = []
     occupied_wl = forbidden_wl_hashes.copy()
 
-    for nn in n_nodes: 
+    for nn in n_nodes:
         min_e = nn - 1
         max_e = nn + edge_range - 1  # if edge_range = 1 -> range will be only [nn-1]
         edge_counts = range(min_e, max_e)
-        
+
         for ne in edge_counts:
             for i in range(n_graphs_per_combination):
-                wl_hash = None 
+                wl_hash = None
                 while wl_hash is None or wl_hash in occupied_wl:
+                    graph_seed = int(rng.integers(0, 2**32))
                     new_random_graph = PopulationGraph.random_connected_graph(
-                        n_nodes=nn, 
-                        n_edges=ne, 
-                        name=f'random_n{nn}_e{ne}_{i}'
+                        n_nodes=nn,
+                        n_edges=ne,
+                        name=f'random_n{nn}_e{ne}_{i}',
+                        seed=graph_seed,
                     )
                     wl_hash = new_random_graph.wl_hash
                 new_random_graph_zoo.append(new_random_graph)
@@ -172,7 +182,9 @@ def main(batch_name=False):
     # 3. GENERATE RANDOM GRAPHS
     if n_random_configs:
         graph_zoo_hashes = set([graph.wl_hash for graph in graph_zoo])
-        random_graphs = generate_random_graphs(n_nodes, edge_range, n_random_graphs_per_combination, forbidden_wl_hashes=graph_zoo_hashes)
+        rng = np.random.default_rng(GRAPH_ZOO_SEED)
+        random_graphs = generate_random_graphs(n_nodes, edge_range, n_random_graphs_per_combination,
+                                               forbidden_wl_hashes=graph_zoo_hashes, rng=rng)
         graph_zoo.extend(random_graphs)
     # 4. RUN EXPERIMENT AND SAVE RESULTS
     print("\n" + "="*60, "RUNNING EXPERIMENTS", "="*60, sep='\n')
