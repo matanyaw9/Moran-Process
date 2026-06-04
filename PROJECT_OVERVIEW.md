@@ -87,8 +87,6 @@ moran-process/
     │   ├── process_lab.py          # local study + HPC submission
     │   ├── worker_wrapper.py       # LSF array worker
     │   ├── main.py                 # respiratory + random batch builder
-    │   ├── run_random_graphs.py    # local random-only runner
-    │   ├── merge_batches.py        # merge two batches
     │   └── extreme_graphs.py       # mutation/GA search for extreme graphs
     └── analysis/
         └── analysis_utils.py       # plotting, aggregation, batch_info helpers

@@ -159,9 +159,6 @@ bsub ... uv run worker_wrapper.py --batch-dir ... --chunk-size ...
 Runs the 3 respiratory graphs + random graphs via HPC submission.
 Current config: `n_nodes=31`, `edge_counts=range(30,35)`, `n_graphs_per_edge_count=50`, `r_values=[1.0,1.1,1.2,1.3,2]`, `n_repeats=10_000`, `n_jobs=1000`.
 
-### `run_random_graphs.py`
-Runs random graphs only, locally (not HPC). Smaller scale.
-
 ---
 
 ## Analysis Notebooks (`notebooks/`)

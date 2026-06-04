@@ -14,9 +14,6 @@ uv sync
 
 # Build and submit a simulation batch (LSF job array on WEXAC)
 uv run python -m moran_process.pipeline.main --batch-name <name>
-
-# Local random-graph path (no HPC)
-uv run python -m moran_process.pipeline.run_random_graphs
 ```
 
 **Note:** The `tests/` directory exists but all tests are currently untrusted (AI-generated, outdated). Do not run them. New tests will be written from scratch.
@@ -80,7 +77,7 @@ This copies files without loading them into memory. Pass `delete_temp=True` to r
 
 - Graph names follow the pattern `{type}_{param1}{val1}_{param2}{val2}` (e.g. `avian_r4_l7`, `mammalian_b2_d4`).
 - `PopulationGraph.metadata` returns only `{wl_hash, graph_name}` — this is what gets merged into result rows; do not add expensive fields here.
-- `pipeline/main.py` builds the respiratory + random zoo and submits via `submit_jobs` (HPC); `pipeline/run_random_graphs.py` is the local random-only path using `run_comparative_study`. Check which execution path is needed before running.
+- `pipeline/main.py` builds the respiratory + random zoo and submits via `submit_jobs` (HPC). For local small-scale runs, use `run_comparative_study` directly from `design_zoo.ipynb` (cell 17, commented-out block).
 - The VS Code green Run button always executes on the WEXAC **login node**. Use an `inode` terminal session for anything compute-heavy, or `bsub` for real simulations.
 
 ## Reference Docs

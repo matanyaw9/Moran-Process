@@ -99,8 +99,6 @@ moran-process/
     │   ├── process_lab.py        # ProcessLab: local study + HPC submission
     │   ├── worker_wrapper.py     # LSF array worker
     │   ├── main.py               # respiratory + random batch builder/submitter
-    │   ├── run_random_graphs.py  # random-only runner (legacy/local)
-    │   ├── merge_batches.py      # merge two batches into one
     │   └── extreme_graphs.py     # mutation/GA search for extreme graphs
     └── analysis/
         └── analysis_utils.py     # plotting, aggregation, batch_info helpers
@@ -221,8 +219,6 @@ The intended workflow (see also `task_list.md` and `WORKFLOW.md`):
 6. ML: `notebooks/ml_predictors.ipynb` reads `graph_statistics.csv` and trains models.
 7. Extreme graphs: `pipeline/extreme_graphs.py` and `notebooks/extreme_graphs.ipynb`
    use `mutate_graph` to evolve graphs toward extreme predicted fixation time/probability.
-8. Merge batches when needed: `pipeline/merge_batches.py` concatenates two batches'
-   `full_results.csv` and `graph_props.csv` and merges their zoos (dedup by WL hash).
 
 ### Batch directory layout (actual)
 A batch lives directly under `simulation_data/<batch_name>/`:
