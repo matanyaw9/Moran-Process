@@ -8,7 +8,21 @@ import joblib
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from moran_process.simulations.moran_simulation_process import MoranProcess
+
+def _resolve_engine(engine: str):
+    """Return the simulation class for the requested engine.
+
+    Both classes share the same interface (initialize_random_mutant/run), so the
+    worker loop is identical regardless of choice. 'cpp' is the fast C++ core
+    (statistically equivalent); 'python' is the pure-Python reference.
+    """
+    if engine == "cpp":
+        from moran_process.simulations.cpp_moran import CppMoranProcess
+        return CppMoranProcess
+    if engine == "python":
+        from moran_process.simulations.moran_simulation_process import MoranProcess
+        return MoranProcess
+    raise ValueError(f"Unknown engine '{engine}' (expected 'cpp' or 'python').")
 
 # Fixed schema for all result Parquet files; column order must match RecordBatch construction below.
 _RESULT_SCHEMA = pa.schema([
@@ -50,14 +64,15 @@ def _rss_mb() -> int:
     return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss // 1024
 
 
-def run_worker_slice(batch_dir, zoo_shard_dir, manifest_path, worker_index):
+def run_worker_slice(batch_dir, zoo_shard_dir, manifest_path, worker_index, engine="cpp"):
     """Run simulations for all tasks assigned to this LSF job index.
 
     1. Load this worker's GraphCore shard and filter manifest to our rows.
-    2. Run simulations for each (graph, r) task.
+    2. Run simulations for each (graph, r) task using the selected engine.
     3. Stream results to a per-job Parquet file (one row-group per task).
     """
-    print(f"--- Worker {worker_index} started | RSS={_rss_mb()} MB ---")
+    MoranProcess = _resolve_engine(engine)
+    print(f"--- Worker {worker_index} started | engine={engine} | RSS={_rss_mb()} MB ---")
 
     # 1. Load data
     graph_zoo, manifest_df = load_data(zoo_shard_dir, manifest_path, worker_index)
@@ -150,6 +165,8 @@ if __name__ == "__main__":
                         help="Path to the batch tmp/ directory; results written to batch-dir/results/")
     parser.add_argument("--job-index", type=int, default=None,
                         help="Override job index (default: read from $LSB_JOBINDEX)")
+    parser.add_argument("--engine", choices=["cpp", "python"], default="cpp",
+                        help="Simulation engine: 'cpp' (fast, default) or 'python' (reference)")
 
     args = parser.parse_args()
 
@@ -163,4 +180,5 @@ if __name__ == "__main__":
             print("ERROR: No job index found. Pass --job-index or submit via bsub.")
             sys.exit(1)
 
-    run_worker_slice(args.batch_dir, args.zoo_shard_dir, args.manifest_path, job_idx)
+    run_worker_slice(args.batch_dir, args.zoo_shard_dir, args.manifest_path, job_idx,
+                     engine=args.engine)

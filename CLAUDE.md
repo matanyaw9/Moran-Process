@@ -9,11 +9,16 @@ MSc Computational Biology thesis (Weizmann Institute of Science, supervised by T
 ## Commands
 
 ```bash
-# Install dependencies
+# Install dependencies (also compiles the C++ extension via scikit-build-core)
 uv sync
 
-# Build and submit a simulation batch (LSF job array on WEXAC)
-uv run python -m moran_process.pipeline.main --batch-name <name>
+# Rebuild ONLY the C++ extension after editing src/moran_process/_cpp/*.cpp
+# (plain `uv sync` will not recompile if nothing else changed)
+uv sync --reinstall-package moran_process
+
+# Build and submit a simulation batch (LSF job array on WEXAC).
+# --engine cpp (default) uses the fast C++ core; --engine python the reference.
+uv run python -m moran_process.pipeline.main --batch-name <name> [--engine cpp|python]
 ```
 
 **Note:** The `tests/` directory exists but all tests are currently untrusted (AI-generated, outdated). Do not run them. New tests will be written from scratch.
@@ -32,19 +37,24 @@ The simulation pipeline has three layers:
 - `core/graph_zoo.py` defines `GraphZoo`, an ordered collection of graphs (the pipeline often serializes a plain `list[PopulationGraph]` via joblib instead).
 - Performance guard: diameter/radius/ASPL are skipped for N > 500; betweenness uses k=50 sampling for N > 100; closeness uses manual sampling for N > 200.
 
-**2. Simulation Layer: `simulations/process_run.py`**
-- `ProcessRun` implements one Moran process: fitness-weighted reproduction, random neighbor replacement.
+**2. Simulation Layer: `simulations/`**
+- `MoranProcess` (`moran_simulation_process.py`) implements one Moran process in pure Python: fitness-weighted reproduction, random neighbor replacement. This is the reference implementation.
 - `initialize_random_mutant()` then `run()` returns `{fixation, steps, initial_mutants, selection_coeff, duration}`.
 - `run(track_history=True)` also returns the mutant-count trajectory.
+- `CppMoranProcess` (`cpp_moran.py`) is a **drop-in replacement** with the identical interface, delegating the hot loop to the compiled `_moran_cpp` extension (`_cpp/moran_core.cpp`, built via pybind11 + scikit-build-core).
+  - It is **statistically equivalent**, not bit-exact: it uses xoshiro256++ (not NumPy's PCG64), so per-seed trajectories differ but fixation probability (ρ) and fixation-time distributions match within Monte Carlo error. Validated by `scripts/validate_cpp_equivalence.py` (z-test on ρ, KS test on fixation time); ~300x-1800x faster than the Python engine.
+  - Sampling uses a two-pool O(1) trick (mutants/wild-type partition) instead of NumPy's O(N) cumulative `choice`; distribution is identical.
+- Engine selection is via the `--engine {cpp,python}` flag (default `cpp`); `worker_wrapper._resolve_engine()` swaps the class at startup so the run loop is identical for both.
 
 **3. Orchestration Layer: `pipeline/process_lab.py`**
-- `ProcessLab.run_comparative_study(graphs_zoo, r_values, n_repeats, output_path)` runs locally and serially; appends to an existing CSV automatically.
-- `ProcessLab.submit_jobs(zoo_path, n_graphs, r_values, batch_name, batch_dir, n_repeats, n_requested_jobs, queue, memory)` is the HPC path: it bsubs a `register_graphs` job (writes `graph_props.csv`), generates `tmp/task_manifest.csv`, then submits an LSF job array that runs the worker as a module.
+- `ProcessLab.run_comparative_study(graphs_zoo, r_values, n_repeats, output_path, engine="cpp")` runs locally and serially; appends to an existing CSV automatically.
+- `ProcessLab.submit_jobs(zoo_path, n_graphs, r_values, batch_name, batch_dir, n_repeats, n_requested_jobs, queue, memory, engine="cpp")` is the HPC path: it bsubs a `register_graphs` job (writes `graph_props.csv`), generates `tmp/task_manifest.csv`, then submits an LSF job array that runs the worker as a module. The chosen `engine` is passed to the worker and recorded in `batch_info.json`.
 
 **HPC Worker: `pipeline/worker_wrapper.py`**
 - Invoked as `python -m moran_process.pipeline.worker_wrapper --zoo-path <z> --manifest-path <m> --batch-dir <batch>/tmp`.
 - Reads `LSB_JOBINDEX` and processes the manifest rows whose `worker_id` equals that index.
-- Writes per-job results to `<batch_dir>/tmp/results/result_job_<idx>.csv`.
+- Writes per-job results to `<batch_dir>/tmp/results/result_job_<idx>.parquet` (one row-group per task).
+- `--engine {cpp,python}` (default `cpp`) selects the simulation engine via `_resolve_engine()`.
 - For local debugging: pass `--job-index 1` explicitly.
 
 ## Data Flow

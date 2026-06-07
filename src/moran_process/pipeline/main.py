@@ -113,7 +113,7 @@ def generate_random_graphs(n_nodes:int, edge_range:int, n_graphs_per_combination
     return new_random_graph_zoo
 
 
-def main(batch_name=False):
+def main(batch_name=False, engine="cpp"):
     """
     Main experiment runner for random graphs.
     Similar structure to main.py but for random graphs.
@@ -206,18 +206,21 @@ def main(batch_name=False):
         r_values=r_values, 
         batch_name=batch_name,
         batch_dir=BATCH_DIR,
-        n_repeats=n_repeats, 
-        n_requested_jobs=n_jobs
+        n_repeats=n_repeats,
+        n_requested_jobs=n_jobs,
+        engine=engine,
     )
     
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--batch-name", required=False, type=str, help="The name of the batch")
+    parser.add_argument("--engine", choices=["cpp", "python"], default="cpp",
+                        help="Simulation engine: 'cpp' (fast, default) or 'python' (reference)")
     args = parser.parse_args()
 
     start_time = time.perf_counter()
-  
-    main(args.batch_name)
+
+    main(args.batch_name, engine=args.engine)
     end_time = time.perf_counter()
     print(f"Whole thing took {(end_time-start_time):.4f} seconds")
 

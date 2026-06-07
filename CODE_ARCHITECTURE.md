@@ -3,7 +3,7 @@
 Code is an installable package under `src/moran_process/`. Run modules with
 `uv run python -m moran_process.<subpackage>.<module>` (the cluster sets `PYTHONPATH=src`).
 Public API is re-exported from `moran_process/__init__.py`: `PopulationGraph`, `GraphZoo`,
-`ProcessRun`, `ProcessLab`, `GRAPH_PROPS`, and the analysis constants.
+`MoranProcess`, `MultiColorMoranProcess`, `ProcessLab`, `GRAPH_PROPS`, and the analysis constants.
 
 ---
 
@@ -50,20 +50,25 @@ PopulationGraph.random_connected_graph(n_nodes=31, n_edges=34, seed=42)
 
 ---
 
-## Class: `ProcessRun` (`process_run.py`)
+## Class: `MoranProcess` (`simulations/moran_simulation_process.py`)
 
-Runs a single Moran simulation on a `PopulationGraph`.
+Runs a single Moran simulation. Takes a `GraphCore` (compact CSR struct from
+`PopulationGraph.to_simulation_struct()`), not a full `PopulationGraph`.
+
+A fast, statistically-equivalent C++ drop-in with the identical interface lives
+in `simulations/cpp_moran.py` (`CppMoranProcess`, backed by the `_moran_cpp`
+pybind11 extension). It is the default engine; select with `--engine {cpp,python}`.
 
 ### Constructor
 ```python
-ProcessRun(population_graph: PopulationGraph, selection_coefficient=1.0, max_steps=1_000_000)
+MoranProcess(graph_core: GraphCore, selection_coefficient=1.0, max_steps=1_000_000, seed=None)
 ```
 
 ### Key Methods
 ```python
-sim.initialize_random_mutant(n_mutants=1, seed=None)  # Place mutant(s) randomly
-sim.step()                                              # Single Moran step (birth-death)
-result = sim.run(track_history=False)                  # Run to fixation/extinction
+sim.initialize_random_mutant(n_mutants=1)  # Place mutant(s) randomly
+sim.step()                                  # Single Moran step (birth-death)
+result = sim.run(track_history=False)       # Run to fixation/extinction
 ```
 
 ### `run()` Return Dict

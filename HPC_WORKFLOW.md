@@ -5,6 +5,25 @@ Full docs: https://hpcwiki.weizmann.ac.il/en/home/lsf/basic
 
 ---
 
+## Simulation Engine (C++ vs Python)
+
+Simulations default to a compiled C++ core (`_moran_cpp`, built from
+`src/moran_process/_cpp/moran_core.cpp` via pybind11 + scikit-build-core). It is
+~300x-1800x faster than and statistically equivalent to the pure-Python
+`MoranProcess` (validated with `scripts/validate_cpp_equivalence.py`).
+
+- `uv sync` compiles the extension automatically (g++ is available on WEXAC).
+- After editing the `.cpp`, recompile with `uv sync --reinstall-package moran_process`.
+- Select the engine with `engine="cpp"` (default) or `engine="python"` in
+  `submit_jobs`/`run_comparative_study`, or `--engine` on the CLI. The chosen
+  engine is recorded in `batch_info.json`.
+
+**Note:** Run the local validation script on an `inode`/compute node, not the
+login node — its CPU-heavy Python reference run will be killed by the login-node
+watchdog (exit 144 / signal 16).
+
+---
+
 ## Typical Workflow for a Simulation Batch
 
 ### Step 0 — Design the Graph Zoo (always first)
@@ -34,6 +53,7 @@ lab.submit_jobs(
     queue="gsla-cpu",
     batch_dir=f"../simulation_data/{BATCH_NAME}",
     batch_name=BATCH_NAME,
+    engine="cpp",  # "cpp" (fast, default) or "python" (reference)
 )
 ```
 

@@ -26,8 +26,12 @@ dev = [
 ]
 
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["scikit-build-core>=0.10", "pybind11>=2.12"]
+build-backend = "scikit_build_core.build"
 
-[tool.hatch.build.targets.wheel]
-packages = ["src/moran_process"]
+[tool.scikit-build]
+# src layout: copy the Python package, CMake installs the compiled extension
+# into the same package directory (see CMakeLists.txt install rule).
+wheel.packages = ["src/moran_process"]
+cmake.version = ">=3.15"
+build.verbose = true

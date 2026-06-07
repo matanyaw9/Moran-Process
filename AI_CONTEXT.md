@@ -94,7 +94,9 @@ moran-process/
     │   ├── population_graph.py   # PopulationGraph + GRAPH_PROPS + register CLI
     │   └── graph_zoo.py          # GraphZoo collection
     ├── simulations/
-    │   └── process_run.py        # ProcessRun (single Moran simulation)
+    │   ├── moran_simulation_process.py  # MoranProcess (Python reference)
+    │   ├── cpp_moran.py                  # CppMoranProcess (fast C++ drop-in, default)
+    │   └── _cpp/moran_core.cpp           # pybind11 extension -> _moran_cpp
     ├── pipeline/
     │   ├── process_lab.py        # ProcessLab: local study + HPC submission
     │   ├── worker_wrapper.py     # LSF array worker
@@ -105,8 +107,9 @@ moran-process/
 ```
 
 Public API (from `moran_process/__init__.py`):
-`PopulationGraph`, `GraphZoo`, `ProcessRun`, `ProcessLab`, `GRAPH_PROPS`,
+`PopulationGraph`, `GraphZoo`, `MoranProcess`, `MultiColorMoranProcess`, `ProcessLab`, `GRAPH_PROPS`,
 `CATEGORY_COLOR_DICT`, `GRAPH_PROPERTY_COLUMNS`, `GRAPH_PROPERTY_DESCRIPTION`.
+The fast C++ drop-in is `moran_process.simulations.cpp_moran.CppMoranProcess`.
 
 On WEXAC the package is run with `PYTHONPATH=src` and module syntax
 (`python -m moran_process.pipeline.worker_wrapper ...`), as set in `submit_jobs`.
@@ -158,15 +161,23 @@ An ordered collection of `PopulationGraph`. Methods: `add(graph)`, `draw_all(col
 practice the pipeline often serializes a plain `list[PopulationGraph]` with `joblib`
 rather than a `GraphZoo` instance, and the loaders accept either.
 
-### ProcessRun (`simulations/process_run.py`)
-One Moran simulation on one graph.
-`ProcessRun(population_graph, selection_coefficient=1.0, max_steps=1_000_000)`.
-- `initialize_random_mutant(n_mutants=1, seed=None)` places mutant(s) at random nodes.
+### MoranProcess (`simulations/moran_simulation_process.py`)
+One Moran simulation on one graph (Python reference implementation).
+`MoranProcess(graph_core, selection_coefficient=1.0, max_steps=1_000_000, seed=None)`.
+- `initialize_random_mutant(n_mutants=1)` places mutant(s) at random nodes.
 - `step()` does one Bd step (numpy fitness-weighted reproducer choice, random neighbor victim).
 - `run(track_history=False)` returns:
   `{fixation: bool, steps: int, initial_mutants: int, selection_coeff: float, duration: float}`,
   plus `history` (mutant-count trajectory) when `track_history=True`.
-Adjacency is precomputed as a list of neighbor lists for speed.
+Takes a `GraphCore` (compact CSR struct from `PopulationGraph.to_simulation_struct()`).
+
+### CppMoranProcess (`simulations/cpp_moran.py`)
+Fast, statistically-equivalent drop-in for `MoranProcess` (same constructor and
+methods), delegating the hot loop to the compiled `_moran_cpp` extension
+(`_cpp/moran_core.cpp`, xoshiro256++ + two-pool O(1) sampling). ~300x-1800x
+faster; per-seed trajectories differ but ρ and fixation-time distributions match
+the Python engine (validated by `scripts/validate_cpp_equivalence.py`). This is
+the default engine; pick via the `--engine {cpp,python}` flag.
 
 ### ProcessLab (`pipeline/process_lab.py`)
 Batch manager with two modes.

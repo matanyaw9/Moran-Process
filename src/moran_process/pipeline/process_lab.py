@@ -14,7 +14,7 @@ import itertools
 import joblib
 
 from moran_process.core.population_graph import PopulationGraph
-from moran_process.simulations.moran_simulation_process import MoranProcess
+from moran_process.pipeline.worker_wrapper import _resolve_engine
 from moran_process.analysis.analysis_utils import create_batch_info
 
 def _parse_memory_mb(memory) -> int:
@@ -43,7 +43,7 @@ class ProcessLab:
     def __init__(self):                     
         """
         """
-    def run_comparative_study(self, graphs_zoo, r_values, n_repeats=100, print_time=True, output_path=None):
+    def run_comparative_study(self, graphs_zoo, r_values, n_repeats=100, print_time=True, output_path=None, engine="cpp"):
         """
         Run comparative study across multiple graphs and selection coefficients.
         
@@ -57,11 +57,15 @@ class ProcessLab:
         :return: DataFrame with all results
         """
         all_results = []
-        
+
+        # Resolve the engine class once (same helper the HPC worker uses);
+        # 'cpp' is the fast C++ core, 'python' the pure-Python reference.
+        MoranProcess = _resolve_engine(engine)
+
         # Total iterations for progress bar
         total_sims = len(graphs_zoo) * len(r_values) * n_repeats
-        
-        print(f"--- Starting Study: {len(graphs_zoo)} Graphs x {len(r_values)} r-vals x {n_repeats}  = {total_sims} repeats ---")
+
+        print(f"--- Starting Study: {len(graphs_zoo)} Graphs x {len(r_values)} r-vals x {n_repeats}  = {total_sims} repeats (engine={engine}) ---")
         
         # We can optimize by converting graphs to adjacency lists ONCE
         for graph_obj in graphs_zoo:
@@ -138,6 +142,7 @@ class ProcessLab:
                     description="",
                     notes="",
                     batch_seed=None,
+                    engine="cpp",
                     ):
         """
         1. Dumps all graphs to 'graphs.pkl'
@@ -210,6 +215,7 @@ class ProcessLab:
             "--zoo-shard-dir", str(zoo_shards_dir),
             "--manifest-path", str(manifest_path),
             "--batch-dir", str(tmp_dir),
+            "--engine", str(engine),
         ]
         cmd = cmd_job + cmd_process
 
@@ -238,6 +244,7 @@ class ProcessLab:
             memory_mb=memory_mb,
             zoo_path=zoo_path,
             batch_seed=batch_seed,
+            engine=engine,
         )
 
 
