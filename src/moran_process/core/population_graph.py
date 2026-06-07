@@ -237,6 +237,20 @@ class PopulationGraph:
         return cls(nx.cycle_graph(n_nodes), name=name, category='Cycle', labeled_edges=labeled_edges)
     
     @classmethod
+    def line_graph(cls, n_nodes: int, labeled_edges: bool = False):
+        """
+        Creates a path (line) graph: nodes arranged in a linear chain.
+        Known theoretical suppressor of selection in evolutionary graph theory.
+        """
+        G = nx.path_graph(n_nodes)
+
+        pos = {i: np.array([float(i), 0.0]) for i in range(n_nodes)}
+        nx.set_node_attributes(G, pos, 'pos')
+
+        name = f'line_n{n_nodes}'
+        return cls(G, name=name, category='Line', params={'n_nodes': n_nodes}, labeled_edges=labeled_edges)
+
+    @classmethod
     def star_graph(cls, n_nodes: int, labeled_edges: bool = False):
         """
         Creates a star graph: one central hub connected to all other nodes.
