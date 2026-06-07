@@ -10,11 +10,9 @@ class SimulationProcess(ABC):
     def __init__(
         self,
         graph_core: GraphCore,
-        selection_coefficient: float = 1.0,
         max_steps: int = 1_000_000,
         seed=None,
     ):
-        self.r = selection_coefficient
         self.max_steps = max_steps
         self.n_nodes = graph_core.n_nodes
         self.nbrs = graph_core.nbrs

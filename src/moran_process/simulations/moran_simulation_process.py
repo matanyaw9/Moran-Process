@@ -15,7 +15,8 @@ class MoranProcess(SimulationProcess):
 
     def __init__(self, graph_core, selection_coefficient: float = 1.0,
                  max_steps: int = 1_000_000, seed=None):
-        super().__init__(graph_core, selection_coefficient, max_steps, seed=seed)
+        super().__init__(graph_core, max_steps, seed=seed)
+        self.r = selection_coefficient
         self.mutant_count: int = 0
 
     def reset(self) -> None:
