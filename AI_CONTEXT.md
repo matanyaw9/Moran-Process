@@ -176,7 +176,8 @@ Fast, statistically-equivalent drop-in for `MoranProcess` (same constructor and
 methods), delegating the hot loop to the compiled `_moran_cpp` extension
 (`_cpp/moran_core.cpp`, xoshiro256++ + two-pool O(1) sampling). ~300x-1800x
 faster; per-seed trajectories differ but ρ and fixation-time distributions match
-the Python engine (validated by `scripts/validate_cpp_equivalence.py`). This is
+the Python engine (validated by submitting two batches that differ only in
+`--engine` and comparing them with `scripts/compare_batches.py`). This is
 the default engine; pick via the `--engine {cpp,python}` flag.
 
 ### ProcessLab (`pipeline/process_lab.py`)

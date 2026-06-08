@@ -10,7 +10,7 @@ Full docs: https://hpcwiki.weizmann.ac.il/en/home/lsf/basic
 Simulations default to a compiled C++ core (`_moran_cpp`, built from
 `src/moran_process/_cpp/moran_core.cpp` via pybind11 + scikit-build-core). It is
 ~300x-1800x faster than and statistically equivalent to the pure-Python
-`MoranProcess` (validated with `scripts/validate_cpp_equivalence.py`).
+`MoranProcess`.
 
 - `uv sync` compiles the extension automatically (g++ is available on WEXAC).
 - After editing the `.cpp`, recompile with `uv sync --reinstall-package moran_process`.
@@ -18,9 +18,29 @@ Simulations default to a compiled C++ core (`_moran_cpp`, built from
   `submit_jobs`/`run_comparative_study`, or `--engine` on the CLI. The chosen
   engine is recorded in `batch_info.json`.
 
-**Note:** Run the local validation script on an `inode`/compute node, not the
-login node — its CPU-heavy Python reference run will be killed by the login-node
-watchdog (exit 144 / signal 16).
+### Validating equivalence (two-batch method)
+
+Equivalence is checked end-to-end through the real pipeline, not just the
+simulation class. Submit two batches from `design_zoo.ipynb` that are identical
+in every parameter (same `zoo_path`, `r_values`, `n_repeats`, `n_graphs`) except
+the engine — one `engine="python"`, one `engine="cpp"` — then compare them:
+
+```bash
+uv run python scripts/compare_batches.py \
+    simulation_data/<name>_python simulation_data/<name>_cpp
+```
+
+The comparator joins the two batches on `(wl_hash, r)` and, per cell, runs a
+two-proportion z-test on ρ and a KS test on fixation time. The overall verdict
+uses a Bonferroni-corrected threshold (`alpha / n_cells`) to control the
+family-wise error rate, plus a KS test of all p-values against Uniform(0,1) to
+catch a systematic sub-threshold bias. It auto-aggregates each batch's
+`full_results.parquet` from `tmp/results/` if missing.
+
+**Note:** The heavy work is the two LSF batches; the Python batch is the slow
+one, so give it enough `n_requested_jobs` that each worker's slice fits the
+queue wall limit. `compare_batches.py` itself is light (it only reads results)
+and is safe to run on the login node.
 
 ---
 

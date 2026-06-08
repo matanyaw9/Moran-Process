@@ -42,7 +42,7 @@ The simulation pipeline has three layers:
 - `initialize_random_mutant()` then `run()` returns `{fixation, steps, initial_mutants, selection_coeff, duration}`.
 - `run(track_history=True)` also returns the mutant-count trajectory.
 - `CppMoranProcess` (`cpp_moran.py`) is a **drop-in replacement** with the identical interface, delegating the hot loop to the compiled `_moran_cpp` extension (`_cpp/moran_core.cpp`, built via pybind11 + scikit-build-core).
-  - It is **statistically equivalent**, not bit-exact: it uses xoshiro256++ (not NumPy's PCG64), so per-seed trajectories differ but fixation probability (ρ) and fixation-time distributions match within Monte Carlo error. Validated by `scripts/validate_cpp_equivalence.py` (z-test on ρ, KS test on fixation time); ~300x-1800x faster than the Python engine.
+  - It is **statistically equivalent**, not bit-exact: it uses xoshiro256++ (not NumPy's PCG64), so per-seed trajectories differ but fixation probability (ρ) and fixation-time distributions match within Monte Carlo error. Validated by running two batches that differ only in `--engine` and comparing them with `scripts/compare_batches.py` (per-cell z-test on ρ and KS test on fixation time, Bonferroni-corrected, plus a p-value uniformity check); ~300x-1800x faster than the Python engine.
   - Sampling uses a two-pool O(1) trick (mutants/wild-type partition) instead of NumPy's O(N) cumulative `choice`; distribution is identical.
 - Engine selection is via the `--engine {cpp,python}` flag (default `cpp`); `worker_wrapper._resolve_engine()` swaps the class at startup so the run loop is identical for both.
 
