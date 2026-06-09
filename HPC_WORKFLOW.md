@@ -8,7 +8,7 @@ Full docs: https://hpcwiki.weizmann.ac.il/en/home/lsf/basic
 ## Simulation Engine (C++ vs Python)
 
 Simulations default to a compiled C++ core (`_moran_cpp`, built from
-`src/moran_process/_cpp/moran_core.cpp` via pybind11 + scikit-build-core). It is
+`src/moran_process/simulations/_cpp/moran_core.cpp` via pybind11 + scikit-build-core). It is
 ~300x-1800x faster than and statistically equivalent to the pure-Python
 `MoranProcess`.
 

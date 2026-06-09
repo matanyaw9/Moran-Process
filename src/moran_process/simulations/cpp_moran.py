@@ -58,3 +58,13 @@ class CppMoranProcess:
         history.
         """
         return self._core.run(track_history)
+
+    def run_repeats(self, n_repeats: int, n_mutants: int = 1) -> dict:
+        """Run n_repeats simulations entirely in C++ (one boundary crossing).
+
+        Mirrors ``SimulationProcess.run_repeats``: returns a dict of three
+        equal-length arrays (fixation: bool, steps: int64, duration: float64).
+        The repeat loop, mutant placement and timing all happen in the C++ core,
+        so no per-repeat ``py::dict`` is allocated.
+        """
+        return self._core.run_repeats(n_repeats, n_mutants)

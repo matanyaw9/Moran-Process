@@ -1,6 +1,5 @@
 import networkx as nx
 import numpy as np
-import matplotlib.pyplot as plt
 import pandas as pd
 import os
 from pathlib import Path
@@ -8,23 +7,13 @@ import warnings
 import pickle
 import argparse
 import joblib
-from dataclasses import dataclass
+# matplotlib is imported lazily inside draw() (the only consumer) so importing
+# this module does not pull the plotting stack. GraphCore now lives in the
+# dependency-light core.graph_core module; re-exported here so existing imports
+# and older pickled shards (`population_graph.GraphCore`) keep resolving.
+from moran_process.core.graph_core import GraphCore
 # import pydot
 warnings.filterwarnings("ignore", message="The hashes produced for graphs")
-
-
-@dataclass(eq=False)
-class GraphCore:
-    """Compact CSR representation of a graph for HPC simulation workers.
-
-    Replaces the heavy NetworkX/PopulationGraph objects in zoo shards.
-    Node i's neighbours are nbrs[offsets[i] : offsets[i+1]].
-    """
-    n_nodes: int
-    nbrs: np.ndarray    # int32, concatenated neighbour lists (length 2E for undirected)
-    offsets: np.ndarray # int32, length N+1
-    wl_hash: str
-    name: str
 
 
 # COLOR_DICT = {
@@ -560,6 +549,7 @@ class PopulationGraph:
     # --- VISUALIZATION ---
     def draw(self, ax=None, filename='', descriptive=True, with_labels=False, title=None):
         """Draws the graph using its stored biological layout."""
+        import matplotlib.pyplot as plt  # lazy: keep matplotlib off the module-import path
         if self.graph is None: return
 
         # 1. Coordinate Retrieval

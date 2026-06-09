@@ -12,7 +12,7 @@ MSc Computational Biology thesis (Weizmann Institute of Science, supervised by T
 # Install dependencies (also compiles the C++ extension via scikit-build-core)
 uv sync
 
-# Rebuild ONLY the C++ extension after editing src/moran_process/_cpp/*.cpp
+# Rebuild ONLY the C++ extension after editing src/moran_process/simulations/_cpp/*.cpp
 # (plain `uv sync` will not recompile if nothing else changed)
 uv sync --reinstall-package moran_process
 
@@ -41,7 +41,7 @@ The simulation pipeline has three layers:
 - `MoranProcess` (`moran_simulation_process.py`) implements one Moran process in pure Python: fitness-weighted reproduction, random neighbor replacement. This is the reference implementation.
 - `initialize_random_mutant()` then `run()` returns `{fixation, steps, initial_mutants, selection_coeff, duration}`.
 - `run(track_history=True)` also returns the mutant-count trajectory.
-- `CppMoranProcess` (`cpp_moran.py`) is a **drop-in replacement** with the identical interface, delegating the hot loop to the compiled `_moran_cpp` extension (`_cpp/moran_core.cpp`, built via pybind11 + scikit-build-core).
+- `CppMoranProcess` (`cpp_moran.py`) is a **drop-in replacement** with the identical interface, delegating the hot loop to the compiled `_moran_cpp` extension (`simulations/_cpp/moran_core.cpp`, built via pybind11 + scikit-build-core).
   - It is **statistically equivalent**, not bit-exact: it uses xoshiro256++ (not NumPy's PCG64), so per-seed trajectories differ but fixation probability (ρ) and fixation-time distributions match within Monte Carlo error. Validated by running two batches that differ only in `--engine` and comparing them with `scripts/compare_batches.py` (per-cell z-test on ρ and KS test on fixation time, Bonferroni-corrected, plus a p-value uniformity check); ~300x-1800x faster than the Python engine.
   - Sampling uses a two-pool O(1) trick (mutants/wild-type partition) instead of NumPy's O(N) cumulative `choice`; distribution is identical.
 - Engine selection is via the `--engine {cpp,python}` flag (default `cpp`); `worker_wrapper._resolve_engine()` swaps the class at startup so the run loop is identical for both.

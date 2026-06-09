@@ -2,7 +2,6 @@ import math
 import pickle
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import numpy as np
 
 from moran_process.core.population_graph import PopulationGraph
@@ -26,6 +25,7 @@ class GraphZoo:
 
     def draw_all(self, cols: int = 3) -> None:
         """Draw all graphs in a matplotlib grid. Each graph occupies one subplot."""
+        import matplotlib.pyplot as plt  # lazy: keep matplotlib off the module-import path
         n = len(self.graphs)
         if n == 0:
             print("No graphs in zoo.")

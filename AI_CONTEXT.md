@@ -174,7 +174,7 @@ Takes a `GraphCore` (compact CSR struct from `PopulationGraph.to_simulation_stru
 ### CppMoranProcess (`simulations/cpp_moran.py`)
 Fast, statistically-equivalent drop-in for `MoranProcess` (same constructor and
 methods), delegating the hot loop to the compiled `_moran_cpp` extension
-(`_cpp/moran_core.cpp`, xoshiro256++ + two-pool O(1) sampling). ~300x-1800x
+(`simulations/_cpp/moran_core.cpp`, xoshiro256++ + two-pool O(1) sampling). ~300x-1800x
 faster; per-seed trajectories differ but ρ and fixation-time distributions match
 the Python engine (validated by submitting two batches that differ only in
 `--engine` and comparing them with `scripts/compare_batches.py`). This is

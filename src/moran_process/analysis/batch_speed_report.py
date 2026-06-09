@@ -50,7 +50,8 @@ def batch_speed_report(batch_name: str, df: pd.DataFrame, batch_root: Path) -> N
     batch_name:
         Display name of the batch (used as plot title and log-dir lookup key).
     df:
-        Raw simulation results for this batch (must have columns: job_id, steps).
+        Raw simulation results for this batch (must have columns: job_id, steps;
+        the optional `duration` column enables the engine-throughput breakdown).
     batch_root:
         Path to the simulation_data/<batch_name> directory.
     """
@@ -66,6 +67,19 @@ def batch_speed_report(batch_name: str, df: pd.DataFrame, batch_root: Path) -> N
     job_stats = job_steps.merge(all_log_times, on="job_id", how="inner")
     job_stats["steps_M"]       = job_stats["total_steps"] / 1e6
     job_stats["steps_per_sec"] = job_stats["total_steps"] / job_stats["run_sec"]
+
+    # Pure-simulation seconds per job: sum of the worker-measured `duration`
+    # (timed around sim.run() only). This isolates true engine throughput from
+    # the fixed per-job startup/IO overhead that dominates the LSF wall-clock
+    # (`run_sec`). Optional: callers that don't select `duration` skip these lines.
+    has_dur = "duration" in df.columns
+    if has_dur:
+        job_dur = (
+            df.groupby("job_id")["duration"].sum()
+            .reset_index()
+            .rename(columns={"duration": "sim_sec"})
+        )
+        job_stats = job_stats.merge(job_dur, on="job_id", how="left")
 
     total_steps_M = job_stats["steps_M"].sum()
     total_run_h   = job_stats["run_sec"].sum() / 3600
@@ -85,7 +99,22 @@ def batch_speed_report(batch_name: str, df: pd.DataFrame, batch_root: Path) -> N
     print(f"  Total run time   : {_fmt_sec(total_run_h * 3600)}")
     print(f"  Total turnaround : {_fmt_sec(total_turn_h * 3600)}")
     print(f"  Avg job run time : {_fmt_sec(avg_run_sec)}  |  Max: {_fmt_sec(max_run_sec)}")
-    print(f"  Speed (k steps/s): avg {avg_speed_k:.1f}  |  min {min_speed_k:.1f}  |  max {max_speed_k:.1f}")
+    print(f"  Wall throughput  : {avg_speed_k:.1f} k steps/s avg  |  min {min_speed_k:.1f}  |  max {max_speed_k:.1f}   (steps / wall-clock, incl. startup/IO)")
+
+    if has_dur:
+        total_steps   = job_stats["total_steps"].sum()
+        total_run_sec = job_stats["run_sec"].sum()
+        total_sim_sec = job_stats["sim_sec"].sum()
+        overhead_sec  = max(total_run_sec - total_sim_sec, 0.0)
+        sim_pct       = 100 * total_sim_sec / total_run_sec if total_run_sec else float("nan")
+        sim_thru_M    = (total_steps / total_sim_sec / 1e6) if total_sim_sec else float("nan")
+        wall_thru_M   = (total_steps / total_run_sec / 1e6) if total_run_sec else float("nan")
+        speedup       = (sim_thru_M / wall_thru_M) if wall_thru_M else float("nan")
+        print(f"  -- engine throughput (from `duration`, sim-only) --")
+        print(f"  Pure sim time    : {_fmt_sec(total_sim_sec)}  ({sim_pct:.2f}% of wall; rest is startup/IO overhead)")
+        print(f"  Sim throughput   : {sim_thru_M:.2f} M steps/s   (engine-only, what the C++ core accelerates)")
+        print(f"  Overhead-masking : sim is {speedup:.0f}x faster than wall throughput; per-job startup hides it")
+
     if has_mem:
         print(f"  Peak RAM per job : avg {max_mem_col.mean():.0f} MB  |  min {max_mem_col.min():.0f} MB  |  max {max_mem_col.max():.0f} MB")
         print(f"  Avg  RAM per job : avg {avg_mem_col.mean():.0f} MB  |  min {avg_mem_col.min():.0f} MB  |  max {avg_mem_col.max():.0f} MB")

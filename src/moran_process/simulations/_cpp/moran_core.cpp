@@ -222,6 +222,51 @@ public:
         return result;
     }
 
+    // Run n_repeats independent simulations back-to-back, each preceded by a
+    // fresh random mutant placement, advancing this object's single RNG stream.
+    // Returns three equal-length NumPy arrays (fixation/steps/duration) so the
+    // whole task crosses the Python<->C++ boundary exactly once instead of
+    // 2*n_repeats times. The absorption loop is intentionally inlined here
+    // (rather than shared with run()) to keep the validated, history-capable
+    // run() untouched.
+    py::dict run_repeats(int64_t n_repeats, int n_mutants) {
+        auto fixation_arr = py::array_t<bool>(n_repeats);
+        auto steps_arr = py::array_t<int64_t>(n_repeats);
+        auto duration_arr = py::array_t<double>(n_repeats);
+        auto fx = fixation_arr.mutable_unchecked<1>();
+        auto st = steps_arr.mutable_unchecked<1>();
+        auto du = duration_arr.mutable_unchecked<1>();
+
+        for (int64_t rep = 0; rep < n_repeats; ++rep) {
+            initialize_random_mutant(n_mutants);
+
+            auto start_time = std::chrono::steady_clock::now();
+            int64_t steps = 0;
+            bool fixation = false;
+            while (steps < max_steps_) {
+                if (mutant_count_ == 0) break;
+                if (mutant_count_ == n_) {
+                    fixation = true;
+                    break;
+                }
+                step();
+                ++steps;
+            }
+            auto end_time = std::chrono::steady_clock::now();
+
+            fx(rep) = fixation;
+            st(rep) = steps;
+            du(rep) =
+                std::chrono::duration<double>(end_time - start_time).count();
+        }
+
+        py::dict result;
+        result["fixation"] = fixation_arr;
+        result["steps"] = steps_arr;
+        result["duration"] = duration_arr;
+        return result;
+    }
+
 private:
     // One Moran step: fitness-weighted reproducer, uniform-random neighbour
     // victim. Only called when 0 < M < n, so both pools are non-empty.
@@ -308,6 +353,8 @@ PYBIND11_MODULE(_moran_cpp, m) {
         .def("initialize_random_mutant",
              &MoranProcessCore::initialize_random_mutant, py::arg("n_mutants") = 1)
         .def("run", &MoranProcessCore::run, py::arg("track_history") = false)
+        .def("run_repeats", &MoranProcessCore::run_repeats,
+             py::arg("n_repeats"), py::arg("n_mutants") = 1)
         .def_property_readonly("mutant_count", &MoranProcessCore::mutant_count)
         .def_property_readonly("selection_coeff",
                                &MoranProcessCore::selection_coeff);

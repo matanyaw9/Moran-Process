@@ -109,21 +109,17 @@ def run_worker_slice(batch_dir, zoo_shard_dir, manifest_path, worker_index, engi
                       f"graph={graph_core.name} r={r_val} reps={n_repeats} | "
                       f"RSS={_rss_mb()} MB")
 
-                # Pre-allocate fixed arrays for this task (no per-rep dict overhead)
-                fixations = np.empty(n_repeats, dtype=np.bool_)
-                steps_arr = np.empty(n_repeats, dtype=np.int64)
-                durations = np.empty(n_repeats, dtype=np.float64)
-
                 # Seed from manifest: int → reproducible task, NaN → OS entropy.
                 task_seed = None if pd.isna(row.seed) else int(row.seed)
                 sim = MoranProcess(graph_core=graph_core, selection_coefficient=r_val,
                                    seed=task_seed)
-                for i in range(n_repeats):
-                    sim.initialize_random_mutant()
-                    raw = sim.run()
-                    fixations[i] = raw["fixation"]
-                    steps_arr[i] = raw["steps"]
-                    durations[i] = raw["duration"]
+
+                # Run all repeats inside the engine: one boundary crossing per
+                # task, returning ready-made column arrays for the row-group.
+                out = sim.run_repeats(n_repeats)
+                fixations = out["fixation"]
+                steps_arr = out["steps"]
+                durations = out["duration"]
 
                 # Flush this task's results as one Parquet row-group
                 batch = pa.RecordBatch.from_arrays(
