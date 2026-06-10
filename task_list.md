@@ -80,6 +80,6 @@ moran-process/
     ├── cli.py
     ├── core/             # population_graph.py
     ├── simulations/      # process_run.py
-    ├── pipeline/         # process_lab.py, worker_wrapper.py, main.py
+    ├── pipeline/         # process_lab.py, worker_lsf.py, main.py
     └── analysis/         # analysis_utils.py
 ```

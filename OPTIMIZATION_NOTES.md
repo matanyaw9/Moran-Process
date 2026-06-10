@@ -45,7 +45,7 @@ Confirmation from `simulation_data/2026-05-26_scaling_study_4/logs`:
 ## 1. Done - Memory: stop shipping the whole zoo to every worker  *(HIGHEST IMPACT)*
 
 **Where.** `src/moran_process/pipeline/process_lab.py` (`submit_jobs`,
-`_create_task_list`) and `src/moran_process/pipeline/worker_wrapper.py`
+`_create_task_list`) and `src/moran_process/pipeline/worker_lsf.py`
 (`load_data`).
 
 **What.** The task manifest already partitions tasks by `worker_id` and each
@@ -112,7 +112,7 @@ nice speed-up in `step()` because neighbour lookup becomes
 
 ## 3. Done - Memory: stream results to disk; do not buffer 500k dicts
 
-**Where.** `src/moran_process/pipeline/worker_wrapper.py` (`run_worker_slice`).
+**Where.** `src/moran_process/pipeline/worker_lsf.py` (`run_worker_slice`).
 
 **What.** Replace the `results_buffer = []` + `.append(record)` pattern with:
 - pre-allocate fixed-width NumPy arrays for `steps`, `initial_mutants`,
@@ -136,7 +136,7 @@ itself a momentary 2x copy.
 
 ## 4. Done - Memory + Speed: stop rebuilding `MoranProcess` and `adj_list` per repeat
 
-**Where.** `src/moran_process/pipeline/worker_wrapper.py` lines 75-77 and
+**Where.** `src/moran_process/pipeline/worker_lsf.py` lines 75-77 and
 `src/moran_process/simulations/simulation_process.py` lines 20-23.
 
 **What.** Today the worker does:
@@ -172,7 +172,7 @@ memory (removes one of the main churn sources).
 
 ## 5. Speed: rewrite the Moran inner loop  *(big lever for future r-near-1 batches)*
 
-**Where.** `src/moran_process/simulations/moran_simulation_process.py`.
+**Where.** `src/moran_process/simulations/moran_process.py`.
 
 The current `step()` is:
 
@@ -272,7 +272,7 @@ will shave a noticeable chunk off zoo construction.
 
 A handful of things that aren't bugs today but will bite later.
 
-- **`worker_wrapper.py` swallows exceptions silently** (line 101-104):
+- **`worker_lsf.py` swallows exceptions silently** (line 101-104):
   `except Exception as e: print(...); continue`. For an HPC run this means a
   worker can produce a CSV that's missing rows for a task it failed on, and
   the failure is buried in stdout. Re-raise after logging, or write the failed
@@ -290,7 +290,7 @@ A handful of things that aren't bugs today but will bite later.
 - **Module-level filterwarning in `population_graph.py`:12** filters NetworkX's
   hash-instability warning globally; that's a footgun in case the WL hashing
   ever changes. Localise it to the `__init__` that actually calls the hash.
-- **`worker_wrapper.py` accepts `--batch-dir` but the code expects it to point
+- **`worker_lsf.py` accepts `--batch-dir` but the code expects it to point
   to `<batch>/tmp`** (it writes to `os.path.join(batch_dir, "results")`). This
   is implied by `submit_jobs` passing `tmp_dir` but not documented in the
   module docstring or `CLAUDE.md`. Fix the variable name or the docstring.

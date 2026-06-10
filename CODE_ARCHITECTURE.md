@@ -38,7 +38,7 @@ PopulationGraph.random_connected_graph(n_nodes=31, n_edges=34, seed=42)
 
 ### Key Methods
 - `calculate_graph_properties()` → dict of all metrics
-- `get_database()` → DataFrame of all registered graphs
+- `PopulationGraph.batch_register(graph_zoo_path, batch_dir)` (classmethod) → writes a deduplicated `<batch_dir>/graph_props.csv`; there is no global graph database
 - `save(filepath)` / `PopulationGraph.load(filepath)` — pickle serialization for HPC
 - `draw(ax, filename, descriptive)` — matplotlib visualization
 - `to_adjacency_matrix()` → numpy array
@@ -50,13 +50,13 @@ PopulationGraph.random_connected_graph(n_nodes=31, n_edges=34, seed=42)
 
 ---
 
-## Class: `MoranProcess` (`simulations/moran_simulation_process.py`)
+## Class: `MoranProcess` (`simulations/moran_process.py`)
 
 Runs a single Moran simulation. Takes a `GraphCore` (compact CSR struct from
 `PopulationGraph.to_simulation_struct()`), not a full `PopulationGraph`.
 
 A fast, statistically-equivalent C++ drop-in with the identical interface lives
-in `simulations/cpp_moran.py` (`CppMoranProcess`, backed by the `_moran_cpp`
+in `simulations/cpp_moran_wrapper.py` (`CppMoranProcess`, backed by the `_moran_cpp`
 pybind11 extension). It is the default engine; select with `--engine {cpp,python}`.
 
 ### Constructor
@@ -82,6 +82,9 @@ result = sim.run(track_history=False)       # Run to fixation/extinction
     # "history": np.array     # Only if track_history=True
 }
 ```
+Note: this is the *in-memory* dict. The persisted Parquet schema in `raw_results.parquet`
+is `task_id, job_id, wl_hash, graph_name, r, fixation, steps, duration` — it does **not**
+carry `initial_mutants` or `selection_coeff` (the r value is stored in the `r` column).
 
 ### Moran Step Logic
 ```
@@ -111,49 +114,57 @@ df = lab.run_comparative_study(
 ### HPC Mode (WEXAC)
 ```python
 lab.submit_jobs(
-    graphs_zoo,
-    r_values,
+    zoo_path="simulation_data/my_batch/tmp/graph_zoo.joblib",  # joblib-serialized list[PopulationGraph]
+    n_graphs=len(zoo),
+    r_values=[1.0, 1.1, 1.2, 2.0],
+    batch_name="my_batch",
+    batch_dir="simulation_data/my_batch",
     n_repeats=10_000,
-    n_jobs=1000,          # number of LSF array jobs
-    queue="short",        # LSF queue
-    memory="2048",        # MB per job
-    output_dir="simulation_data/tmp",
-    batch_name="my_batch"  # or auto datetime
+    n_requested_jobs=1000,   # number of LSF array jobs
+    queue="short",
+    memory="2GB",            # parsed to MB by _parse_memory_mb
+    engine="cpp",            # "cpp" (default) or "python"
+    zoo_config=None,         # optional dict describing how the zoo was built; recorded in batch_info.json
 )
 ```
 
-This creates:
+This creates (one directory per batch, with a nested `tmp/`):
 ```
-simulation_data/tmp/batch_<name>/
-    graphs.pkl           # pickled list of PopulationGraph objects
-    task_manifest.csv    # columns: task_id, graph_idx, r, repeat
-    logs/                # bsub stdout/stderr (job_%J_%I.out)
-    results/             # result_job_1.csv ... result_job_N.csv
+simulation_data/<batch_name>/
+    graph_props.csv          # structural properties (written by the register_graphs job)
+    batch_info.json          # full provenance + run config
+    logs/                    # bsub stdout/stderr (job_%J_%I.out / .err)
+    tmp/
+        graph_zoo.joblib     # joblib-serialized list[PopulationGraph]
+        task_manifest.csv    # columns: task_id, worker_id, graph_idx, r_value, n_repeats, seed, local_graph_idx
+        zoo_shards/          # zoo_worker_1.pkl ... zoo_worker_N.pkl (per-worker GraphCore shards)
+        results/             # raw_results_job_1.parquet ... raw_results_job_N.parquet
 ```
 
-Then submits: `bsub -q short -J "batch_name[1-1000]" ... uv run worker_wrapper.py --batch-dir <path> --chunk-size <N>`
+Then submits: `bsub -q short -J "batch_<name>[1-1000]" ... python -u -m moran_process.pipeline.worker_lsf --zoo-shard-dir <tmp>/zoo_shards --manifest-path <tmp>/task_manifest.csv --batch-dir <tmp> --engine cpp`
 
 ### Aggregating Results After Jobs Complete
-The results are individual CSVs in `batch_dir/results/`. Aggregate manually:
+Per-job results are Parquet files in `<batch>/tmp/results/`. Stream them into one file with the built-in helper (copies files without loading into memory):
 ```python
-import glob, pandas as pd
-files = glob.glob('simulation_data/tmp/batch_NAME/results/result_job_*.csv')
-df = pd.concat([pd.read_csv(f) for f in files], ignore_index=True)
-df.to_csv('simulation_data/combined_results.csv', index=False)
+from moran_process.analysis.analysis_utils import aggregate_results_no_load
+aggregate_results_no_load("simulation_data/<batch>")  # writes <batch>/raw_results.parquet
 ```
-(No built-in aggregation method yet — this is a known TODO.)
 
 ---
 
-## Worker Script: `worker_wrapper.py`
+## Worker Script: `worker_lsf.py`
 
-Run by each LSF array job. Gets its chunk via `LSB_JOBINDEX` env var.
+Run by each LSF array job. Selects the manifest rows where `worker_id == LSB_JOBINDEX`,
+loads only its own `zoo_worker_<index>.pkl` shard, runs those tasks, and streams results to
+`<batch>/tmp/results/raw_results_job_<index>.parquet` (one row-group per task). Run it as a module.
 ```bash
-# Manual test (local):
-python worker_wrapper.py --batch-dir simulation_data/tmp/batch_NAME --chunk-size 1000 --job-index 1
-# On cluster (automatic):
-bsub ... uv run worker_wrapper.py --batch-dir ... --chunk-size ...
-# LSB_JOBINDEX is set automatically by LSF
+# Manual test (local): pass --job-index explicitly instead of LSB_JOBINDEX
+PYTHONPATH=src python -m moran_process.pipeline.worker_lsf \
+    --zoo-shard-dir simulation_data/<BATCH>/tmp/zoo_shards \
+    --manifest-path simulation_data/<BATCH>/tmp/task_manifest.csv \
+    --batch-dir simulation_data/<BATCH>/tmp \
+    --job-index 1 [--engine cpp]
+# On cluster (automatic): LSF sets LSB_JOBINDEX, so --job-index is omitted.
 ```
 
 ---
@@ -161,8 +172,8 @@ bsub ... uv run worker_wrapper.py --batch-dir ... --chunk-size ...
 ## Experiment Scripts
 
 ### `main.py`
-Runs the 3 respiratory graphs + random graphs via HPC submission.
-Current config: `n_nodes=31`, `edge_counts=range(30,35)`, `n_graphs_per_edge_count=50`, `r_values=[1.0,1.1,1.2,1.3,2]`, `n_repeats=10_000`, `n_jobs=1000`.
+Runs the respiratory graphs (mammalian b2 d4, avian r7 l4, avian r4 l7, fish r3 l3) plus random graphs via HPC submission, serializing the zoo to `<batch>/tmp/graph_zoo.joblib` first.
+Current config: `n_nodes=range(29,34)`, `edge_range=5`, `n_random_graphs_per_combination=500`, `r_values=[1.1]`, `n_repeats=10_000`, `n_jobs=1000`, `GRAPH_ZOO_SEED=42`.
 
 ---
 

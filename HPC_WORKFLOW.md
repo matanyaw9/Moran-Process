@@ -35,7 +35,7 @@ two-proportion z-test on ρ and a KS test on fixation time. The overall verdict
 uses a Bonferroni-corrected threshold (`alpha / n_cells`) to control the
 family-wise error rate, plus a KS test of all p-values against Uniform(0,1) to
 catch a systematic sub-threshold bias. It auto-aggregates each batch's
-`full_results.parquet` from `tmp/results/` if missing.
+`raw_results.parquet` from `tmp/results/` if missing.
 
 **Note:** The heavy work is the two LSF batches; the Python batch is the slow
 one, so give it enough `n_requested_jobs` that each worker's slice fits the
@@ -52,9 +52,9 @@ Open `notebooks/design_zoo.ipynb`. This is the entry point for every new batch.
 1. Set `BATCH_NAME` at the top (e.g. `"2026-05-20_my_study"`).
 2. Run the cells for the graph types you want (mammalian, avian, fish, complete, cycle, random, ...).
 3. Visualize with `zoo.draw_all()` to confirm the topology.
-4. Save: `zoo.save(f"../simulation_data/{BATCH_NAME}/zoo.pkl")`.
+4. Serialize the zoo with joblib to `../simulation_data/{BATCH_NAME}/tmp/graph_zoo.joblib`.
 
-The saved `zoo.pkl` is the input to all downstream steps.
+The saved `graph_zoo.joblib` is the input to all downstream steps.
 
 ### Step 1 — Submit the Batch
 Load the saved zoo and call `ProcessLab.submit_jobs()` (Section 4 of the notebook, or from a script):
@@ -62,10 +62,10 @@ Load the saved zoo and call `ProcessLab.submit_jobs()` (Section 4 of the noteboo
 ```python
 from moran_process import GraphZoo, ProcessLab
 
-zoo = GraphZoo.load(f"../simulation_data/{BATCH_NAME}/zoo.pkl")
+zoo = GraphZoo.load(f"../simulation_data/{BATCH_NAME}/tmp/graph_zoo.joblib")
 lab = ProcessLab()
 lab.submit_jobs(
-    zoo_path=f"../simulation_data/{BATCH_NAME}/zoo.pkl",
+    zoo_path=f"../simulation_data/{BATCH_NAME}/tmp/graph_zoo.joblib",
     r_values=[1.0, 1.1, 1.2, 1.3, 2.0],
     n_repeats=10_000,
     n_requested_jobs=1000,
@@ -79,8 +79,9 @@ lab.submit_jobs(
 
 This call:
 1. Submits a short `register_graphs` job that writes graph properties to `<batch_dir>/graph_props.csv`
-2. Creates `task_manifest.csv` (all tasks enumerated)
-3. Submits the main job array via `bsub`
+2. Creates `tmp/task_manifest.csv` (all tasks enumerated, each assigned a `worker_id`)
+3. Splits the zoo into per-worker GraphCore shards `tmp/zoo_shards/zoo_worker_*.pkl` (and adds `local_graph_idx` to the manifest)
+4. Submits the main job array via `bsub`
 
 ### Step 2 — Monitor Jobs
 ```bash
@@ -91,12 +92,11 @@ bpeek -f <job_id>          # follow stdout of a running job
 ```
 
 ### Step 3 — Collect Results
-After all jobs finish, `simulation_data/tmp/batch_NAME/results/` will contain `result_job_1.csv` through `result_job_N.csv`. Aggregate:
+After all jobs finish, `simulation_data/<BATCH_NAME>/tmp/results/` will contain `raw_results_job_1.parquet` through `raw_results_job_N.parquet`. Stream them into one file with the built-in helper (copies files without loading them into memory):
 ```python
-import glob, pandas as pd
-files = glob.glob('simulation_data/tmp/batch_NAME/results/result_job_*.csv')
-df = pd.concat([pd.read_csv(f) for f in files], ignore_index=True)
-df.to_csv('simulation_data/combined_results.csv', index=False)
+from moran_process.analysis.analysis_utils import aggregate_results_no_load
+aggregate_results_no_load("simulation_data/<BATCH_NAME>")  # writes <BATCH_NAME>/raw_results.parquet
+# pass delete_temp=True to also remove tmp/ afterward
 ```
 
 ### Step 4 — Analyze
@@ -105,11 +105,14 @@ Open notebooks in `analysis/` on the Windows PC (notebooks run locally using the
 ---
 
 ## Manual Worker Test (Debugging)
-Run a single worker chunk without bsub:
+Run a single worker slice without bsub (pass `--job-index` explicitly instead of `LSB_JOBINDEX`; run as a module with `PYTHONPATH=src`):
 ```bash
-python worker_wrapper.py --batch-dir simulation_data/tmp/batch_NAME --chunk-size 2 --job-index 14
-# OR with uv:
-uv run worker_wrapper.py --batch-dir simulation_data/tmp/test-batch --chunk-size 2 --job-index 14
+PYTHONPATH=src uv run python -m moran_process.pipeline.worker_lsf \
+    --zoo-shard-dir simulation_data/<BATCH_NAME>/tmp/zoo_shards \
+    --manifest-path simulation_data/<BATCH_NAME>/tmp/task_manifest.csv \
+    --batch-dir simulation_data/<BATCH_NAME>/tmp \
+    --job-index 14 \
+    --engine cpp   # or python
 ```
 
 ---
@@ -153,23 +156,24 @@ bsub -Is -q new-short -n 2 -W 30 bash
 ```
 
 ### Environment Variables in Workers
-- `LSB_JOBINDEX` — the array index (1-based). `worker_wrapper.py` reads this automatically.
+- `LSB_JOBINDEX` — the array index (1-based). `worker_lsf.py` reads this automatically.
 
 ---
 
 ## Key Paths on WEXAC
 The project must be uploaded/synced to WEXAC before running. The typical structure mirrors the OneDrive structure. Worker scripts use **relative paths** from the `Moran-Process/` directory.
 
-- Batch output: `Moran-Process/simulation_data/tmp/batch_<name>/`
-- Graph database: `Moran-Process/simulation_data/graph_database.csv`
-- Logs: `Moran-Process/simulation_data/tmp/batch_<name>/logs/`
-- Results: `Moran-Process/simulation_data/tmp/batch_<name>/results/`
+- Batch output: `Moran-Process/simulation_data/<batch_name>/`
+- Graph properties (per batch, no global DB): `Moran-Process/simulation_data/<batch_name>/graph_props.csv`
+- Logs: `Moran-Process/simulation_data/<batch_name>/logs/`
+- Per-job results: `Moran-Process/simulation_data/<batch_name>/tmp/results/`
+- Aggregated results: `Moran-Process/simulation_data/<batch_name>/raw_results.parquet`
 
 ---
 
 ## Notes & Gotchas
 - `uv run` is used instead of `python` on the cluster (manages the venv).
-- The graph database path is **hardcoded** as `simulation_data/graph_database.csv` — scripts must be run from `Moran-Process/`.
-- Each worker job processes `chunk_size = ceil(total_tasks / n_jobs)` tasks. The last job may have fewer.
+- There is **no global graph database**. Structural properties are written per batch to `<batch>/graph_props.csv`; the join key between results and properties is `wl_hash`.
+- Work is distributed via `tmp/task_manifest.csv`: each row carries a `worker_id`, and a worker runs the rows where `worker_id == LSB_JOBINDEX`. Repeats for a single (graph, r) config can be split across several workers.
 - If `batch_dir` already exists, jobs append/overwrite (no auto-clean).
-- Memory request of `2048` MB (`-R "rusage[mem=2048]"`) is the current default. Increase for larger graphs.
+- The `memory` argument accepts strings like `"2GB"`/`"512MB"` (parsed to MB by `_parse_memory_mb`); the default is `"2GB"`. Increase for larger graphs.

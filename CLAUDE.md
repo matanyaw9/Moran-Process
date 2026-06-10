@@ -38,24 +38,26 @@ The simulation pipeline has three layers:
 - Performance guard: diameter/radius/ASPL are skipped for N > 500; betweenness uses k=50 sampling for N > 100; closeness uses manual sampling for N > 200.
 
 **2. Simulation Layer: `simulations/`**
-- `MoranProcess` (`moran_simulation_process.py`) implements one Moran process in pure Python: fitness-weighted reproduction, random neighbor replacement. This is the reference implementation.
+- `MoranProcess` (`moran_process.py`) implements one Moran process in pure Python: fitness-weighted reproduction, random neighbor replacement. This is the reference implementation.
 - `initialize_random_mutant()` then `run()` returns `{fixation, steps, initial_mutants, selection_coeff, duration}`.
 - `run(track_history=True)` also returns the mutant-count trajectory.
-- `CppMoranProcess` (`cpp_moran.py`) is a **drop-in replacement** with the identical interface, delegating the hot loop to the compiled `_moran_cpp` extension (`simulations/_cpp/moran_core.cpp`, built via pybind11 + scikit-build-core).
+- `CppMoranProcess` (`cpp_moran_wrapper.py`) is a **drop-in replacement** with the identical interface, delegating the hot loop to the compiled `_moran_cpp` extension (`simulations/_cpp/moran_core.cpp`, built via pybind11 + scikit-build-core).
   - It is **statistically equivalent**, not bit-exact: it uses xoshiro256++ (not NumPy's PCG64), so per-seed trajectories differ but fixation probability (ρ) and fixation-time distributions match within Monte Carlo error. Validated by running two batches that differ only in `--engine` and comparing them with `scripts/compare_batches.py` (per-cell z-test on ρ and KS test on fixation time, Bonferroni-corrected, plus a p-value uniformity check); ~300x-1800x faster than the Python engine.
   - Sampling uses a two-pool O(1) trick (mutants/wild-type partition) instead of NumPy's O(N) cumulative `choice`; distribution is identical.
-- Engine selection is via the `--engine {cpp,python}` flag (default `cpp`); `worker_wrapper._resolve_engine()` swaps the class at startup so the run loop is identical for both.
+- Engine selection is via the `--engine {cpp,python}` flag (default `cpp`); `worker_lsf._resolve_engine()` swaps the class at startup so the run loop is identical for both.
 
 **3. Orchestration Layer: `pipeline/process_lab.py`**
 - `ProcessLab.run_comparative_study(graphs_zoo, r_values, n_repeats, output_path, engine="cpp")` runs locally and serially; appends to an existing CSV automatically.
 - `ProcessLab.submit_jobs(zoo_path, n_graphs, r_values, batch_name, batch_dir, n_repeats, n_requested_jobs, queue, memory, engine="cpp")` is the HPC path: it bsubs a `register_graphs` job (writes `graph_props.csv`), generates `tmp/task_manifest.csv`, then submits an LSF job array that runs the worker as a module. The chosen `engine` is passed to the worker and recorded in `batch_info.json`.
 
-**HPC Worker: `pipeline/worker_wrapper.py`**
-- Invoked as `python -m moran_process.pipeline.worker_wrapper --zoo-path <z> --manifest-path <m> --batch-dir <batch>/tmp`.
+**HPC Worker: `pipeline/worker_lsf.py`**
+- Invoked as `python -m moran_process.pipeline.worker_lsf --zoo-shard-dir <batch>/tmp/zoo_shards --manifest-path <m> --batch-dir <batch>/tmp`. Each worker loads only its own `zoo_worker_<LSB_JOBINDEX>.pkl` shard, not the full zoo.
 - Reads `LSB_JOBINDEX` and processes the manifest rows whose `worker_id` equals that index.
-- Writes per-job results to `<batch_dir>/tmp/results/result_job_<idx>.parquet` (one row-group per task).
+- Writes per-job results to `<batch_dir>/tmp/results/raw_results_job_<idx>.parquet` (one row-group per task).
 - `--engine {cpp,python}` (default `cpp`) selects the simulation engine via `_resolve_engine()`.
 - For local debugging: pass `--job-index 1` explicitly.
+
+- ijup and inode are functions defined in .bashrc for interactive jobs
 
 ## Data Flow
 
@@ -65,8 +67,8 @@ notebooks/design_zoo.ipynb  (or pipeline/main.py)
   -> ProcessLab.submit_jobs()                       # HPC
       -> register_graphs job -> simulation_data/<batch>/graph_props.csv
       -> simulation_data/<batch>/tmp/task_manifest.csv
-      -> bsub job array -> worker_wrapper
-          -> simulation_data/<batch>/tmp/results/result_job_N.csv
+      -> bsub job array -> worker_lsf
+          -> simulation_data/<batch>/tmp/results/raw_results_job_N.parquet
   -> ProcessLab.run_comparative_study()             # Local alternative
       -> simulation_data/*.csv
 ```
@@ -79,7 +81,7 @@ and the join key between results and properties is `wl_hash`.
 After all LSF jobs finish, stream the per-job CSVs into one file with the built-in helper:
 ```python
 from moran_process.analysis.analysis_utils import aggregate_results_no_load
-aggregate_results_no_load("simulation_data/<batch>")  # writes <batch>/full_results.csv
+aggregate_results_no_load("simulation_data/<batch>")  # writes <batch>/raw_results.parquet (or .csv)
 ```
 This copies files without loading them into memory. Pass `delete_temp=True` to remove `tmp/` afterward.
 
@@ -105,3 +107,4 @@ Read these files when the task requires deeper context:
 - Never use em dashes
 - Before applying a non-trivial code change that involves a design decision (imputation strategy, algorithm choice, data filtering), explain the reasoning and the alternatives considered, then wait for confirmation before editing the file.
 - If you want to remove some part of the code, that's okay but justify it first and don't do it silently.
+- Avoid overkill solutions.

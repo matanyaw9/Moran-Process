@@ -79,22 +79,29 @@ moran-process/
 └── src/moran_process/
     ├── __init__.py                 # public API re-exports
     ├── core/
-    │   ├── population_graph.py     # PopulationGraph + GRAPH_PROPS + register CLI
-    │   └── graph_zoo.py            # GraphZoo collection
+    │   ├── population_graph.py          # PopulationGraph + GRAPH_PROPS + register CLI
+    │   ├── graph_core.py                # GraphCore: compact CSR struct for the hot loop
+    │   └── graph_zoo.py                 # GraphZoo collection
     ├── simulations/
-    │   └── process_run.py          # single Moran simulation
+    │   ├── simulation_process.py        # SimulationProcess ABC
+    │   ├── moran_process.py             # MoranProcess (pure-Python reference)
+    │   ├── cpp_moran_wrapper.py         # CppMoranProcess (fast C++ drop-in, default)
+    │   ├── multi_color_moran_process.py # MultiColorMoranProcess
+    │   └── _cpp/moran_core.cpp          # pybind11 extension -> _moran_cpp
     ├── pipeline/
-    │   ├── process_lab.py          # local study + HPC submission
-    │   ├── worker_wrapper.py       # LSF array worker
-    │   ├── main.py                 # respiratory + random batch builder
-    │   └── extreme_graphs.py       # mutation/GA search for extreme graphs
+    │   ├── process_lab.py               # local study + HPC submission
+    │   ├── worker_lsf.py                # LSF array worker
+    │   ├── main.py                      # respiratory + random batch builder
+    │   └── extreme_graphs.py            # mutation/GA search for extreme graphs
     └── analysis/
-        └── analysis_utils.py       # plotting, aggregation, batch_info helpers
+        ├── analysis_utils.py            # plotting, aggregation, batch_info helpers
+        └── batch_speed_report.py        # engine/worker speed-comparison report
 ```
 
 A single batch lives at `simulation_data/<batch_name>/` and contains `graph_props.csv`,
-`full_results.csv`, `graph_statistics.csv`, `batch_info.json`, `logs/`, and a `tmp/`
-holding `graph_zoo.joblib`, `task_manifest.csv`, and `results/result_job_*.csv`.
+`raw_results.parquet`, `graph_statistics.csv`, `batch_info.json`, `logs/`, and a `tmp/`
+holding `graph_zoo.joblib`, `task_manifest.csv`, `zoo_shards/zoo_worker_*.pkl`, and
+`results/raw_results_job_*.parquet`.
 
 ---
 
@@ -105,7 +112,7 @@ holding `graph_zoo.joblib`, `task_manifest.csv`, and `results/result_job_*.csv`.
 - WL hashing for isomorphism detection and deduplication
 - HPC batch submission pipeline (LSF job arrays via `bsub`)
 - Random graph generation for comparison (null model)
-- Streaming aggregation of per-job results into `full_results.csv`
+- Streaming aggregation of per-job results into `raw_results.parquet`
 - Per-graph statistics (`graph_statistics.csv`) merged with structural properties
 - Linear regression with standardized coefficients for feature importance
 - XGBoost regressor for fixation time prediction, with SHAP interpretability

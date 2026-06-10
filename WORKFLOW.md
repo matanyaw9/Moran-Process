@@ -81,7 +81,7 @@ Solo project, so the distinction barely matters. Rule of thumb:
 
 Experiments aren't code changes — they're runs. Treat them differently:
 
-- Every batch starts in **`notebooks/design_zoo.ipynb`**: set `BATCH_NAME`, pick graph types, visualize, save `zoo.pkl`. Then run Section 4 to submit. See `HPC_WORKFLOW.md` for the full step-by-step.
+- Every batch starts in **`notebooks/design_zoo.ipynb`**: set `BATCH_NAME`, pick graph types, visualize, then serialize the zoo to `simulation_data/<BATCH_NAME>/tmp/graph_zoo.joblib`. Then run Section 4 to submit. See `HPC_WORKFLOW.md` for the full step-by-step.
 - A simulation **run** lives in `simulation_data/<BATCH_NAME>/`. The batch name is the experiment ID.
 - Code that *defines* the experiment (graph choices, r_values, n_repeats) lives in the notebook, not `main.py`. Commit the notebook before launching if you want the config reproducible. Tag if it matters: `git tag exp/<batch-name>`.
 - If I'm tweaking graph choices or parameters for a new experiment, do it in `design_zoo.ipynb` directly — no need for a separate branch unless the code itself is changing.

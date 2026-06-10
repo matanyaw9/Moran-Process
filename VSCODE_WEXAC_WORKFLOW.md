@@ -38,9 +38,13 @@ inode              # 8GB RAM, 4h, gsla-cpu queue
 inode 16GB         # more memory
 inode 4GB 1:00     # short debugging session
 
-# Once inside: run scripts normally
+# Once inside: run a single worker slice (PYTHONPATH=src; run as a module)
 cd ~/Moran-Process
-uv run python worker_wrapper.py --batch-dir simulation_data/tmp/batch_NAME --chunk-size 2 --job-index 1
+PYTHONPATH=src uv run python -m moran_process.pipeline.worker_lsf \
+    --zoo-shard-dir simulation_data/<BATCH_NAME>/tmp/zoo_shards \
+    --manifest-path simulation_data/<BATCH_NAME>/tmp/task_manifest.csv \
+    --batch-dir simulation_data/<BATCH_NAME>/tmp \
+    --job-index 1
 ```
 Edit files in VS Code as usual — login node and compute nodes share the same filesystem, so edits are visible instantly.
 

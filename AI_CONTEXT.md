@@ -3,8 +3,7 @@
 This file is a single self-contained context primer for AI sessions working on this
 repository. It describes the research, the science, the actual code layout, the data
 flow, the HPC workflow, and the analysis pipeline. It is written to reflect the code
-as it actually exists (the older `.md` docs in this repo are partly out of date; see
-"Corrections to older docs" near the end).
+as it actually exists; if it ever drifts from the code, the code wins.
 
 House rule for everything you write in this repo: never use em dashes.
 
@@ -91,28 +90,32 @@ moran-process/
 └── src/moran_process/
     ├── __init__.py           # re-exports the public API (see below)
     ├── core/
-    │   ├── population_graph.py   # PopulationGraph + GRAPH_PROPS + register CLI
-    │   └── graph_zoo.py          # GraphZoo collection
+    │   ├── population_graph.py        # PopulationGraph + GRAPH_PROPS + register CLI
+    │   ├── graph_core.py              # GraphCore: compact CSR struct for the hot loop
+    │   └── graph_zoo.py               # GraphZoo collection
     ├── simulations/
-    │   ├── moran_simulation_process.py  # MoranProcess (Python reference)
-    │   ├── cpp_moran.py                  # CppMoranProcess (fast C++ drop-in, default)
-    │   └── _cpp/moran_core.cpp           # pybind11 extension -> _moran_cpp
+    │   ├── simulation_process.py      # SimulationProcess ABC
+    │   ├── moran_process.py           # MoranProcess (Python reference)
+    │   ├── cpp_moran_wrapper.py       # CppMoranProcess (fast C++ drop-in, default)
+    │   ├── multi_color_moran_process.py  # MultiColorMoranProcess
+    │   └── _cpp/moran_core.cpp        # pybind11 extension -> _moran_cpp
     ├── pipeline/
-    │   ├── process_lab.py        # ProcessLab: local study + HPC submission
-    │   ├── worker_wrapper.py     # LSF array worker
-    │   ├── main.py               # respiratory + random batch builder/submitter
-    │   └── extreme_graphs.py     # mutation/GA search for extreme graphs
+    │   ├── process_lab.py             # ProcessLab: local study + HPC submission
+    │   ├── worker_lsf.py              # LSF array worker
+    │   ├── main.py                    # respiratory + random batch builder/submitter
+    │   └── extreme_graphs.py          # mutation/GA search for extreme graphs
     └── analysis/
-        └── analysis_utils.py     # plotting, aggregation, batch_info helpers
+        ├── analysis_utils.py          # plotting, aggregation, batch_info helpers
+        └── batch_speed_report.py      # engine/worker speed-comparison report
 ```
 
 Public API (from `moran_process/__init__.py`):
 `PopulationGraph`, `GraphZoo`, `MoranProcess`, `MultiColorMoranProcess`, `ProcessLab`, `GRAPH_PROPS`,
 `CATEGORY_COLOR_DICT`, `GRAPH_PROPERTY_COLUMNS`, `GRAPH_PROPERTY_DESCRIPTION`.
-The fast C++ drop-in is `moran_process.simulations.cpp_moran.CppMoranProcess`.
+The fast C++ drop-in is `moran_process.simulations.cpp_moran_wrapper.CppMoranProcess`.
 
 On WEXAC the package is run with `PYTHONPATH=src` and module syntax
-(`python -m moran_process.pipeline.worker_wrapper ...`), as set in `submit_jobs`.
+(`python -m moran_process.pipeline.worker_lsf ...`), as set in `submit_jobs`.
 
 ---
 
@@ -161,7 +164,7 @@ An ordered collection of `PopulationGraph`. Methods: `add(graph)`, `draw_all(col
 practice the pipeline often serializes a plain `list[PopulationGraph]` with `joblib`
 rather than a `GraphZoo` instance, and the loaders accept either.
 
-### MoranProcess (`simulations/moran_simulation_process.py`)
+### MoranProcess (`simulations/moran_process.py`)
 One Moran simulation on one graph (Python reference implementation).
 `MoranProcess(graph_core, selection_coefficient=1.0, max_steps=1_000_000, seed=None)`.
 - `initialize_random_mutant(n_mutants=1)` places mutant(s) at random nodes.
@@ -171,7 +174,7 @@ One Moran simulation on one graph (Python reference implementation).
   plus `history` (mutant-count trajectory) when `track_history=True`.
 Takes a `GraphCore` (compact CSR struct from `PopulationGraph.to_simulation_struct()`).
 
-### CppMoranProcess (`simulations/cpp_moran.py`)
+### CppMoranProcess (`simulations/cpp_moran_wrapper.py`)
 Fast, statistically-equivalent drop-in for `MoranProcess` (same constructor and
 methods), delegating the hot loop to the compiled `_moran_cpp` extension
 (`simulations/_cpp/moran_core.cpp`, xoshiro256++ + two-pool O(1) sampling). ~300x-1800x
@@ -184,28 +187,32 @@ the default engine; pick via the `--engine {cpp,python}` flag.
 Batch manager with two modes.
 
 Local mode:
-`run_comparative_study(graphs_zoo, r_values, n_repeats=100, print_time=True, output_path=None)`
+`run_comparative_study(graphs_zoo, r_values, n_repeats=100, print_time=True, output_path=None, engine="cpp")`
 runs serially, merges `graph.metadata` plus r plus the run result into one row per
 simulation, and appends to `output_path` if given (`save_results` handles append).
 
 HPC mode:
 `submit_jobs(zoo_path, n_graphs, r_values, batch_name, batch_dir, n_repeats=10,
-n_requested_jobs=1, queue="short", memory="2048")`. It:
+n_requested_jobs=1, queue="short", memory="2GB", ..., engine="cpp", zoo_config=None)`. It:
 1. Calls `register_graphs_job(...)` which bsubs a job running the population_graph
    `--register` CLI to write `<batch_dir>/graph_props.csv`.
 2. Builds `<batch_dir>/tmp/task_manifest.csv` via `_create_task_list`, which distributes
    total simulations across `n_requested_jobs` workers as evenly as possible. Manifest
-   columns: `task_id, worker_id, graph_idx, r_value, n_repeats`. A single config can be
+   columns: `task_id, worker_id, graph_idx, r_value, n_repeats, seed`. A single config can be
    split across workers.
-3. Submits an LSF job array `batch_<name>[1-n_requested_jobs]` that runs
-   `python -m moran_process.pipeline.worker_wrapper --zoo-path ... --manifest-path ...
-   --batch-dir <batch_dir>/tmp` with `PYTHONPATH=src` and single-threaded BLAS env vars.
+3. Splits the zoo into per-worker GraphCore shards via `_write_zoo_shards`, writing
+   `<batch_dir>/tmp/zoo_shards/zoo_worker_<id>.pkl` and adding a `local_graph_idx` column
+   to the manifest (so each worker indexes into its own shard, never the full zoo).
+4. Submits an LSF job array `batch_<name>[1-n_requested_jobs]` that runs
+   `python -m moran_process.pipeline.worker_lsf --zoo-shard-dir ... --manifest-path ...
+   --batch-dir <batch_dir>/tmp --engine ...` with `PYTHONPATH=src` and single-threaded BLAS env vars.
 
-### worker_wrapper (`pipeline/worker_wrapper.py`)
+### worker_lsf (`pipeline/worker_lsf.py`)
 Each array task reads its index from `LSB_JOBINDEX` (or `--job-index` locally), selects
-the manifest rows where `worker_id == index`, runs the simulations, and writes
-`<batch_dir>/tmp/results/result_job_<index>.csv`. Result columns:
-`task_id, job_id, wl_hash, graph_name, r, fixation, steps, initial_mutants, duration`.
+the manifest rows where `worker_id == index`, loads only its own
+`zoo_shards/zoo_worker_<index>.pkl` shard, runs the simulations, and writes
+`<batch_dir>/tmp/results/raw_results_job_<index>.parquet` (one row-group per task).
+Result columns: `task_id, job_id, wl_hash, graph_name, r, fixation, steps, duration`.
 There is no separate "steps to extinction" column yet (open TODO).
 
 ---
@@ -221,11 +228,11 @@ The intended workflow (see also `task_list.md` and `WORKFLOW.md`):
    many random graphs with deduplicated WL hashes, serializes them to
    `<batch_dir>/tmp/graph_zoo.joblib`, then submits.
 3. LSF runs: a `register_graphs` job writes `graph_props.csv`; the worker array writes
-   `tmp/results/result_job_*.csv`.
+   `tmp/results/raw_results_job_*.parquet`.
 4. Aggregate raw results: `analysis_utils.aggregate_results_no_load(batch_dir)` streams
-   all `result_job_*.csv` into `<batch_dir>/full_results.csv` without loading them into
-   memory (uses file copy, header-skipping). This replaced the old manual glob+concat.
-5. Analyze: `notebooks/experiment_analysis.ipynb` reads `full_results.csv` plus
+   all `raw_results_job_*` files into `<batch_dir>/raw_results.parquet` (or `.csv`) without
+   loading them into memory. This replaced the old manual glob+concat.
+5. Analyze: `notebooks/experiment_analysis.ipynb` reads `raw_results.parquet` plus
    `graph_props.csv`, aggregates per graph (fixation probability, mean/std steps, etc.),
    merges in structural properties, and writes `<batch_dir>/graph_statistics.csv`.
 6. ML: `notebooks/ml_predictors.ipynb` reads `graph_statistics.csv` and trains models.
@@ -236,15 +243,17 @@ The intended workflow (see also `task_list.md` and `WORKFLOW.md`):
 A batch lives directly under `simulation_data/<batch_name>/`:
 ```
 simulation_data/<batch_name>/
-├── batch_info.json          # written by create_batch_info (name, description, params)
+├── batch_info.json          # written by create_batch_info; nested sections: provenance
+│                            #   (git/host/command), zoo, simulation, hpc
 ├── graph_props.csv          # structural properties, one row per unique graph
-├── full_results.csv         # aggregated raw simulation rows
+├── raw_results.parquet      # aggregated raw simulation rows (one per run)
 ├── graph_statistics.csv     # per-graph aggregated stats merged with properties (analysis output)
 ├── logs/                    # bsub stdout/stderr: job_%J_%I.out/.err
 └── tmp/
     ├── graph_zoo.joblib     # serialized list of PopulationGraph
-    ├── task_manifest.csv    # the full task table
-    └── results/             # result_job_1.csv ... result_job_N.csv
+    ├── task_manifest.csv    # the full task table (task_id, worker_id, graph_idx, r_value, n_repeats, seed, local_graph_idx)
+    ├── zoo_shards/          # zoo_worker_1.pkl ... zoo_worker_N.pkl (per-worker GraphCore shards)
+    └── results/             # raw_results_job_1.parquet ... raw_results_job_N.parquet
 ```
 Note: this differs from the older docs, which described `simulation_data/tmp/batch_<name>/`.
 The real structure puts `tmp/` inside each batch dir.
@@ -277,8 +286,8 @@ interactively). Check with `bqueues`.
 
 Manual single-worker test (no bsub):
 ```bash
-uv run python -m moran_process.pipeline.worker_wrapper \
-  --zoo-path simulation_data/<batch>/tmp/graph_zoo.joblib \
+uv run python -m moran_process.pipeline.worker_lsf \
+  --zoo-shard-dir simulation_data/<batch>/tmp/zoo_shards \
   --manifest-path simulation_data/<batch>/tmp/task_manifest.csv \
   --batch-dir simulation_data/<batch>/tmp \
   --job-index 1
@@ -310,7 +319,7 @@ Do not connect VS Code itself to the compute node; the session dies when the job
   it displays the PNG instead of recomputing; otherwise it renders, saves the PNG, and
   stamps the source batch name. Key plotters:
   - `plot_steps_violin(...)` uses a polars lazy scan to pull only needed columns from a
-    large `full_results.csv`.
+    large `raw_results.parquet`.
   - `plot_outcome_vs_property(...)` is the current recommended scatter-vs-property plot
     (auto violins for discrete x, vectorized jitter, correct 1/N neutral line). It
     supersedes the older `plot_hybrid_density(...)` and `plot_property_effect(...)`.
