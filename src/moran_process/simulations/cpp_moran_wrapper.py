@@ -1,7 +1,7 @@
 """C++-backed Moran process, a drop-in replacement for :class:`MoranProcess`.
 
 This wrapper mirrors the public interface of
-``moran_process.simulations.moran_simulation_process.MoranProcess`` exactly
+``moran_process.simulations.moran_process.MoranProcess`` exactly
 (constructor signature, ``initialize_random_mutant``, ``run``), but delegates the
 hot inner loop to the compiled ``_moran_cpp`` extension.
 
@@ -12,7 +12,7 @@ error. See ``_cpp/moran_core.cpp`` for the algorithm and RNG details.
 
 Usage (drop-in in the worker)::
 
-    from moran_process.simulations.cpp_moran import CppMoranProcess as MoranProcess
+    from moran_process.simulations.cpp_moran_wrapper import CppMoranProcess as MoranProcess
 """
 
 import numpy as np

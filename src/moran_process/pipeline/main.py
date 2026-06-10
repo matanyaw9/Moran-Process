@@ -8,13 +8,17 @@ random graphs. We give the newley created batch a name.
 
 import argparse
 from datetime import datetime
+import logging
 import os
+import sys
 import time
 import joblib
 import numpy as np
 from pathlib import Path
 from moran_process.core.population_graph import PopulationGraph
 from moran_process.pipeline.process_lab import ProcessLab
+
+log = logging.getLogger(__name__)
 
 GRAPH_ZOO_SEED = 42  # controls random graph topology generation; fix for reproducible zoos
 
@@ -47,18 +51,14 @@ def print_configuration(n_nodes, min_edges, max_edges, n_graphs_per_combination,
     """
     Print experiment configuration details.
     """
-    print("="*60)
-    print("RANDOM GRAPH EXPERIMENT")
-    print("="*60)
-    print(f"Configuration:")
-    print(f"  Nodes per graph: {n_nodes}")
-    print(f"  Edge counts: {min_edges} to {max_edges}")
-    print(f"  Graphs per edge count: {n_graphs_per_combination}")
-    print(f"  r values: {r_values}")
-    print(f"  Repeats per configuration: {n_repeats}")
-    print(f"  In Total: {n_graphs_total} graphs")
-    print(f"  In Total: {n_graphs_total * n_repeats} simulations")
-    print("="*60)
+    log.info("Random graph experiment configuration:")
+    log.info("  Nodes per graph: %s", n_nodes)
+    log.info("  Edge counts: %s to %s", min_edges, max_edges)
+    log.info("  Graphs per edge count: %s", n_graphs_per_combination)
+    log.info("  r values: %s", r_values)
+    log.info("  Repeats per configuration: %s", n_repeats)
+    log.info("  In total: %s graphs", n_graphs_total)
+    log.info("  In total: %s simulations", n_graphs_total * n_repeats)
 
 
 def generate_random_graphs(n_nodes:int, edge_range:int, n_graphs_per_combination:int,
@@ -102,14 +102,12 @@ def generate_random_graphs(n_nodes:int, edge_range:int, n_graphs_per_combination
                 new_random_graph_zoo.append(new_random_graph)
                 occupied_wl.add(wl_hash)
     
-    print(f"Number of graphs: {len(new_random_graph_zoo)}")
-    print("\n" + "="*60)
-    print("GENERATED GRAPHS:")
-    print("="*60)
-
+    log.info("Generated %d random graphs.", len(new_random_graph_zoo))
     for graph in new_random_graph_zoo:
-        print(f"Graph: {graph.name:30s} | Nodes: {graph.n_nodes:3d} | Edges: {graph.graph.number_of_edges():3d} | Density: {graph.graph.number_of_edges() / (graph.n_nodes * (graph.n_nodes - 1) / 2):.3f}")
-    
+        density = graph.graph.number_of_edges() / (graph.n_nodes * (graph.n_nodes - 1) / 2)
+        log.debug("Graph: %-30s | Nodes: %3d | Edges: %3d | Density: %.3f",
+                  graph.name, graph.n_nodes, graph.graph.number_of_edges(), density)
+
     return new_random_graph_zoo
 
 
@@ -175,9 +173,16 @@ def main(batch_name=False, engine="cpp"):
 
     # 2. PRINT CONFIGURATION
     n_random_configs = len(n_nodes) * edge_range * len(r_values) * n_random_graphs_per_combination
-    n_graphs_total = n_random_configs + len(graph_zoo)    
-    print_configuration(n_nodes, min_edges, max_edges, n_random_graphs_per_combination, 
+    n_graphs_total = n_random_configs + len(graph_zoo)
+    print_configuration(n_nodes, min_edges, max_edges, n_random_graphs_per_combination,
                         r_values, n_repeats, n_random_configs, n_graphs_total)
+
+    # Snapshot the biological graph specs BEFORE we extend the zoo with random
+    # graphs, so batch_info records exactly which named graphs were hand-built.
+    biological_graph_specs = [
+        {"name": g.name, "category": g.category, "params": g.params}
+        for g in graph_zoo
+    ]
 
     # 3. GENERATE RANDOM GRAPHS
     if n_random_configs:
@@ -187,7 +192,7 @@ def main(batch_name=False, engine="cpp"):
                                                forbidden_wl_hashes=graph_zoo_hashes, rng=rng)
         graph_zoo.extend(random_graphs)
     # 4. RUN EXPERIMENT AND SAVE RESULTS
-    print("\n" + "="*60, "RUNNING EXPERIMENTS", "="*60, sep='\n')
+    log.info("Running experiments")
 
     # 5. SERIALIZE THE GRAPHS
     tmp_dir = BATCH_DIR / TMP_DIR_NAME
@@ -196,19 +201,33 @@ def main(batch_name=False, engine="cpp"):
     with open(zoo_path, "wb") as f:
         joblib.dump(graph_zoo, f)
 
-    print(f"Serialized {len(graph_zoo)} graphs to {zoo_path}")
-    
+    log.info("Serialized %d graphs to %s", len(graph_zoo), zoo_path)
+
+    # The recipe to rebuild this exact zoo: random-graph knobs + the seed that
+    # drives topology generation + the hand-built biological graphs. Recorded
+    # verbatim in batch_info.json under the 'zoo' section.
+    zoo_config = {
+        "graph_zoo_seed": GRAPH_ZOO_SEED,
+        "random_graph_config": {
+            "n_nodes": n_nodes,
+            "edge_range": edge_range,
+            "n_graphs_per_combination": n_random_graphs_per_combination,
+        },
+        "biological_graphs": biological_graph_specs,
+    }
+
     lab = ProcessLab()
-    
+
     lab.submit_jobs(
-        zoo_path=zoo_path, 
+        zoo_path=zoo_path,
         n_graphs=len(graph_zoo),
-        r_values=r_values, 
+        r_values=r_values,
         batch_name=batch_name,
         batch_dir=BATCH_DIR,
         n_repeats=n_repeats,
         n_requested_jobs=n_jobs,
         engine=engine,
+        zoo_config=zoo_config,
     )
     
 if __name__ == "__main__":
@@ -218,9 +237,17 @@ if __name__ == "__main__":
                         help="Simulation engine: 'cpp' (fast, default) or 'python' (reference)")
     args = parser.parse_args()
 
+    # Configure logging once, at the entry point. stdout -> terminal / log file.
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s | %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        stream=sys.stdout,
+    )
+
     start_time = time.perf_counter()
 
     main(args.batch_name, engine=args.engine)
     end_time = time.perf_counter()
-    print(f"Whole thing took {(end_time-start_time):.4f} seconds")
+    log.info("Whole thing took %.4f seconds", end_time - start_time)
 

@@ -6,6 +6,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 import shutil
+import socket
+import subprocess
+import sys
 import textwrap
 from pathlib import Path
 import matplotlib.colors as mcolors
@@ -126,52 +129,116 @@ def load_batch_info(batch_dir) -> dict:
     return {"name": Path(batch_dir).name, "description": ""}
 
 
-def create_batch_info(batch_dir, name, description="", graph_types=None, r_values=None,
-                      n_repeats=None, node_sizes=None, notes="",
-                      n_graphs=None, total_simulations=None, n_requested_jobs=None,
-                      queue=None, memory_mb=None, zoo_path=None, batch_seed=None,
-                      engine=None) -> dict:
-    """Write batch_info.json in batch_dir. Safe to re-run -- overwrites existing file.
+def _git(args) -> str | None:
+    """Run a read-only git command and return stripped stdout, or None on failure
+    (not a repo, git missing, detached/odd state). Never raises, so a provenance
+    hiccup can't abort a batch submission."""
+    try:
+        out = subprocess.check_output(
+            ["git", *args], stderr=subprocess.DEVNULL, text=True
+        )
+        return out.strip()
+    except Exception:
+        return None
 
-    Args:
-        batch_dir: path to the batch directory (must already exist)
-        name: short human-readable batch identifier, e.g. 'MergedBatch06'
-        description: one-sentence summary of what this batch tests
-        graph_types: list of graph category names present, e.g. ['Mammalian', 'Random']
-        r_values: list of selection coefficients used, e.g. [1.1, 1.5, 2.0]
-        n_repeats: number of Moran process runs per graph per r value
-        node_sizes: distinct node counts in the zoo, e.g. [10, 20, 30, 50, 100]
-        notes: free-text field for caveats or TODOs
-        n_graphs: total number of graphs in the zoo
-        total_simulations: n_graphs * len(r_values) * n_repeats
-        n_requested_jobs: number of LSF array jobs submitted
-        queue: LSF queue name
-        memory_mb: memory requested per job in MB
-        zoo_path: path to the serialized graph zoo file
+
+def capture_provenance() -> dict:
+    """Snapshot the environment a batch was launched from.
+
+    Every field is read automatically -- the user types nothing. ``git_dirty``
+    flags whether there were uncommitted changes at submit time, so you can tell
+    whether ``git_commit`` fully describes the code that ran.
     """
+    status = _git(["status", "--porcelain"])
+    return {
+        "git_commit": _git(["rev-parse", "HEAD"]),
+        "git_branch": _git(["rev-parse", "--abbrev-ref", "HEAD"]),
+        "git_dirty": None if status is None else bool(status.strip()),
+        "command": " ".join(sys.argv),
+        "python": sys.version.split()[0],
+        "hostname": socket.gethostname(),
+    }
+
+
+def create_batch_info(batch_dir, name, description="", notes="",
+                      # simulation parameters
+                      r_values=None, n_repeats=None, total_simulations=None,
+                      batch_seed=None, engine=None,
+                      # zoo description
+                      n_graphs=None, graph_types=None, node_sizes=None,
+                      zoo_path=None, zoo_config=None,
+                      # HPC submission
+                      n_requested_jobs=None, queue=None, memory_mb=None,
+                      job_array_name=None, lsf_job_id=None, bsub_command=None) -> dict:
+    """Write a nested, fully-provenanced batch_info.json. Overwrites any existing file.
+
+    The intent is that this file alone documents how the batch was created and
+    run. Only ``description`` and ``notes`` are author-supplied; everything else
+    is captured from the values submit_jobs already holds plus auto-read
+    provenance (git/host/python/command).
+
+    Sections:
+        provenance: git commit/branch/dirty, launch command, python, hostname
+        zoo:        what was simulated on -- graph counts, types, sizes, and the
+                    creation recipe (seed + random-graph config + biological specs)
+                    threaded in via ``zoo_config``
+        simulation: r values, repeats, total sims, batch seed, engine
+        hpc:        job count, queue, memory, LSF job array name + parsed job id
+    """
+    zoo_config = zoo_config or {}
     info = {
         "name": name,
         "description": description,
-        "date_created": datetime.now().strftime("%Y-%m-%d"),
-        "graph_types": graph_types or [],
-        "r_values": r_values or [],
-        "n_repeats": n_repeats,
-        "node_sizes": node_sizes or [],
-        "n_graphs": n_graphs,
-        "total_simulations": total_simulations,
-        "n_requested_jobs": n_requested_jobs,
-        "queue": queue,
-        "memory_mb": memory_mb,
-        "zoo_path": str(zoo_path) if zoo_path is not None else None,
         "notes": notes,
-        "batch_seed": batch_seed,
-        "engine": engine,
+        "created_at": datetime.now().isoformat(timespec="seconds"),
+        "provenance": capture_provenance(),
+        "zoo": {
+            "n_graphs": n_graphs,
+            "graph_types": graph_types or [],
+            "node_sizes": node_sizes or [],
+            "zoo_path": str(zoo_path) if zoo_path is not None else None,
+            **zoo_config,
+        },
+        "simulation": {
+            "r_values": r_values or [],
+            "n_repeats": n_repeats,
+            "total_simulations": total_simulations,
+            "batch_seed": batch_seed,
+            "engine": engine,
+        },
+        "hpc": {
+            "n_requested_jobs": n_requested_jobs,
+            "queue": queue,
+            "memory_mb": memory_mb,
+            "job_array_name": job_array_name,
+            "lsf_job_id": lsf_job_id,
+            "bsub_command": bsub_command,
+        },
     }
     path = Path(batch_dir) / "batch_info.json"
     with open(path, "w") as f:
         json.dump(info, f, indent=2)
     print(f"[batch_info] Written: {path}")
     return info
+
+
+def _bi_get(batch_info, *path, default=None):
+    """Fetch a field from a (possibly nested) batch_info dict.
+
+    Tries the nested path first (e.g. ('simulation', 'r_values')), then falls
+    back to the last key at the top level so legacy flat batch_info.json files
+    written before the restructure still resolve.
+    """
+    node = batch_info
+    for key in path:
+        if isinstance(node, dict) and key in node:
+            node = node[key]
+        else:
+            node = None
+            break
+    if node is not None:
+        return node
+    return batch_info.get(path[-1], default)
 
 
 def plot_batch_info_card(
@@ -190,78 +257,124 @@ def plot_batch_info_card(
     if not force_recompute and try_load_cached(fig_path):
         return
 
+    # Read fields from the nested batch_info (with flat fallback for legacy files).
     name              = batch_info.get('name', 'Unknown Batch')
     description       = batch_info.get('description', '')
-    date_str          = batch_info.get('date_created', '')
-    graph_types       = batch_info.get('graph_types', [])
-    r_values          = batch_info.get('r_values', [])
-    n_repeats         = batch_info.get('n_repeats')
-    node_sizes        = batch_info.get('node_sizes', [])
-    n_graphs          = batch_info.get('n_graphs')
-    total_simulations = batch_info.get('total_simulations')
-    n_requested_jobs  = batch_info.get('n_requested_jobs')
-    queue             = batch_info.get('queue')
-    memory_mb         = batch_info.get('memory_mb')
     notes             = batch_info.get('notes', '')
+    created_at        = _bi_get(batch_info, 'created_at') or _bi_get(batch_info, 'date_created', default='')
+    graph_types       = _bi_get(batch_info, 'zoo', 'graph_types', default=[])
+    node_sizes        = _bi_get(batch_info, 'zoo', 'node_sizes', default=[])
+    n_graphs          = _bi_get(batch_info, 'zoo', 'n_graphs')
+    r_values          = _bi_get(batch_info, 'simulation', 'r_values', default=[])
+    n_repeats         = _bi_get(batch_info, 'simulation', 'n_repeats')
+    total_simulations = _bi_get(batch_info, 'simulation', 'total_simulations')
+    engine            = _bi_get(batch_info, 'simulation', 'engine')
+    n_requested_jobs  = _bi_get(batch_info, 'hpc', 'n_requested_jobs')
+    queue             = _bi_get(batch_info, 'hpc', 'queue')
+    memory_mb         = _bi_get(batch_info, 'hpc', 'memory_mb')
+    lsf_job_id        = _bi_get(batch_info, 'hpc', 'lsf_job_id')
+    git_commit        = _bi_get(batch_info, 'provenance', 'git_commit')
+    git_branch        = _bi_get(batch_info, 'provenance', 'git_branch')
+    git_dirty         = _bi_get(batch_info, 'provenance', 'git_dirty')
+    hostname          = _bi_get(batch_info, 'provenance', 'hostname')
 
-    fig, ax = plt.subplots(figsize=DEFAULT_FIG_SIZE)
+    # 16:9 canvas so the card drops straight onto a widescreen slide.
+    fig, ax = plt.subplots(figsize=(12.8, 7.2))
     ax.axis('off')
     fig.patch.set_facecolor('white')
 
     # Title
     ax.text(0.05, 0.93, name, transform=ax.transAxes,
-            fontsize=22, fontweight='bold', va='top', ha='left', color='#222222')
+            fontsize=30, fontweight='bold', va='top', ha='left', color='#1a1a1a')
 
-    # Horizontal rule under title
-    ax.plot([0.04, 0.96], [0.84, 0.84], transform=ax.transAxes,
+    # Subtitle: date + engine (muted, just under the title)
+    subtitle_bits = []
+    if created_at:
+        subtitle_bits.append(str(created_at).replace('T', '  '))
+    if engine:
+        subtitle_bits.append(f'{engine} engine')
+    if subtitle_bits:
+        ax.text(0.05, 0.845, '   ·   '.join(subtitle_bits), transform=ax.transAxes,
+                fontsize=13, va='top', ha='left', color='#888888')
+
+    # Horizontal rule under the title block
+    ax.plot([0.04, 0.96], [0.80, 0.80], transform=ax.transAxes,
             color='#cccccc', linewidth=1.2, solid_capstyle='butt')
 
     # Description
     if description:
-        wrapped = textwrap.fill(description, width=90)
-        ax.text(0.05, 0.80, wrapped, transform=ax.transAxes,
-                fontsize=12, va='top', ha='left', color='#333333',
+        wrapped = textwrap.fill(description, width=95)
+        ax.text(0.05, 0.74, wrapped, transform=ax.transAxes,
+                fontsize=14, va='top', ha='left', color='#333333',
                 style='italic', linespacing=1.5)
 
-    # Metadata rows
+    # Dense grouped metadata rows: label on the left, a single packed value line.
     def _meta_row(label, value, y):
         ax.text(0.05, y, label, transform=ax.transAxes,
-                fontsize=10, va='top', ha='left', fontweight='bold', color='#555555')
-        ax.text(0.22, y, value, transform=ax.transAxes,
-                fontsize=10, va='top', ha='left', color='#333333')
+                fontsize=13, va='top', ha='left', fontweight='bold', color='#444444')
+        ax.text(0.20, y, value, transform=ax.transAxes,
+                fontsize=13, va='top', ha='left', color='#222222')
 
-    y = 0.58
-    row_h = 0.075
-    if date_str:
-        _meta_row('Date:', date_str, y);  y -= row_h
-    if graph_types:
-        _meta_row('Graph types:', textwrap.fill(', '.join(graph_types), width=70), y);  y -= row_h
-    if r_values:
-        _meta_row('r values:', ', '.join(str(r) for r in r_values), y);  y -= row_h
-    if n_repeats is not None:
-        _meta_row('Repeats / config:', f'{int(n_repeats):,}', y);  y -= row_h
-    if node_sizes:
-        _meta_row('Node sizes:', ', '.join(str(n) for n in node_sizes), y);  y -= row_h
+    def _join(parts):
+        return '      '.join(p for p in parts if p)
+
+    y = 0.56
+    row_h = 0.105
+
+    zoo_parts = []
     if n_graphs is not None:
-        total_str = f'  (total sims: {int(total_simulations):,})' if total_simulations is not None else ''
-        _meta_row('Graphs:', f'{int(n_graphs):,}{total_str}', y);  y -= row_h
-    if n_requested_jobs is not None:
-        hpc_str = f'{int(n_requested_jobs):,} jobs'
-        if queue:
-            hpc_str += f'  |  queue: {queue}'
-        if memory_mb is not None:
-            hpc_str += f'  |  {int(memory_mb):,} MB/job'
-        _meta_row('HPC:', hpc_str, y);  y -= row_h
+        zoo_parts.append(f'{int(n_graphs):,} graphs')
+    if graph_types:
+        zoo_parts.append(f'types: {", ".join(graph_types)}')
+    if node_sizes:
+        zoo_parts.append(f'sizes: {", ".join(str(n) for n in node_sizes)}')
+    if zoo_parts:
+        _meta_row('Zoo', _join(zoo_parts), y);  y -= row_h
 
-    # Notes (bottom, muted)
+    sim_parts = []
+    if r_values:
+        sim_parts.append(f'r = {", ".join(str(r) for r in r_values)}')
+    if n_repeats is not None:
+        sim_parts.append(f'{int(n_repeats):,} reps/config')
+    if total_simulations is not None:
+        sim_parts.append(f'{int(total_simulations):,} total sims')
+    if sim_parts:
+        _meta_row('Simulation', _join(sim_parts), y);  y -= row_h
+
+    hpc_parts = []
+    if n_requested_jobs is not None:
+        hpc_parts.append(f'{int(n_requested_jobs):,} jobs')
+    if queue:
+        hpc_parts.append(f'queue: {queue}')
+    if memory_mb is not None:
+        hpc_parts.append(f'{int(memory_mb):,} MB/job')
+    if lsf_job_id:
+        hpc_parts.append(f'job {lsf_job_id}')
+    if hpc_parts:
+        _meta_row('HPC', _join(hpc_parts), y);  y -= row_h
+
+    # Provenance + notes footer (muted, bottom of the slide)
+    footer_bits = []
+    if git_commit:
+        commit = f'commit {git_commit[:8]}'
+        if git_branch:
+            commit += f' ({git_branch})'
+        if git_dirty:
+            commit += ' +dirty'
+        footer_bits.append(commit)
+    if hostname:
+        footer_bits.append(hostname)
+    if footer_bits:
+        ax.text(0.05, 0.13, '   ·   '.join(footer_bits), transform=ax.transAxes,
+                fontsize=10, va='top', ha='left', color='#aaaaaa')
     if notes:
-        ax.text(0.05, 0.08, textwrap.fill(f'Notes: {notes}', width=100),
+        ax.text(0.05, 0.07, textwrap.fill(f'Notes: {notes}', width=110),
                 transform=ax.transAxes,
-                fontsize=9, va='top', ha='left', color='#999999', style='italic')
+                fontsize=10, va='top', ha='left', color='#999999', style='italic')
 
     fig.tight_layout()
     if fig_path is not None:
-        fig.savefig(fig_path, bbox_inches='tight', dpi=150, facecolor='white')
+        fig.savefig(fig_path, bbox_inches='tight', dpi=200, facecolor='white')
         print(f"[cache] Saved: {fig_path.name}")
     plt.show()
 
@@ -332,16 +445,39 @@ def generate_robust_color_dict(df, existing_colors, default_palette='husl'):
     return final_color_dict
 
 
+# Aggregated per-repeat results filename. "raw_results" = the raw, one-row-per-run
+# table, as opposed to the aggregated graph_statistics.csv. (Historically named
+# "full_results"; existing batches were migrated on disk to this name.)
+RAW_RESULTS_STEM = "raw_results"
+
+# Per-job temp files the worker writes into tmp/results/, one per LSF array index.
+PER_JOB_RESULT_STEM = "raw_results_job"
+
+
+def resolve_results_path(batch_dir):
+    """Return the aggregated raw-results file for a batch, or None if absent.
+
+    Results may be Parquet or CSV depending on when the batch ran, so this picks
+    the existing one (Parquet preferred).
+    """
+    batch_path = Path(batch_dir)
+    for ext in (".parquet", ".csv"):
+        candidate = batch_path / f"{RAW_RESULTS_STEM}{ext}"
+        if candidate.exists():
+            return candidate
+    return None
+
+
 def aggregate_results_no_load(batch_dir, delete_temp=False, output_file=None):
     """Concatenate per-job result files from batch_dir/tmp/results/ without loading all rows.
 
-    Detects the output format automatically: Parquet files (result_job_*.parquet) take
-    priority over legacy CSV files (result_job_*.csv). The output format matches the input.
+    Detects the output format automatically: Parquet files (raw_results_job_*.parquet)
+    take priority over CSV files (raw_results_job_*.csv). The output format matches the input.
 
     Args:
-        batch_dir: path to the batch directory containing tmp/results/result_job_*
+        batch_dir: path to the batch directory containing tmp/results/raw_results_job_*
         delete_temp: if True, removes batch_dir/tmp/ after successful aggregation
-        output_file: destination path; defaults to batch_dir/full_results.parquet (or .csv)
+        output_file: destination path; defaults to batch_dir/raw_results.parquet (or .csv)
 
     Returns:
         Path to the output file, or None if no result files were found.
@@ -353,18 +489,18 @@ def aggregate_results_no_load(batch_dir, delete_temp=False, output_file=None):
 
     # Detect format: Parquet takes priority over CSV
     parquet_files = sorted(
-        tmp_results_path.glob("result_job_*.parquet"),
+        tmp_results_path.glob(f"{PER_JOB_RESULT_STEM}_*.parquet"),
         key=lambda p: int(p.stem.split('_')[-1]),
     )
     csv_files = sorted(
-        tmp_results_path.glob("result_job_*.csv"),
+        tmp_results_path.glob(f"{PER_JOB_RESULT_STEM}_*.csv"),
         key=lambda p: int(p.stem.split('_')[-1]),
     )
 
     # --- Parquet path ---
     if parquet_files:
         if not output_file:
-            output_file = batch_path / "full_results.parquet"
+            output_file = batch_path / f"{RAW_RESULTS_STEM}.parquet"
         else:
             output_file = Path(output_file)
 
@@ -402,7 +538,7 @@ def aggregate_results_no_load(batch_dir, delete_temp=False, output_file=None):
         return None
 
     if not output_file:
-        output_file = batch_path / "full_results.csv"
+        output_file = batch_path / f"{RAW_RESULTS_STEM}.csv"
     else:
         output_file = Path(output_file)
 
@@ -444,7 +580,7 @@ def build_graph_statistics(results_path, df_graphs, graph_statistics_path, categ
     from results_path (Parquet or CSV), merges with df_graphs, sorts, and saves.
 
     Args:
-        results_path: path to full_results.parquet (or .csv for legacy batches)
+        results_path: path to raw_results.parquet (or .csv)
         df_graphs: DataFrame with graph structural properties (must have 'wl_hash', 'graph_name')
         graph_statistics_path: path where graph_statistics.csv is saved / loaded from
         category_filter: if given, returns only rows where category == category_filter
@@ -524,7 +660,7 @@ def plot_steps_violin(
     """Violin plot of steps-to-fixation distribution, one violin per graph category.
 
     Args:
-        results_path: path to the raw full_results.parquet or full_results.csv (read lazily)
+        results_path: path to the raw_results.parquet or raw_results.csv (read lazily)
         df_graphs: DataFrame with at least 'wl_hash' and 'category' columns
         color_dict: category -> hex color mapping for violin fills
         categories: x-axis order; defaults to sorted unique values in df_graphs['category']

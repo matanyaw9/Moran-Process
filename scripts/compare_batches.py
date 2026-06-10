@@ -26,7 +26,7 @@ equivalence the p-values should look uniform, so a systematic skew toward zero
 Run (offline, no compute; safe on the login node):
     uv run python scripts/compare_batches.py <batch_dir_a> <batch_dir_b>
 
-If a batch is missing its full_results file, it is aggregated automatically from
+If a batch is missing its raw_results file, it is aggregated automatically from
 that batch's tmp/results/ via aggregate_results_no_load.
 """
 
@@ -37,7 +37,10 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
-from moran_process.analysis.analysis_utils import aggregate_results_no_load
+from moran_process.analysis.analysis_utils import (
+    aggregate_results_no_load,
+    resolve_results_path,
+)
 
 
 def two_proportion_z(k1, n1, k2, n2):
@@ -55,14 +58,13 @@ def two_proportion_z(k1, n1, k2, n2):
 def load_batch(batch_dir):
     """Return the per-repeat results DataFrame for a batch, aggregating if needed.
 
-    Prefers an existing full_results.parquet / full_results.csv. If neither
+    Prefers an existing raw_results.parquet / raw_results.csv. If neither
     exists, aggregates from batch_dir/tmp/results/ (Parquet preferred over CSV).
     """
     batch_path = Path(batch_dir)
-    parquet = batch_path / "full_results.parquet"
-    csv = batch_path / "full_results.csv"
+    path = resolve_results_path(batch_path)
 
-    if not parquet.exists() and not csv.exists():
+    if path is None:
         print(f"[{batch_path.name}] No aggregated file found; aggregating from tmp/results/ ...")
         out = aggregate_results_no_load(str(batch_path))
         if out is None:
@@ -70,8 +72,6 @@ def load_batch(batch_dir):
                 f"[{batch_path.name}] No result files to aggregate in {batch_path/'tmp'/'results'}."
             )
         path = Path(out)
-    else:
-        path = parquet if parquet.exists() else csv
 
     df = pd.read_parquet(path) if path.suffix == ".parquet" else pd.read_csv(path)
     print(f"[{batch_path.name}] Loaded {len(df):,} rows from {path.name}")
