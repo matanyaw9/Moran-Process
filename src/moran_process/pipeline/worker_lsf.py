@@ -1,4 +1,5 @@
 import argparse
+import logging
 import os
 import resource
 import sys
@@ -7,6 +8,8 @@ import pandas as pd
 import joblib
 import pyarrow as pa
 import pyarrow.parquet as pq
+
+log = logging.getLogger(__name__)
 
 
 def _resolve_engine(engine: str):
@@ -17,10 +20,10 @@ def _resolve_engine(engine: str):
     (statistically equivalent); 'python' is the pure-Python reference.
     """
     if engine == "cpp":
-        from moran_process.simulations.cpp_moran import CppMoranProcess
+        from moran_process.simulations.cpp_moran_wrapper import CppMoranProcess
         return CppMoranProcess
     if engine == "python":
-        from moran_process.simulations.moran_simulation_process import MoranProcess
+        from moran_process.simulations.moran_process import MoranProcess
         return MoranProcess
     raise ValueError(f"Unknown engine '{engine}' (expected 'cpp' or 'python').")
 
@@ -51,10 +54,11 @@ def load_data(zoo_shard_dir, task_manifest_path, worker_index):
 
     with open(shard_path, "rb") as f:
         graph_zoo = joblib.load(f)
-    print(f"[Worker {worker_index}] Loaded {len(graph_zoo)} graphs from shard.")
+    log.info("[Worker %s] Loaded %d graphs from shard.", worker_index, len(graph_zoo))
 
     manifest_df = pd.read_csv(task_manifest_path)
-    print(f"[Worker {worker_index}] Loaded manifest ({len(manifest_df)} total tasks across all workers).")
+    log.info("[Worker %s] Loaded manifest (%d total tasks across all workers).",
+             worker_index, len(manifest_df))
 
     return graph_zoo, manifest_df
 
@@ -72,30 +76,31 @@ def run_worker_slice(batch_dir, zoo_shard_dir, manifest_path, worker_index, engi
     3. Stream results to a per-job Parquet file (one row-group per task).
     """
     MoranProcess = _resolve_engine(engine)
-    print(f"--- Worker {worker_index} started | engine={engine} | RSS={_rss_mb()} MB ---")
+    log.info("--- Worker %s started | engine=%s | RSS=%d MB ---",
+             worker_index, engine, _rss_mb())
 
     # 1. Load data
     graph_zoo, manifest_df = load_data(zoo_shard_dir, manifest_path, worker_index)
 
     # 2. Filter to tasks assigned to this worker (worker_id is 1-based, matches LSB_JOBINDEX)
     my_tasks = manifest_df[manifest_df['worker_id'] == worker_index]
-    print('=' * 60)
-    print(my_tasks)
-    print('=' * 60)
+    log.info("\n[Worker %s] assigned tasks:\n%s", worker_index, my_tasks.to_string())
 
     if my_tasks.empty:
-        print(f"[Worker {worker_index}] No tasks found for this worker_id. Exiting.")
+        log.warning("[Worker %s] No tasks found for this worker_id. Exiting.", worker_index)
         return
 
     n_tasks = len(my_tasks)
     total_sims = int(my_tasks['n_repeats'].sum())
-    print(f"[Worker {worker_index}] {n_tasks} tasks / {total_sims} simulations.")
+    log.info("\n[Worker %s] %d tasks / %d simulations.\n", worker_index, n_tasks, total_sims)
 
     # 3. Stream results: open one Parquet file, write one row-group per (graph, r) task.
     #    Pre-allocating fixed NumPy arrays per task avoids per-rep dict allocation and
     #    the large pd.DataFrame(buffer) copy at the end.
     os.makedirs(os.path.join(batch_dir, "results"), exist_ok=True)
-    save_path = os.path.join(batch_dir, "results", f"result_job_{worker_index}.parquet")
+    # Name must match analysis_utils.PER_JOB_RESULT_STEM (kept as a literal here so
+    # the worker doesn't import the heavy analysis module).
+    save_path = os.path.join(batch_dir, "results", f"raw_results_job_{worker_index}.parquet")
     total_written = 0
 
     with pq.ParquetWriter(save_path, _RESULT_SCHEMA) as writer:
@@ -105,9 +110,9 @@ def run_worker_slice(batch_dir, zoo_shard_dir, manifest_path, worker_index, engi
                 r_val = row.r_value
                 n_repeats = row.n_repeats
 
-                print(f"[Worker {worker_index}] Task {task_num}/{n_tasks} | "
-                      f"graph={graph_core.name} r={r_val} reps={n_repeats} | "
-                      f"RSS={_rss_mb()} MB")
+                log.info("[Worker %s] Task %d/%d | graph=%s r=%s reps=%s | RSS=%d MB",
+                         worker_index, task_num, n_tasks, graph_core.name, r_val,
+                         n_repeats, _rss_mb())
 
                 # Seed from manifest: int → reproducible task, NaN → OS entropy.
                 task_seed = None if pd.isna(row.seed) else int(row.seed)
@@ -138,15 +143,22 @@ def run_worker_slice(batch_dir, zoo_shard_dir, manifest_path, worker_index, engi
                 writer.write_batch(batch)
                 total_written += n_repeats
 
-            except Exception as e:
-                print(f"[Worker {worker_index}] ERROR in task {row.task_id}: {e}")
+                # Completion line: lets you see at a glance which tasks have
+                # finished (the start line above only marks what is in-flight).
+                n_fixed = int(np.count_nonzero(fixations))
+                log.info("[Worker %s] Task %d/%d done | %s r=%s | fixed %d/%d (%.1f%%) | RSS=%d MB",
+                         worker_index, task_num, n_tasks, graph_core.name, r_val,
+                         n_fixed, n_repeats, 100.0 * n_fixed / n_repeats, _rss_mb())
+
+            except Exception:
+                log.exception("[Worker %s] ERROR in task %s", worker_index, row.task_id)
                 continue
 
     if total_written:
-        print(f"--- Worker {worker_index} done. {total_written} rows -> "
-              f"{os.path.basename(save_path)} | RSS={_rss_mb()} MB ---")
+        log.info("--- Worker %s done. %d rows -> %s | RSS=%d MB ---",
+                 worker_index, total_written, os.path.basename(save_path), _rss_mb())
     else:
-        print(f"--- Worker {worker_index} done. No results generated. ---")
+        log.warning("--- Worker %s done. No results generated. ---", worker_index)
 
 
 if __name__ == "__main__":
@@ -166,6 +178,14 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    # Configure logging once, at the entry point. stdout -> LSF .out file.
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s | %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        stream=sys.stdout,
+    )
+
     # Resolve job index: explicit arg takes precedence, then LSF env variable
     job_idx = args.job_index
     if job_idx is None:
@@ -173,7 +193,7 @@ if __name__ == "__main__":
         if env_idx:
             job_idx = int(env_idx)
         else:
-            print("ERROR: No job index found. Pass --job-index or submit via bsub.")
+            log.error("No job index found. Pass --job-index or submit via bsub.")
             sys.exit(1)
 
     run_worker_slice(args.batch_dir, args.zoo_shard_dir, args.manifest_path, job_idx,

@@ -18,8 +18,8 @@ _LAZY_EXPORTS = {
     "GRAPH_PROPS": "moran_process.core.population_graph:GRAPH_PROPS",
     "PopulationGraph": "moran_process.core.population_graph:PopulationGraph",
     "ProcessLab": "moran_process.pipeline.process_lab:ProcessLab",
-    "MoranProcess": "moran_process.simulations.moran_simulation_process:MoranProcess",
-    "MultiColorMoranProcess": "moran_process.simulations.multi_color_simulation_process:MultiColorMoranProcess",
+    "MoranProcess": "moran_process.simulations.moran_process:MoranProcess",
+    "MultiColorMoranProcess": "moran_process.simulations.multi_color_moran_process:MultiColorMoranProcess",
     "SimulationProcess": "moran_process.simulations.simulation_process:SimulationProcess",
 }
 
