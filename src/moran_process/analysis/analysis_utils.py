@@ -655,9 +655,18 @@ def plot_steps_violin(
     batch_name=None,
     fig_title=None,
     show=True,
+    r=None,
+    max_points_per_category=50_000,
     results_csv_path=None,  # deprecated alias for results_path
 ):
     """Violin plot of steps-to-fixation distribution, one violin per graph category.
+
+    A violin is a kernel density estimate, and KDE cost is linear in the number of
+    points. The raw batch can hold tens of millions of fixation events, which makes
+    seaborn spend many minutes building the KDEs. Two cheap measures keep it fast
+    without changing the picture: only the fixation rows are materialised (non-fixation
+    rows are never drawn), and each category is subsampled to ``max_points_per_category``
+    points before the KDE (a 50k sample is visually identical to the full distribution).
 
     Args:
         results_path: path to the raw_results.parquet or raw_results.csv (read lazily)
@@ -668,6 +677,12 @@ def plot_steps_violin(
         force_recompute: skip cache and regenerate even if PNG already exists
         batch_name: batch label stamped in the bottom-right corner of the figure
         show: change this to flase if you want the fig to be made but not shown
+        r: which selection coefficient to plot (violins show one r at a time). If None
+            and the data has a single r, that value is used; if None and several r
+            values are present, a ValueError is raised asking you to pick one.
+        max_points_per_category: cap on the number of fixation events fed to each
+            category's KDE. None disables subsampling and plots every point (slow for
+            large batches). Default 50_000.
     """
     import polars as pl
 
@@ -687,24 +702,58 @@ def plot_steps_violin(
 
     _rp = Path(results_path)
     _scanner = pl.scan_parquet(str(_rp)) if _rp.suffix == '.parquet' else pl.scan_csv(str(_rp))
-    _select = ['wl_hash', 'steps', 'fixation'] + (['r'] if 'r' in _scanner.columns else [])
-    merged_raw = (
-        _scanner
-        .select(_select)
-        .with_columns(
-            pl.when(pl.col('fixation')).then(pl.col('steps')).otherwise(None).alias('steps_success')
-        )
-        .join(
-            pl.from_pandas(df_graphs[['wl_hash', 'category']]).lazy(),
-            on='wl_hash',
-            how='left',
-        )
-        .collect()
-        .to_pandas()
-    )
+    _has_r = 'r' in _scanner.collect_schema().names()
 
-    r_vals = sorted(merged_raw['r'].dropna().unique().tolist()) if 'r' in merged_raw.columns else []
-    r_suffix = f"  (r={r_vals[0]})" if len(r_vals) == 1 else ""
+    # Only fixation events are ever drawn, so filter them lazily before collecting.
+    lf = _scanner.select(['wl_hash', 'steps', 'fixation'] + (['r'] if _has_r else []))
+    lf = lf.filter(pl.col('fixation'))
+
+    # A violin mixes its data on the y-axis only: pooling several r values into one
+    # violin would silently overlay distributions. Resolve to a single r up front.
+    r_suffix = ""
+    if _has_r:
+        r_available = sorted(lf.select(pl.col('r')).unique().collect().to_series().to_list())
+        if r is None:
+            if len(r_available) == 1:
+                r = r_available[0]
+            else:
+                raise ValueError(
+                    f"results contain multiple r values {r_available}; pass r=<value> "
+                    f"to plot_steps_violin (violins show one r at a time)"
+                )
+        elif r not in r_available:
+            raise ValueError(f"r={r} not found in results; available: {r_available}")
+        lf = lf.filter(pl.col('r') == r)
+        r_suffix = f"  (r={r})"
+
+    merged_raw = lf.join(
+        pl.from_pandas(df_graphs[['wl_hash', 'category']]).lazy(),
+        on='wl_hash',
+        how='left',
+    ).collect()
+
+    # True per-category fixation counts, read before any subsampling so the annotation
+    # reflects how much data backs each violin (not the plotted 50k cap).
+    _vc = merged_raw['category'].value_counts()
+    fixation_counts = dict(zip(_vc.get_column('category').to_list(), _vc.get_column('count').to_list()))
+
+    # Subsample each category down to the cap. Shuffling the within-category row index
+    # and keeping the first ``cap`` rows is a uniform sample, so every violin's KDE
+    # stays cheap and faithful to the full distribution.
+    subsampled = False
+    if max_points_per_category is not None:
+        largest_category = max(fixation_counts.values(), default=None)
+        subsampled = largest_category is not None and largest_category > max_points_per_category
+        merged_raw = (
+            merged_raw
+            .with_columns(
+                pl.int_range(pl.len()).shuffle(seed=0).over('category').alias('_rn')
+            )
+            .filter(pl.col('_rn') < max_points_per_category)
+            .drop('_rn')
+        )
+
+    merged_raw = merged_raw.to_pandas()
 
     palette = {cat: color_dict[cat] for cat in categories if cat in color_dict}
 
@@ -712,20 +761,34 @@ def plot_steps_violin(
     sns.violinplot(
         data=merged_raw,
         x='category',
-        y='steps_success',
+        y='steps',
         order=categories,
+        hue='category',
         palette=palette,
+        legend=False,
         inner='box',
         linewidth=1.2,
         ax=ax,
     )
     fig_title = fig_title or f'Distribution of Steps to Fixation by Category{r_suffix}'
-    plt.setp(ax.get_xticklabels(), rotation=45, ha='right', fontsize=10)
+    # Annotate each violin with its true fixation count (n) on a second label line.
+    ax.set_xticks(range(len(categories)))
+    ax.set_xticklabels(
+        [f"{cat}\nn = {fixation_counts.get(cat, 0):,}" for cat in categories],
+        rotation=45, ha='right', fontsize=10,
+    )
     ax.set_xlabel('Category', fontsize=13)
     ax.set_ylabel('Steps to Fixation', fontsize=13)
     ax.set_title(fig_title, fontsize=14)
     if batch_name:
         _stamp_batch(fig, batch_name)
+    if subsampled:
+        fig.text(
+            0.01, 0.01,
+            f"violins drawn from a random subsample of {max_points_per_category:,} points/category",
+            fontsize=8, color="#666666", ha="left", va="bottom",
+            style="italic", transform=fig.transFigure,
+        )
     fig.tight_layout()
     if fig_path is not None:
         fig.savefig(fig_path, bbox_inches='tight', dpi=150)
