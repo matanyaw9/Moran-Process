@@ -63,6 +63,107 @@ def _stamp_batch(fig, batch_name: str) -> None:
     )
 
 
+# Style for graph-property explanations: a serif, medium-gray face that is visually
+# distinct from the sans-serif axis labels so the text reads as an explanatory gloss
+# rather than a label. The description is italic; the leading property name is bold and
+# upright (rendered via mathtext, see _gloss_text). Dark enough (#5a5a5a) to stay
+# very readable.
+_DESC_FONT = {"family": "serif", "style": "italic", "color": "#5a5a5a", "fontsize": 9}
+# matplotlib's math-bold defaults to a sans-serif face; force the serif math fontset so
+# the inline bold name matches the serif italic description it shares a line with.
+_DESC_MATH_FONT = "dejavuserif"
+
+
+def _gloss_text(prop, width):
+    """Inline gloss string for `prop`: bold name then italic description, wrapped.
+
+    The name is wrapped in mathtext ($\\bf{...}$) so it renders bold *on the same line*
+    as the description within a single text artist (a plain Text carries one weight).
+    The whole "Name: description" is wrapped together so it flows as one paragraph.
+    Returns None when `prop` has no description.
+    """
+    desc = GRAPH_PROPERTY_DESCRIPTION.get(prop)
+    if not desc:
+        return None
+    name = prop.title().replace("_", " ")
+    plain = textwrap.fill(f"{name}: {desc}", width=width)
+    # Bold just the leading "Name:" (spaces escaped for mathtext); the rest stays italic.
+    bold_name = r"$\bf{" + name.replace(" ", r"\ ") + r":}$"
+    return bold_name + plain[len(name) + 1:]
+
+
+def _add_property_description(ax, prop, axis="x", width=90) -> None:
+    """Render the GRAPH_PROPERTY_DESCRIPTION gloss for `prop` next to its axis.
+
+    The property name leads in serif bold, inline with the serif italic description
+    (see _DESC_FONT / _gloss_text), kept separate from the axis label. No-op when no
+    description exists for `prop`.
+
+    axis="x" places the gloss horizontally below the x-axis; axis="y" places it
+    rotated 90 degrees just outside the y-axis label, so each explanation sits beside
+    the axis it describes.
+    """
+    text = _gloss_text(prop, width)
+    if text is None:
+        return
+    if axis == "y":
+        # Sit outside (left of) the y-axis title so the gloss never overlaps it.
+        ax.text(
+            -0.22, 0.5, text, transform=ax.transAxes,
+            ha="center", va="center", rotation=90, rotation_mode="anchor",
+            math_fontfamily=_DESC_MATH_FONT, **_DESC_FONT,
+        )
+    else:
+        ax.text(
+            0.5, -0.16, text, transform=ax.transAxes,
+            ha="center", va="top", math_fontfamily=_DESC_MATH_FONT, **_DESC_FONT,
+        )
+
+
+def _add_property_descriptions_below(ax, props, width=90) -> None:
+    """Render several property glosses stacked horizontally below the x-axis.
+
+    An alternative to the per-axis placement of `_add_property_description`: when
+    two properties are shown (one per axis), a rotated y-axis gloss can be hard to
+    read, so this lays every explanation flat below the plot as one centered block.
+    Props without a description are skipped; a no-op if none have one.
+    """
+    blocks = [t for prop in props if (t := _gloss_text(prop, width)) is not None]
+    if not blocks:
+        return
+    ax.text(
+        0.5, -0.16,  "\n"+"\n".join(blocks), transform=ax.transAxes,
+        ha="center", va="top", math_fontfamily=_DESC_MATH_FONT, **_DESC_FONT,
+    )
+
+
+def _add_corr_box(ax, text, anchor=None, default=(0.03, 0.97), fontsize=9) -> None:
+    """Draw a correlation summary text box on `ax`, just below a right-side guide.
+
+    `anchor` is an artist with a measurable extent (a category legend or a colorbar's
+    axes). It sits outside the axes and has dynamic size, so its extent is measured
+    after a canvas draw and mapped back to axes-fraction coordinates rather than guessing
+    a fixed position. The box is placed just beneath the anchor, left-aligned to its left
+    edge. Call this AFTER tight_layout so the extent reflects the final axes size.
+
+    With no anchor, falls back to `default` (axes-fraction, inside top-left).
+    """
+    box = dict(boxstyle="round,pad=0.4", facecolor="white", alpha=0.9, edgecolor="lightgray")
+    if anchor is None:
+        ax.text(
+            *default, text, transform=ax.transAxes, fontsize=fontsize,
+            ha="left", va="top", bbox=box, zorder=5,
+        )
+        return
+    ax.figure.canvas.draw()  # realize the anchor so it has a measurable extent
+    disp = anchor.get_window_extent()
+    x_left, y_bottom = ax.transAxes.inverted().transform((disp.x0, disp.y0))
+    ax.text(
+        x_left, y_bottom - 0.03, text, transform=ax.transAxes, fontsize=fontsize,
+        ha="left", va="top", bbox=box, zorder=5,
+    )
+
+
 def plot_batch_info_card(
     batch_info,
     figures_dir=None,
@@ -290,6 +391,7 @@ def plot_steps_violin(
     r=None,
     max_points_per_category=50_000,
     results_csv_path=None,  # deprecated alias for results_path
+    save=True,
 ):
     """Violin plot of steps-to-fixation distribution, one violin per graph category.
 
@@ -316,6 +418,8 @@ def plot_steps_violin(
             category's KDE. None disables subsampling and plots every point (slow for
             large batches). Default 50_000.
     """
+    if fig_path is None and save: 
+        raise ValueError("figures_dir must be provided if save=True")
     if color_dict is None:
         color_dict = {}
 
@@ -369,7 +473,7 @@ def plot_steps_violin(
             style="italic", transform=fig.transFigure,
         )
     fig.tight_layout()
-    if fig_path is not None:
+    if fig_path is not None and save:
         fig.savefig(fig_path, bbox_inches='tight', dpi=150)
         print(f"[cache] Saved: {fig_path.name}")
     if show:
@@ -398,6 +502,7 @@ def plot_steps_pvalue_matrix(
     show=True,
     r=None,
     max_points_per_category=50_000,
+    save=True
 ):
     """Pairwise significance matrix for the steps-to-fixation violins.
 
@@ -499,7 +604,7 @@ def plot_steps_pvalue_matrix(
         style="italic", transform=fig.transFigure,
     )
     fig.tight_layout()
-    if fig_path is not None:
+    if fig_path is not None and save:
         fig.savefig(fig_path, bbox_inches='tight', dpi=150)
         print(f"[cache] Saved: {fig_path.name}")
     if show:
@@ -516,6 +621,7 @@ def plot_steps_histogram(
     force_recompute=False,
     batch_name=None,
     show=True,
+    save=True,
 ):
     """Histogram of a steps/outcome metric, optionally filtered to one graph category.
 
@@ -531,6 +637,8 @@ def plot_steps_histogram(
         show: change this to flase if you want the fig to be made but not shown
 
     """
+    if save and not figures_dir:
+        raise ValueError("figures_dir must be provided if save=True")
     if color_dict is None:
         color_dict = {}
 
@@ -564,7 +672,7 @@ def plot_steps_histogram(
     if batch_name:
         _stamp_batch(fig, batch_name)
     fig.tight_layout()
-    if fig_path is not None:
+    if fig_path is not None and save:
         fig.savefig(fig_path, bbox_inches='tight', dpi=150)
         print(f"[cache] Saved: {fig_path.name}")
     if show:
@@ -578,12 +686,14 @@ def plot_outcome_vs_property(
     color_dict=None,
     density_threshold=50,
     highlight_categories=None,
+    filter_categories=None,
     size_property=None,
     figures_dir=None,
     force_recompute=False,
     batch_name=None,
     fig_title=None,
     show=True,
+    save=True,
 ):
     """Scatter plot of one graph property vs an evolutionary outcome, with auto-detected violins.
 
@@ -597,7 +707,10 @@ def plot_outcome_vs_property(
         y_outcome: outcome column for the y-axis; 'prob_fixation' triggers neutral-line logic
         color_dict: category -> hex color mapping
         density_threshold: min points at an x position before a violin is drawn (default 50). If None, no violins will be drawn.
-        highlight_categories: list of categories drawn with black outlines on top of scatter
+        highlight_categories: categories that, if present in the data, are drawn with
+            black outlines on top of the scatter; absent categories are simply ignored
+        filter_categories: if given, restrict the plot to these categories only
+            (affects correlation, scatter, and neutral line); None = use all categories
         size_property: column name to encode as marker size; None = uniform size
         figures_dir: directory where PNG is saved; None = display only, no save
         force_recompute: skip cache and regenerate even if PNG already exists
@@ -605,13 +718,22 @@ def plot_outcome_vs_property(
         show: change this to flase if you want the fig to be made but not shown
 
     """
+    if save and not figures_dir:
+        raise ValueError("figures_dir must be provided if save=True")
     if color_dict is None:
         color_dict = {}
 
-    fig_path = _resolve_figure_path(figures_dir, 'plot_outcome_vs_property',
-                                    x=x_prop, y=y_outcome)
+    # filter_categories distinguishes the cached figure so a filtered plot does not
+    # clobber the unfiltered one (and vice versa).
+    cache_key = dict(x=x_prop, y=y_outcome)
+    if filter_categories is not None:
+        cache_key['cats'] = "-".join(map(str, filter_categories))
+    fig_path = _resolve_figure_path(figures_dir, 'plot_outcome_vs_property', **cache_key)
     if not force_recompute and try_load_cached(fig_path):
         return
+
+    if filter_categories is not None:
+        df = df[df['category'].isin(filter_categories)]
 
     # --- 1. Labels ---
     prob_label = "Fixation Probability ($P_{fix}$)"
@@ -625,9 +747,9 @@ def plot_outcome_vs_property(
     else:
         xlabel_base = x_prop.replace('_', ' ').title()
 
-    desc_text = GRAPH_PROPERTY_DESCRIPTION.get(x_prop, '')
-    wrapped_desc = textwrap.fill(desc_text, width=90) if desc_text else ''
-    xlabel = f"{xlabel_base}\n{wrapped_desc}" if wrapped_desc else xlabel_base
+    # The property gloss is rendered separately (see _add_property_description) so it
+    # can carry its own muted, distinct font; the axis label stays clean.
+    xlabel = xlabel_base
 
     # --- 2. Pearson correlation (per r value, compactly) ---
     r_values = sorted(df['r'].dropna().unique()) if 'r' in df.columns else []
@@ -722,13 +844,20 @@ def plot_outcome_vs_property(
 
     # --- 6. Scatter (background) ---
     hue_order = _sort_categories(plot_df['category'].dropna().unique().tolist())
+    # seaborn requires a dict palette to cover every hue level. Keep the caller's
+    # colors and fill any uncolored category with a distinct fallback so the plot
+    # never crashes on a missing/partial color_dict.
+    palette = dict(color_dict)
+    missing_cats = [c for c in hue_order if c not in palette]
+    if missing_cats:
+        palette.update(zip(missing_cats, sns.color_palette('husl', len(missing_cats))))
     sns.scatterplot(
         data=plot_df, ax=ax,
         x='x_jittered', y=y_outcome,
         hue='category', hue_order=hue_order,
         style='r' if len(r_values) > 1 else None,
         size=size_property, sizes=(20, 100),
-        palette=color_dict,
+        palette=palette,
         alpha=0.7, edgecolor='w', linewidth=0.5, zorder=2,
     )
 
@@ -742,7 +871,7 @@ def plot_outcome_vs_property(
                 hue='category', hue_order=hue_order,
                 style='r' if len(r_values) > 1 else None,
                 size=size_property, sizes=(20, 100),
-                palette=color_dict,
+                palette=palette,
                 alpha=1.0, edgecolor='black', linewidth=1.8,
                 legend=False, zorder=3,
             )
@@ -776,16 +905,8 @@ def plot_outcome_vs_property(
     ax.set_title(fig_title, fontsize=13, pad=8)
     ax.set_xlabel(xlabel, fontsize=10)
     ax.set_ylabel(ylabel, fontsize=11)
+    _add_property_description(ax, x_prop)
     ax.grid(True, linestyle='--', alpha=0.4)
-
-    # --- 11. Correlation text box (bottom-right inside axes) ---
-    ax.text(
-        0.97, 0.04, stats_text,
-        transform=ax.transAxes, fontsize=9,
-        verticalalignment='bottom', horizontalalignment='right',
-        bbox=dict(boxstyle='round,pad=0.4', facecolor='white', alpha=0.9, edgecolor='lightgray'),
-        zorder=5,
-    )
 
     # --- 12. Legend with highlight styling and sorted order ---
     handles, labels_leg = ax.get_legend_handles_labels()
@@ -809,13 +930,15 @@ def plot_outcome_vs_property(
     labels_leg = [l for l, _ in _sorted_cats + _others]
     handles    = [h for _, h in _sorted_cats + _others]
 
-    ax.legend(handles=handles, labels=labels_leg,
-              bbox_to_anchor=(1.02, 1), loc='upper left', borderaxespad=0., fontsize=9)
+    legend = ax.legend(handles=handles, labels=labels_leg,
+                       bbox_to_anchor=(1.02, 1), loc='upper left', borderaxespad=0., fontsize=9)
 
     if batch_name:
         _stamp_batch(fig, batch_name)
     fig.tight_layout()
-    if fig_path is not None:
+    # After layout so the legend's measured extent is final.
+    _add_corr_box(ax, stats_text, anchor=legend)
+    if fig_path is not None and save:
         fig.savefig(fig_path, bbox_inches='tight', dpi=150)
         print(f"[cache] Saved: {fig_path.name}")
     if show:
@@ -834,6 +957,8 @@ def plot_two_property_effect(
     force_recompute=False,
     batch_name=None,
     show=True,
+    save=True,
+    descriptions_below=False,
 ):
     """
     Shows the combined effect of two graph properties on an outcome.
@@ -850,8 +975,12 @@ def plot_two_property_effect(
         highlight_categories: list of category names to draw with black outlines on top
         cmap: matplotlib colormap name for the outcome gradient
         show: change this to flase if you want the fig to be made but not shown
+        descriptions_below: if True, both property glosses are stacked flat below the
+            x-axis instead of x-below / y-rotated; often easier to read
 
     """
+    if save and not figures_dir:
+        raise ValueError("figures_dir must be provided if save=True")
     if color_dict is None:
         color_dict = {}
 
@@ -879,7 +1008,7 @@ def plot_two_property_effect(
         c=plot_df[outcome], norm=norm, cmap=cmap,
         alpha=0.6, s=40, linewidths=0, zorder=2,
     )
-    fig.colorbar(sc, ax=ax, label=outcome.replace("_", " ").title())
+    cbar = fig.colorbar(sc, ax=ax, label=outcome.replace("_", " ").title())
 
     # --- Highlight specific categories on top ---
     if highlight_categories:
@@ -909,19 +1038,16 @@ def plot_two_property_effect(
         + f"{x_prop}: {corr_x:.3f}\n"
         + f"{y_prop}: {corr_y:.3f}"
     )
-    ax.text(
-        0.0, -0.14, corr_text,
-        transform=ax.transAxes, fontsize=9,
-        verticalalignment='top',
-        clip_on=False,
-        bbox=dict(boxstyle="round,pad=0.4", facecolor="white", alpha=0.9, edgecolor="lightgray"),
-        zorder=5,
-    )
 
     # --- Labels & formatting ---
     outcome_label = outcome.replace("_", " ").title()
     ax.set_xlabel(x_prop.replace("_", " ").title(), fontsize=12)
     ax.set_ylabel(y_prop.replace("_", " ").title(), fontsize=12)
+    if descriptions_below:
+        _add_property_descriptions_below(ax, [x_prop, y_prop])
+    else:
+        _add_property_description(ax, x_prop, axis="x")
+        _add_property_description(ax, y_prop, axis="y", width=60)
     ax.set_title(
         f"Combined effect of {x_prop.replace('_', ' ').title()} & "
         f"{y_prop.replace('_', ' ').title()}\non {outcome_label}{r_suffix}",
@@ -929,13 +1055,15 @@ def plot_two_property_effect(
     )
     ax.grid(True, linestyle='--', alpha=0.4)
 
-    if highlight_categories:
-        ax.legend(title="Category", bbox_to_anchor=(1.18, 1), loc='upper left')
+    legend = (ax.legend(title="Category", bbox_to_anchor=(1.18, 1), loc='upper left')
+              if highlight_categories else None)
 
     if batch_name:
         _stamp_batch(fig, batch_name)
     plt.tight_layout()
-    if fig_path is not None:
+    # After layout: under the category legend when present, else under the colorbar.
+    _add_corr_box(ax, corr_text, anchor=legend if legend is not None else cbar.ax)
+    if fig_path is not None and save:
         plt.savefig(fig_path, bbox_inches='tight', dpi=150)
         print(f"[cache] Saved: {fig_path.name}")
     if show:
@@ -956,6 +1084,8 @@ def plot_two_property_effect_hexbin(
     force_recompute=False,
     batch_name=None,
     show=True,
+    save=True,
+    descriptions_below=False,
 ):
     """
     Hexbin version of plot_two_property_effect.
@@ -976,8 +1106,12 @@ def plot_two_property_effect_hexbin(
         gridsize: number of hexagons across the x-axis (higher = finer grid)
         reduce_C_function: aggregation applied per bin (np.mean, np.median, etc.)
         show: change this to flase if you want the fig to be made but not shown
+        descriptions_below: if True, both property glosses are stacked flat below the
+            x-axis instead of x-below / y-rotated; often easier to read
 
     """
+    if save and not figures_dir:
+        raise ValueError("figures_dir must be provided if save=True")
     if color_dict is None:
         color_dict = {}
 
@@ -1007,7 +1141,7 @@ def plot_two_property_effect_hexbin(
         mincnt=1,
         linewidths=0.2,
     )
-    fig.colorbar(hb, ax=ax, label=outcome.replace("_", " ").title())
+    cbar = fig.colorbar(hb, ax=ax, label=outcome.replace("_", " ").title())
 
     # --- Highlight specific categories on top ---
     norm = mcolors.Normalize(vmin=plot_df[outcome].min(), vmax=plot_df[outcome].max())
@@ -1039,18 +1173,16 @@ def plot_two_property_effect_hexbin(
         + f"{x_prop}: {corr_x:.3f}\n"
         + f"{y_prop}: {corr_y:.3f}"
     )
-    ax.text(
-        0.03, 0.97, corr_text,
-        transform=ax.transAxes, fontsize=9,
-        verticalalignment='top',
-        bbox=dict(boxstyle="round,pad=0.4", facecolor="white", alpha=0.9, edgecolor="lightgray"),
-        zorder=5,
-    )
 
     # --- Labels & formatting ---
     outcome_label = outcome.replace("_", " ").title()
     ax.set_xlabel(x_prop.replace("_", " ").title(), fontsize=12)
     ax.set_ylabel(y_prop.replace("_", " ").title(), fontsize=12)
+    if descriptions_below:
+        _add_property_descriptions_below(ax, [x_prop, y_prop])
+    else:
+        _add_property_description(ax, x_prop, axis="x")
+        _add_property_description(ax, y_prop, axis="y", width=60)
     ax.set_title(
         f"Combined effect of {x_prop.replace('_', ' ').title()} & "
         f"{y_prop.replace('_', ' ').title()}\non {outcome_label}"
@@ -1059,13 +1191,15 @@ def plot_two_property_effect_hexbin(
     )
     ax.grid(True, linestyle='--', alpha=0.4)
 
-    if highlight_categories:
-        ax.legend(title="Category", bbox_to_anchor=(1.18, 1), loc='upper left')
+    legend = (ax.legend(title="Category", bbox_to_anchor=(1.18, 1), loc='upper left')
+              if highlight_categories else None)
 
     if batch_name:
         _stamp_batch(fig, batch_name)
     plt.tight_layout()
-    if fig_path is not None:
+    # After layout: under the category legend when present, else under the colorbar.
+    _add_corr_box(ax, corr_text, anchor=legend if legend is not None else cbar.ax)
+    if fig_path is not None and save:
         plt.savefig(fig_path, bbox_inches='tight', dpi=150)
         print(f"[cache] Saved: {fig_path.name}")
     if show:
