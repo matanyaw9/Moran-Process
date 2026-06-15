@@ -5,6 +5,23 @@ they share.
 Depends on the leaf modules: ``colors`` (palette + property metadata + the
 ``_sort_categories`` ordering) and ``provenance`` (``_bi_get`` for the batch
 title card). Nothing imports from here, so this is the top of the dependency graph.
+
+Shared interface
+----------------
+Every ``plot_*`` function ends with the same keyword-only output tail (after a
+bare ``*``, so these must be passed by name), in this order:
+
+    figures_dir=None      directory to save the PNG into; None = display only
+    force_recompute=False  ignore any cached PNG and rebuild
+    fig_title=None        override the auto-generated title
+    batch_name=None       label stamped in the bottom-right corner
+    show=True             display the figure (set False to build silently)
+    save=True             write the PNG (requires figures_dir; else raises)
+
+The leading positional arguments are the data and the columns each figure
+needs; per-figure options (colors, r, density, cmap, ...) sit in between.
+Per-function docstrings document only those specifics and refer back here for
+the shared tail.
 """
 import textwrap
 from pathlib import Path
@@ -164,10 +181,92 @@ def _add_corr_box(ax, text, anchor=None, default=(0.03, 0.97), fontsize=9) -> No
     )
 
 
+def _safe_corr(a, b):
+    """Pearson correlation of two aligned series, ignoring NaN/inf pairs.
+
+    Returns NaN when fewer than two valid pairs remain or either side is
+    constant (correlation is undefined there). Shared by every figure that
+    annotates a correlation, so the number means the same thing everywhere.
+    """
+    a = pd.Series(a).replace([np.inf, -np.inf], np.nan)
+    b = pd.Series(b).replace([np.inf, -np.inf], np.nan)
+    mask = a.notna() & b.notna()
+    if mask.sum() > 1 and a[mask].std() > 0 and b[mask].std() > 0:
+        return a[mask].corr(b[mask])
+    return np.nan
+
+
+def _finish_two_property_figure(
+    fig, ax, plot_df, x_prop, y_prop, outcome,
+    *,
+    cmap, norm, cbar_ax, color_dict, highlight_categories,
+    descriptions_below, default_title, fig_title, batch_name,
+    fig_path, show, save,
+):
+    """Draw the shared tail of the two-property figures (scatter and hexbin).
+
+    Everything after the main artist is identical between
+    ``plot_two_property_effect`` and ``plot_two_property_effect_hexbin``:
+    optional highlight scatter, the Pearson-correlation box, axis labels and
+    property glosses, the title, the category legend, the batch stamp, and the
+    save/show handling. The two callers differ only in their primary artist
+    (``scatter`` vs ``hexbin``) and the default title, so they pass those in
+    and delegate the rest here.
+    """
+    # Highlight specific categories on top, colored by the same outcome scale.
+    if highlight_categories:
+        hl_df = plot_df[plot_df['category'].isin(highlight_categories)]
+        if not hl_df.empty:
+            for cat, grp in hl_df.groupby('category'):
+                ax.scatter(
+                    grp[x_prop], grp[y_prop],
+                    c=grp[outcome], norm=norm, cmap=cmap,
+                    s=120, linewidths=1.8,
+                    edgecolors=color_dict.get(cat, 'black'),
+                    zorder=3, label=cat,
+                )
+
+    corr_x = _safe_corr(plot_df[x_prop], plot_df[outcome])
+    corr_y = _safe_corr(plot_df[y_prop], plot_df[outcome])
+    corr_text = (
+        f"Pearson corr with {outcome.replace('_', ' ')}\n"
+        + "-" * 30 + "\n"
+        + f"{x_prop}: {corr_x:.3f}\n"
+        + f"{y_prop}: {corr_y:.3f}"
+    )
+
+    ax.set_xlabel(x_prop.replace("_", " ").title(), fontsize=12)
+    ax.set_ylabel(y_prop.replace("_", " ").title(), fontsize=12)
+    if descriptions_below:
+        _add_property_descriptions_below(ax, [x_prop, y_prop])
+    else:
+        _add_property_description(ax, x_prop, axis="x")
+        _add_property_description(ax, y_prop, axis="y", width=60)
+    ax.set_title(fig_title or default_title, fontsize=13)
+    ax.grid(True, linestyle='--', alpha=0.4)
+
+    legend = (ax.legend(title="Category", bbox_to_anchor=(1.18, 1), loc='upper left')
+              if highlight_categories else None)
+
+    if batch_name:
+        _stamp_batch(fig, batch_name)
+    fig.tight_layout()
+    # After layout: under the category legend when present, else under the colorbar.
+    _add_corr_box(ax, corr_text, anchor=legend if legend is not None else cbar_ax)
+    if fig_path is not None and save:
+        fig.savefig(fig_path, bbox_inches='tight', dpi=150)
+        print(f"[cache] Saved: {fig_path.name}")
+    if show:
+        plt.show()
+
+
 def plot_batch_info_card(
     batch_info,
+    *,
     figures_dir=None,
     force_recompute=False,
+    show=True,
+    save=True,
 ):
     """Generate a standalone title-card figure for a batch, suitable as a first/catalog slide.
 
@@ -175,6 +274,8 @@ def plot_batch_info_card(
         batch_info: dict returned by load_batch_info() or create_batch_info()
         figures_dir: directory where PNG is saved; None = display only, no save
         force_recompute: skip cache and regenerate even if PNG already exists
+        show: set False to build the figure without displaying it
+        save: set False to skip writing the PNG even when figures_dir is given
     """
     fig_path = _resolve_figure_path(figures_dir, 'batch_info_card')
     if not force_recompute and try_load_cached(fig_path):
@@ -296,10 +397,11 @@ def plot_batch_info_card(
                 fontsize=10, va='top', ha='left', color='#999999', style='italic')
 
     fig.tight_layout()
-    if fig_path is not None:
+    if fig_path is not None and save:
         fig.savefig(fig_path, bbox_inches='tight', dpi=200, facecolor='white')
         print(f"[cache] Saved: {fig_path.name}")
-    plt.show()
+    if show:
+        plt.show()
 
 
 def _load_fixation_steps_by_category(
@@ -383,14 +485,14 @@ def plot_steps_violin(
     df_graphs,
     color_dict=None,
     categories=None,
-    figures_dir=None,
-    force_recompute=False,
-    batch_name=None,
-    fig_title=None,
-    show=True,
     r=None,
     max_points_per_category=50_000,
-    results_csv_path=None,  # deprecated alias for results_path
+    *,
+    figures_dir=None,
+    force_recompute=False,
+    fig_title=None,
+    batch_name=None,
+    show=True,
     save=True,
 ):
     """Violin plot of steps-to-fixation distribution, one violin per graph category.
@@ -407,25 +509,20 @@ def plot_steps_violin(
         df_graphs: DataFrame with at least 'wl_hash' and 'category' columns
         color_dict: category -> hex color mapping for violin fills
         categories: x-axis order; defaults to sorted unique values in df_graphs['category']
-        figures_dir: directory where PNG is saved; None = display only, no save
-        force_recompute: skip cache and regenerate even if PNG already exists
-        batch_name: batch label stamped in the bottom-right corner of the figure
-        show: change this to flase if you want the fig to be made but not shown
         r: which selection coefficient to plot (violins show one r at a time). If None
             and the data has a single r, that value is used; if None and several r
             values are present, a ValueError is raised asking you to pick one.
         max_points_per_category: cap on the number of fixation events fed to each
             category's KDE. None disables subsampling and plots every point (slow for
             large batches). Default 50_000.
+
+    See the module docstring for the shared output tail (figures_dir,
+    force_recompute, fig_title, batch_name, show, save).
     """
-    if fig_path is None and save: 
+    if save and not figures_dir:
         raise ValueError("figures_dir must be provided if save=True")
     if color_dict is None:
         color_dict = {}
-
-    # Support deprecated alias
-    if results_path is None and results_csv_path is not None:
-        results_path = results_csv_path
 
     fig_path = _resolve_figure_path(figures_dir, 'plot_steps_violin')
     if not force_recompute and try_load_cached(fig_path):
@@ -438,7 +535,13 @@ def plot_steps_violin(
         results_path, df_graphs, r=r, max_points_per_category=max_points_per_category,
     )
 
+    # seaborn needs a palette entry for every hue level; fill any category the
+    # caller did not color with a distinct husl fallback so a partial color_dict
+    # never crashes the plot (same guard plot_outcome_vs_property uses).
     palette = {cat: color_dict[cat] for cat in categories if cat in color_dict}
+    missing_cats = [c for c in categories if c not in palette]
+    if missing_cats:
+        palette.update(zip(missing_cats, sns.color_palette('husl', len(missing_cats))))
 
     fig, ax = plt.subplots(figsize=(max(12, len(categories) * 1.1), 7))
     sns.violinplot(
@@ -495,14 +598,15 @@ def plot_steps_pvalue_matrix(
     results_path,
     df_graphs,
     categories=None,
-    figures_dir=None,
-    force_recompute=False,
-    batch_name=None,
-    fig_title=None,
-    show=True,
     r=None,
     max_points_per_category=50_000,
-    save=True
+    *,
+    figures_dir=None,
+    force_recompute=False,
+    fig_title=None,
+    batch_name=None,
+    show=True,
+    save=True,
 ):
     """Pairwise significance matrix for the steps-to-fixation violins.
 
@@ -527,9 +631,13 @@ def plot_steps_pvalue_matrix(
     under subsampling while the p-value reflects the subsample size.
 
     Args mirror ``plot_steps_violin`` (no ``color_dict``: cells are colored by
-    effect size, not by category).
+    effect size, not by category). See the module docstring for the shared
+    output tail (figures_dir, force_recompute, fig_title, batch_name, show, save).
     """
     from scipy.stats import mannwhitneyu
+
+    if save and not figures_dir:
+        raise ValueError("figures_dir must be provided if save=True")
 
     fig_path = _resolve_figure_path(figures_dir, 'plot_steps_pvalue_matrix')
     if not force_recompute and try_load_cached(fig_path):
@@ -617,8 +725,10 @@ def plot_steps_histogram(
     category=None,
     color_dict=None,
     bins=50,
+    *,
     figures_dir=None,
     force_recompute=False,
+    fig_title=None,
     batch_name=None,
     show=True,
     save=True,
@@ -631,11 +741,9 @@ def plot_steps_histogram(
         category: if given, restricts to df['category'] == category; None plots all graphs
         color_dict: category -> hex color; the category's color is used for the bars when set
         bins: number of histogram bins
-        figures_dir: directory where PNG is saved; None = display only, no save
-        force_recompute: skip cache and regenerate even if PNG already exists
-        batch_name: batch label stamped in the bottom-right corner of the figure
-        show: change this to flase if you want the fig to be made but not shown
 
+    See the module docstring for the shared output tail (figures_dir,
+    force_recompute, fig_title, batch_name, show, save).
     """
     if save and not figures_dir:
         raise ValueError("figures_dir must be provided if save=True")
@@ -644,6 +752,12 @@ def plot_steps_histogram(
 
     r_vals = sorted(df['r'].dropna().unique().tolist()) if 'r' in df.columns else []
     r_suffix = f"  (r={r_vals[0]})" if len(r_vals) == 1 else ""
+    # Unlike the violin/matrix loaders, the histogram does not resolve to a single
+    # r; with several r values present it pools them into one distribution. Warn so
+    # that pooling is never silent (the blank r_suffix is the only other hint).
+    if len(r_vals) > 1:
+        print(f"[plot_steps_histogram] pooling {len(r_vals)} r values {r_vals} into one "
+              f"histogram; pass a single-r df to separate them")
 
     cat_key = category or 'all'
     fig_path = _resolve_figure_path(figures_dir, 'plot_steps_histogram',
@@ -666,7 +780,7 @@ def plot_steps_histogram(
     ax.hist(data, bins=bins, color=bar_color, edgecolor='black', alpha=0.7)
     ax.set_xlabel(metric_label, fontsize=12)
     ax.set_ylabel('Frequency', fontsize=12)
-    ax.set_title(f'Distribution of {metric_label} — {label}{r_suffix}', fontsize=14)
+    ax.set_title(fig_title or f'Distribution of {metric_label} - {label}{r_suffix}', fontsize=14)
     ax.grid(axis='y', alpha=0.3)
 
     if batch_name:
@@ -688,10 +802,11 @@ def plot_outcome_vs_property(
     highlight_categories=None,
     filter_categories=None,
     size_property=None,
+    *,
     figures_dir=None,
     force_recompute=False,
-    batch_name=None,
     fig_title=None,
+    batch_name=None,
     show=True,
     save=True,
 ):
@@ -712,11 +827,9 @@ def plot_outcome_vs_property(
         filter_categories: if given, restrict the plot to these categories only
             (affects correlation, scatter, and neutral line); None = use all categories
         size_property: column name to encode as marker size; None = uniform size
-        figures_dir: directory where PNG is saved; None = display only, no save
-        force_recompute: skip cache and regenerate even if PNG already exists
-        batch_name: batch label stamped in the bottom-right corner of the figure
-        show: change this to flase if you want the fig to be made but not shown
 
+    See the module docstring for the shared output tail (figures_dir,
+    force_recompute, fig_title, batch_name, show, save).
     """
     if save and not figures_dir:
         raise ValueError("figures_dir must be provided if save=True")
@@ -755,11 +868,6 @@ def plot_outcome_vs_property(
     r_values = sorted(df['r'].dropna().unique()) if 'r' in df.columns else []
     cols_for_corr = [x_prop, y_outcome] + (['r'] if r_values else [])
     clean_df = df[cols_for_corr].replace([np.inf, -np.inf], np.nan).dropna()
-
-    def _safe_corr(a, b):
-        if len(a) > 1 and a.std() > 0 and b.std() > 0:
-            return a.corr(b)
-        return np.nan
 
     if len(r_values) > 1:
         corr_lines = ["Pearson corr", "-" * 18]
@@ -830,14 +938,17 @@ def plot_outcome_vs_property(
                     pc.set_edgecolor('lightgray')
                     pc.set_alpha(1.0)
 
-        # Vectorized jitter -- much faster than apply(func, axis=1)
+        # Vectorized jitter -- much faster than apply(func, axis=1). A local seeded
+        # generator (not the global np.random) keeps the scatter reproducible, so a
+        # re-render matches the cached PNG instead of reshuffling every point.
+        rng = np.random.default_rng(0)
         mask = plot_df['x_plot'].isin(dense_x_values) & plot_df['x_plot'].notna()
         jitter_half = violin_width * 0.15
         plot_df['x_jittered'] = plot_df['x_plot'].copy().astype(float)
         if mask.any():
             plot_df.loc[mask, 'x_jittered'] = (
                 plot_df.loc[mask, 'x_plot']
-                + np.random.uniform(-jitter_half, jitter_half, size=int(mask.sum()))
+                + rng.uniform(-jitter_half, jitter_half, size=int(mask.sum()))
             )
     else:
         plot_df['x_jittered'] = plot_df['x_plot']
@@ -951,14 +1062,16 @@ def plot_two_property_effect(
     y_prop,
     outcome='mean_steps',
     color_dict=None,
-    highlight_categories=None,
     cmap='viridis',
+    highlight_categories=None,
+    descriptions_below=False,
+    *,
     figures_dir=None,
     force_recompute=False,
+    fig_title=None,
     batch_name=None,
     show=True,
     save=True,
-    descriptions_below=False,
 ):
     """
     Shows the combined effect of two graph properties on an outcome.
@@ -972,12 +1085,13 @@ def plot_two_property_effect(
         y_prop: column name for the y-axis structural property
         outcome: column name for the outcome to color by (default: 'mean_steps')
         color_dict: category -> color mapping (used only for highlight outlines)
-        highlight_categories: list of category names to draw with black outlines on top
         cmap: matplotlib colormap name for the outcome gradient
-        show: change this to flase if you want the fig to be made but not shown
+        highlight_categories: list of category names to draw with black outlines on top
         descriptions_below: if True, both property glosses are stacked flat below the
             x-axis instead of x-below / y-rotated; often easier to read
 
+    See the module docstring for the shared output tail (figures_dir,
+    force_recompute, fig_title, batch_name, show, save).
     """
     if save and not figures_dir:
         raise ValueError("figures_dir must be provided if save=True")
@@ -1000,9 +1114,7 @@ def plot_two_property_effect(
         return
 
     fig, ax = plt.subplots(figsize=DEFAULT_FIG_SIZE)
-
     norm = mcolors.Normalize(vmin=plot_df[outcome].min(), vmax=plot_df[outcome].max())
-
     sc = ax.scatter(
         plot_df[x_prop], plot_df[y_prop],
         c=plot_df[outcome], norm=norm, cmap=cmap,
@@ -1010,64 +1122,19 @@ def plot_two_property_effect(
     )
     cbar = fig.colorbar(sc, ax=ax, label=outcome.replace("_", " ").title())
 
-    # --- Highlight specific categories on top ---
-    if highlight_categories:
-        hl_df = plot_df[plot_df['category'].isin(highlight_categories)]
-        if not hl_df.empty:
-            for cat, grp in hl_df.groupby('category'):
-                ax.scatter(
-                    grp[x_prop], grp[y_prop],
-                    c=grp[outcome], norm=norm, cmap=cmap,
-                    s=120, linewidths=1.8,
-                    edgecolors=color_dict.get(cat, 'black'),
-                    zorder=3, label=cat,
-                )
-
-    # --- Correlations text ---
-    def _safe_corr(a, b):
-        mask = pd.notna(a) & pd.notna(b)
-        if mask.sum() > 1 and a[mask].std() > 0 and b[mask].std() > 0:
-            return a[mask].corr(b[mask])
-        return np.nan
-
-    corr_x = _safe_corr(plot_df[x_prop], plot_df[outcome])
-    corr_y = _safe_corr(plot_df[y_prop], plot_df[outcome])
-    corr_text = (
-        f"Pearson corr with {outcome.replace('_', ' ')}\n"
-        + "-" * 30 + "\n"
-        + f"{x_prop}: {corr_x:.3f}\n"
-        + f"{y_prop}: {corr_y:.3f}"
-    )
-
-    # --- Labels & formatting ---
     outcome_label = outcome.replace("_", " ").title()
-    ax.set_xlabel(x_prop.replace("_", " ").title(), fontsize=12)
-    ax.set_ylabel(y_prop.replace("_", " ").title(), fontsize=12)
-    if descriptions_below:
-        _add_property_descriptions_below(ax, [x_prop, y_prop])
-    else:
-        _add_property_description(ax, x_prop, axis="x")
-        _add_property_description(ax, y_prop, axis="y", width=60)
-    ax.set_title(
+    default_title = (
         f"Combined effect of {x_prop.replace('_', ' ').title()} & "
-        f"{y_prop.replace('_', ' ').title()}\non {outcome_label}{r_suffix}",
-        fontsize=13,
+        f"{y_prop.replace('_', ' ').title()}\non {outcome_label}{r_suffix}"
     )
-    ax.grid(True, linestyle='--', alpha=0.4)
-
-    legend = (ax.legend(title="Category", bbox_to_anchor=(1.18, 1), loc='upper left')
-              if highlight_categories else None)
-
-    if batch_name:
-        _stamp_batch(fig, batch_name)
-    plt.tight_layout()
-    # After layout: under the category legend when present, else under the colorbar.
-    _add_corr_box(ax, corr_text, anchor=legend if legend is not None else cbar.ax)
-    if fig_path is not None and save:
-        plt.savefig(fig_path, bbox_inches='tight', dpi=150)
-        print(f"[cache] Saved: {fig_path.name}")
-    if show:
-        plt.show()
+    _finish_two_property_figure(
+        fig, ax, plot_df, x_prop, y_prop, outcome,
+        cmap=cmap, norm=norm, cbar_ax=cbar.ax,
+        color_dict=color_dict, highlight_categories=highlight_categories,
+        descriptions_below=descriptions_below,
+        default_title=default_title, fig_title=fig_title, batch_name=batch_name,
+        fig_path=fig_path, show=show, save=save,
+    )
 
 
 def plot_two_property_effect_hexbin(
@@ -1076,16 +1143,18 @@ def plot_two_property_effect_hexbin(
     y_prop,
     outcome='mean_steps',
     color_dict=None,
-    highlight_categories=None,
     cmap='viridis',
+    highlight_categories=None,
+    descriptions_below=False,
     gridsize=25,
     reduce_C_function=np.mean,
+    *,
     figures_dir=None,
     force_recompute=False,
+    fig_title=None,
     batch_name=None,
     show=True,
     save=True,
-    descriptions_below=False,
 ):
     """
     Hexbin version of plot_two_property_effect.
@@ -1101,14 +1170,15 @@ def plot_two_property_effect_hexbin(
         y_prop: column name for the y-axis structural property
         outcome: column name for the outcome to color by (default: 'mean_steps')
         color_dict: category -> color mapping (used for highlight outlines)
-        highlight_categories: list of category names to draw as scatter on top
         cmap: matplotlib colormap name for the outcome gradient
-        gridsize: number of hexagons across the x-axis (higher = finer grid)
-        reduce_C_function: aggregation applied per bin (np.mean, np.median, etc.)
-        show: change this to flase if you want the fig to be made but not shown
+        highlight_categories: list of category names to draw as scatter on top
         descriptions_below: if True, both property glosses are stacked flat below the
             x-axis instead of x-below / y-rotated; often easier to read
+        gridsize: number of hexagons across the x-axis (higher = finer grid)
+        reduce_C_function: aggregation applied per bin (np.mean, np.median, etc.)
 
+    See the module docstring for the shared output tail (figures_dir,
+    force_recompute, fig_title, batch_name, show, save).
     """
     if save and not figures_dir:
         raise ValueError("figures_dir must be provided if save=True")
@@ -1131,7 +1201,6 @@ def plot_two_property_effect_hexbin(
         return
 
     fig, ax = plt.subplots(figsize=DEFAULT_FIG_SIZE)
-
     hb = ax.hexbin(
         plot_df[x_prop], plot_df[y_prop],
         C=plot_df[outcome],
@@ -1142,65 +1211,22 @@ def plot_two_property_effect_hexbin(
         linewidths=0.2,
     )
     cbar = fig.colorbar(hb, ax=ax, label=outcome.replace("_", " ").title())
-
-    # --- Highlight specific categories on top ---
+    # The hexbin colors come from reduce_C_function per cell; highlight scatter needs
+    # its own Normalize over the raw outcome so its colors share the hexbin scale.
     norm = mcolors.Normalize(vmin=plot_df[outcome].min(), vmax=plot_df[outcome].max())
-    if highlight_categories:
-        hl_df = plot_df[plot_df['category'].isin(highlight_categories)]
-        if not hl_df.empty:
-            for cat, grp in hl_df.groupby('category'):
-                ax.scatter(
-                    grp[x_prop], grp[y_prop],
-                    c=grp[outcome], norm=norm, cmap=cmap,
-                    s=120, linewidths=1.8,
-                    edgecolors=color_dict.get(cat, 'black'),
-                    zorder=3, label=cat,
-                )
 
-    # --- Correlations text ---
-    def _safe_corr(a, b):
-        mask = pd.notna(a) & pd.notna(b)
-        if mask.sum() > 1 and a[mask].std() > 0 and b[mask].std() > 0:
-            return a[mask].corr(b[mask])
-        return np.nan
-
-    corr_x = _safe_corr(plot_df[x_prop], plot_df[outcome])
-    corr_y = _safe_corr(plot_df[y_prop], plot_df[outcome])
-    reduce_name = getattr(reduce_C_function, '__name__', str(reduce_C_function))
-    corr_text = (
-        f"Pearson corr with {outcome.replace('_', ' ')}\n"
-        + "-" * 30 + "\n"
-        + f"{x_prop}: {corr_x:.3f}\n"
-        + f"{y_prop}: {corr_y:.3f}"
-    )
-
-    # --- Labels & formatting ---
     outcome_label = outcome.replace("_", " ").title()
-    ax.set_xlabel(x_prop.replace("_", " ").title(), fontsize=12)
-    ax.set_ylabel(y_prop.replace("_", " ").title(), fontsize=12)
-    if descriptions_below:
-        _add_property_descriptions_below(ax, [x_prop, y_prop])
-    else:
-        _add_property_description(ax, x_prop, axis="x")
-        _add_property_description(ax, y_prop, axis="y", width=60)
-    ax.set_title(
+    reduce_name = getattr(reduce_C_function, '__name__', str(reduce_C_function))
+    default_title = (
         f"Combined effect of {x_prop.replace('_', ' ').title()} & "
         f"{y_prop.replace('_', ' ').title()}\non {outcome_label}"
-        f" (hex={reduce_name}){r_suffix}",
-        fontsize=13,
+        f" (hex={reduce_name}){r_suffix}"
     )
-    ax.grid(True, linestyle='--', alpha=0.4)
-
-    legend = (ax.legend(title="Category", bbox_to_anchor=(1.18, 1), loc='upper left')
-              if highlight_categories else None)
-
-    if batch_name:
-        _stamp_batch(fig, batch_name)
-    plt.tight_layout()
-    # After layout: under the category legend when present, else under the colorbar.
-    _add_corr_box(ax, corr_text, anchor=legend if legend is not None else cbar.ax)
-    if fig_path is not None and save:
-        plt.savefig(fig_path, bbox_inches='tight', dpi=150)
-        print(f"[cache] Saved: {fig_path.name}")
-    if show:
-        plt.show()
+    _finish_two_property_figure(
+        fig, ax, plot_df, x_prop, y_prop, outcome,
+        cmap=cmap, norm=norm, cbar_ax=cbar.ax,
+        color_dict=color_dict, highlight_categories=highlight_categories,
+        descriptions_below=descriptions_below,
+        default_title=default_title, fig_title=fig_title, batch_name=batch_name,
+        fig_path=fig_path, show=show, save=save,
+    )
