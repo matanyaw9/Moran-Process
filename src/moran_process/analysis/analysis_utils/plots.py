@@ -1,98 +1,33 @@
 """
-Utility functions for analysis notebooks
+All figure-producing functions plus the small caching/stamping infrastructure
+they share.
+
+Depends on the leaf modules: ``colors`` (palette + property metadata + the
+``_sort_categories`` ordering) and ``provenance`` (``_bi_get`` for the batch
+title card). Nothing imports from here, so this is the top of the dependency graph.
 """
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
-import shutil
-import socket
-import subprocess
-import sys
 import textwrap
 from pathlib import Path
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
-import hashlib
-import json
-from datetime import datetime
+import seaborn as sns
 
+from .colors import DEFAULT_FIG_SIZE, GRAPH_PROPERTY_DESCRIPTION, _sort_categories
+from .provenance import _bi_get
 
-CATEGORY_COLOR_DICT = {
-    # Biological (Earthy/Natural)
-    'Mammalian': '#8C510A',   # Deep Brown
-    'Avian':     '#2E7D32',   # Forest Green
-    'Fish':      "#084182",   # Dark Blue
-
-    # Structural
-    'Random':    '#E0E0E0',
-    'Complete':  '#000000',
-    'Cycle':     '#5C6BC0',
-    'Star': "#FFE656FF",
-
-    # --- PROBABILITY (Blues/Purples) ---
-    'maximize LR Fixation Probability':      '#08519C',  # Navy Blue
-    'maximize XGBOOST Fixation Probability': '#6BAED6',  # Soft Sky Blue
-    'minimize LR Fixation Probability':      '#54278F',  # Deep Indigo
-    'minimize XGBOOST Fixation Probability': '#9E9AC8',  # Lavender
-
-    # --- TIME (Reds/Oranges) ---
-    'maximize LR Fixation Time':             '#A50F15',  # Blood Red
-    'maximize XGBOOST Fixation Time':        '#FC9272',  # Salmon
-    'minimize LR Fixation Time':             '#D94801',  # Burnt Orange
-    'minimize XGBOOST Fixation Time':        '#FDBB84',  # Peach
-
-}
-
-# Use a defaultdict to return 'lightgray' for unknown categories
-# Paste your dictionary here (or ensure it's in the global scope)
-GRAPH_PROPERTY_DESCRIPTION = {
-    'n_nodes': "The total number of vertices (individuals) in the graph.",
-    'n_edges': "The total number of connections (links) between nodes in the graph.",
-    'density': "The ratio of actual edges to the maximum possible number of edges (0 = empty, 1 = fully connected).",
-    'diameter': "The longest shortest path between any pair of nodes (the 'width' of the network).",
-    'avg_degree': "The average number of connections a node has.",
-    'average_clustering': "A measure of how much nodes tend to cluster together (how likely a node's neighbors are also neighbors).",
-    'average_shortest_path_length': "The average number of steps required to get from one node to any other node.",
-    'degree_assortativity': "The correlation between a node's degree and the degree of its neighbors (positive = high-degree nodes connect to other high-degree nodes).",
-    'avg_betweenness_centrality': "The average frequency that nodes act as a bridge along the shortest path between two other nodes.",
-    'max_degree': "The highest number of connections held by a single node in the graph (the 'hub' size).",
-    'min_degree': "The lowest number of connections held by a single node.",
-    'degree_std': "The standard deviation of degrees; measures how much variation there is in connectivity (high = mixture of hubs and leaves).",
-    'transitivity': "The overall probability that two neighbors of a node are connected (similar to clustering but calculated globally).",
-    'radius': "The minimum eccentricity in the graph (the shortest distance from the 'center' of the graph to the furthest node).",
-    'avg_degree_centrality': "The average fraction of the total possible nodes that any given node is connected to.",
-    'max_degree_centrality': "The highest centrality score; indicates the most central or well-connected node relative to network size.",
-    'max_betweenness_centrality': "The score of the node that acts as the most critical bridge or bottleneck in the network.",
-    'avg_closeness_centrality': "The average speed at which nodes can access all other nodes (inverse of average distance).",
-    'max_closeness_centrality': "The score of the node that can reach all other nodes in the fewest number of steps."
-}
-
-
-GRAPH_PROPERTY_COLUMNS = [  
-    'n_nodes',
-    'n_edges',
-    'is_directed',
-    'density',
-    'is_connected',
-    'avg_degree',
-    'max_degree',
-    'min_degree',
-    'degree_std',
-    'degree_assortativity',
-    'average_clustering',
-    'transitivity',
-    'diameter',
-    'radius',
-    'average_shortest_path_length',
-    'avg_degree_centrality',
-    'max_degree_centrality',
-    'avg_betweenness_centrality',
-    'max_betweenness_centrality',
-    'avg_closeness_centrality',
-    'max_closeness_centrality'
-    ]
-
-DEFAULT_FIG_SIZE = (8.7,6)
+__all__ = [
+    'try_load_cached',
+    'plot_batch_info_card',
+    'plot_steps_violin',
+    'plot_steps_pvalue_matrix',
+    'plot_steps_histogram',
+    'plot_outcome_vs_property',
+    'plot_two_property_effect',
+    'plot_two_property_effect_hexbin',
+]
 
 
 def _resolve_figure_path(figures_dir, func_name: str, **key_kwargs):
@@ -104,7 +39,6 @@ def _resolve_figure_path(figures_dir, func_name: str, **key_kwargs):
     slug = "__".join(f"{k}={v}" for k, v in key_kwargs.items())
     slug = slug.replace("/", "-").replace(" ", "_").replace(",", "-")
     return p / f"{func_name}__{slug}.png"
-
 
 
 def try_load_cached(path) -> bool:
@@ -120,125 +54,13 @@ def try_load_cached(path) -> bool:
     return False
 
 
-def load_batch_info(batch_dir) -> dict:
-    """Read batch_info.json from batch_dir; returns name-only fallback if not found."""
-    path = Path(batch_dir) / "batch_info.json"
-    if path.exists():
-        with open(path) as f:
-            return json.load(f)
-    return {"name": Path(batch_dir).name, "description": ""}
-
-
-def _git(args) -> str | None:
-    """Run a read-only git command and return stripped stdout, or None on failure
-    (not a repo, git missing, detached/odd state). Never raises, so a provenance
-    hiccup can't abort a batch submission."""
-    try:
-        out = subprocess.check_output(
-            ["git", *args], stderr=subprocess.DEVNULL, text=True
-        )
-        return out.strip()
-    except Exception:
-        return None
-
-
-def capture_provenance() -> dict:
-    """Snapshot the environment a batch was launched from.
-
-    Every field is read automatically -- the user types nothing. ``git_dirty``
-    flags whether there were uncommitted changes at submit time, so you can tell
-    whether ``git_commit`` fully describes the code that ran.
-    """
-    status = _git(["status", "--porcelain"])
-    return {
-        "git_commit": _git(["rev-parse", "HEAD"]),
-        "git_branch": _git(["rev-parse", "--abbrev-ref", "HEAD"]),
-        "git_dirty": None if status is None else bool(status.strip()),
-        "command": " ".join(sys.argv),
-        "python": sys.version.split()[0],
-        "hostname": socket.gethostname(),
-    }
-
-
-def create_batch_info(batch_dir, name, description="", notes="",
-                      # simulation parameters
-                      r_values=None, n_repeats=None, total_simulations=None,
-                      batch_seed=None, engine=None,
-                      # zoo description
-                      n_graphs=None, graph_types=None, node_sizes=None,
-                      zoo_path=None, zoo_config=None,
-                      # HPC submission
-                      n_requested_jobs=None, queue=None, memory_mb=None,
-                      job_array_name=None, lsf_job_id=None, bsub_command=None) -> dict:
-    """Write a nested, fully-provenanced batch_info.json. Overwrites any existing file.
-
-    The intent is that this file alone documents how the batch was created and
-    run. Only ``description`` and ``notes`` are author-supplied; everything else
-    is captured from the values submit_jobs already holds plus auto-read
-    provenance (git/host/python/command).
-
-    Sections:
-        provenance: git commit/branch/dirty, launch command, python, hostname
-        zoo:        what was simulated on -- graph counts, types, sizes, and the
-                    creation recipe (seed + random-graph config + biological specs)
-                    threaded in via ``zoo_config``
-        simulation: r values, repeats, total sims, batch seed, engine
-        hpc:        job count, queue, memory, LSF job array name + parsed job id
-    """
-    zoo_config = zoo_config or {}
-    info = {
-        "name": name,
-        "description": description,
-        "notes": notes,
-        "created_at": datetime.now().isoformat(timespec="seconds"),
-        "provenance": capture_provenance(),
-        "zoo": {
-            "n_graphs": n_graphs,
-            "graph_types": graph_types or [],
-            "node_sizes": node_sizes or [],
-            "zoo_path": str(zoo_path) if zoo_path is not None else None,
-            **zoo_config,
-        },
-        "simulation": {
-            "r_values": r_values or [],
-            "n_repeats": n_repeats,
-            "total_simulations": total_simulations,
-            "batch_seed": batch_seed,
-            "engine": engine,
-        },
-        "hpc": {
-            "n_requested_jobs": n_requested_jobs,
-            "queue": queue,
-            "memory_mb": memory_mb,
-            "job_array_name": job_array_name,
-            "lsf_job_id": lsf_job_id,
-            "bsub_command": bsub_command,
-        },
-    }
-    path = Path(batch_dir) / "batch_info.json"
-    with open(path, "w") as f:
-        json.dump(info, f, indent=2)
-    print(f"[batch_info] Written: {path}")
-    return info
-
-
-def _bi_get(batch_info, *path, default=None):
-    """Fetch a field from a (possibly nested) batch_info dict.
-
-    Tries the nested path first (e.g. ('simulation', 'r_values')), then falls
-    back to the last key at the top level so legacy flat batch_info.json files
-    written before the restructure still resolve.
-    """
-    node = batch_info
-    for key in path:
-        if isinstance(node, dict) and key in node:
-            node = node[key]
-        else:
-            node = None
-            break
-    if node is not None:
-        return node
-    return batch_info.get(path[-1], default)
+def _stamp_batch(fig, batch_name: str) -> None:
+    """Add a source label to the bottom-right corner of the figure."""
+    fig.text(
+        0.99, 0.01, f"source: {batch_name}",
+        fontsize=8, color="#666666", ha="right", va="bottom",
+        style="italic", transform=fig.transFigure,
+    )
 
 
 def plot_batch_info_card(
@@ -379,270 +201,80 @@ def plot_batch_info_card(
     plt.show()
 
 
-def _stamp_batch(fig, batch_name: str) -> None:
-    """Add a source label to the bottom-right corner of the figure."""
-    fig.text(
-        0.99, 0.01, f"source: {batch_name}",
-        fontsize=8, color="#666666", ha="right", va="bottom",
-        style="italic", transform=fig.transFigure,
-    )
+def _load_fixation_steps_by_category(
+    results_path,
+    df_graphs,
+    r=None,
+    max_points_per_category=50_000,
+):
+    """Load fixation 'steps' joined to graph 'category' for a single r value.
 
+    Shared loader for ``plot_steps_violin`` and ``plot_steps_pvalue_matrix`` so the
+    two figures are always built from exactly the same rows (same r resolution, same
+    fixation filter, same subsample). Returns:
 
-def _sort_categories(categories):
-    """Return categories sorted: Avian/Fish/Mammalian first, Random last, rest alphabetically."""
-    BIOLOGICAL = ['Avian', 'Fish', 'Mammalian']
-    LAST = ['Random']
-    cat_set = set(categories)
-    bio    = [c for c in BIOLOGICAL if c in cat_set]
-    last   = [c for c in LAST if c in cat_set]
-    middle = sorted(c for c in cat_set if c not in BIOLOGICAL and c not in LAST)
-    return bio + middle + last
+    - a tidy pandas DataFrame with columns ['category', 'steps'] (subsampled);
+    - ``fixation_counts``: true per-category fixation counts, read *before*
+      subsampling so callers can annotate how much data backs each category;
+    - the resolved ``r`` and an ``r_suffix`` label for titles;
+    - ``subsampled``: whether the cap actually trimmed any category.
 
-
-def generate_robust_color_dict(df, existing_colors, default_palette='husl'):
-    """Build a category -> color dict covering every category in df['category'].
-
-    Args:
-        df: DataFrame with a 'category' column
-        existing_colors: base mapping (e.g. CATEGORY_COLOR_DICT); known categories keep their color
-        default_palette: seaborn palette name used to generate colors for unknown categories
-    """
-    # 1. Get unique, non-null categories
-    categories = sorted(df['category'].dropna().unique().tolist())
-    
-    # 2. Separate known and unknown categories
-    known_cats = [c for c in categories if c in existing_colors]
-    unknown_cats = [c for c in categories if c not in existing_colors]
-    
-    # 3. Initialize the final dictionary with known colors
-    final_color_dict = {c: existing_colors[c] for c in known_cats}
-    
-    # 4. Handle unknown categories
-    if unknown_cats:
-        num_unknown = len(unknown_cats)
-        
-        # Strategy A: If few unknowns, generate a nicely spaced palette
-        if num_unknown <= 20: 
-            # 'husl' creates perceptually distinct colors
-            new_colors = sns.color_palette(default_palette, n_colors=num_unknown)
-            
-            for i, cat in enumerate(unknown_cats):
-                final_color_dict[cat] = mcolors.to_hex(new_colors[i])
-                
-        # Strategy B: If many unknowns, use a deterministic hash to pick colors
-        # This prevents the palette from becoming an indistinguishable rainbow
-        else:
-             # Use a very large palette to draw from
-            large_palette = sns.color_palette("hls", 50) 
-            
-            for cat in unknown_cats:
-                # Create a deterministic integer from the category name
-                hash_val = int(hashlib.md5(cat.encode('utf-8')).hexdigest(), 16)
-                # Pick a color from the palette based on the hash
-                color_idx = hash_val % len(large_palette)
-                final_color_dict[cat] = mcolors.to_hex(large_palette[color_idx])
-                
-    return final_color_dict
-
-
-# Aggregated per-repeat results filename. "raw_results" = the raw, one-row-per-run
-# table, as opposed to the aggregated graph_statistics.csv. (Historically named
-# "full_results"; existing batches were migrated on disk to this name.)
-RAW_RESULTS_STEM = "raw_results"
-
-# Per-job temp files the worker writes into tmp/results/, one per LSF array index.
-PER_JOB_RESULT_STEM = "raw_results_job"
-
-
-def resolve_results_path(batch_dir):
-    """Return the aggregated raw-results file for a batch, or None if absent.
-
-    Results may be Parquet or CSV depending on when the batch ran, so this picks
-    the existing one (Parquet preferred).
-    """
-    batch_path = Path(batch_dir)
-    for ext in (".parquet", ".csv"):
-        candidate = batch_path / f"{RAW_RESULTS_STEM}{ext}"
-        if candidate.exists():
-            return candidate
-    return None
-
-
-def aggregate_results_no_load(batch_dir, delete_temp=False, output_file=None):
-    """Concatenate per-job result files from batch_dir/tmp/results/ without loading all rows.
-
-    Detects the output format automatically: Parquet files (raw_results_job_*.parquet)
-    take priority over CSV files (raw_results_job_*.csv). The output format matches the input.
-
-    Args:
-        batch_dir: path to the batch directory containing tmp/results/raw_results_job_*
-        delete_temp: if True, removes batch_dir/tmp/ after successful aggregation
-        output_file: destination path; defaults to batch_dir/raw_results.parquet (or .csv)
-
-    Returns:
-        Path to the output file, or None if no result files were found.
-    """
-    import pyarrow.parquet as pq
-
-    batch_path = Path(batch_dir)
-    tmp_results_path = batch_path / "tmp" / "results"
-
-    # Detect format: Parquet takes priority over CSV
-    parquet_files = sorted(
-        tmp_results_path.glob(f"{PER_JOB_RESULT_STEM}_*.parquet"),
-        key=lambda p: int(p.stem.split('_')[-1]),
-    )
-    csv_files = sorted(
-        tmp_results_path.glob(f"{PER_JOB_RESULT_STEM}_*.csv"),
-        key=lambda p: int(p.stem.split('_')[-1]),
-    )
-
-    # --- Parquet path ---
-    if parquet_files:
-        if not output_file:
-            output_file = batch_path / f"{RAW_RESULTS_STEM}.parquet"
-        else:
-            output_file = Path(output_file)
-
-        if output_file.exists():
-            print(f"File {output_file} already exists!")
-            return output_file
-
-        print(f"Found {len(parquet_files)} Parquet files. Aggregating...")
-        try:
-            schema = pq.read_schema(str(parquet_files[0]))
-            with pq.ParquetWriter(str(output_file), schema) as writer:
-                for i, fpath in enumerate(parquet_files):
-                    if i > 0 and i % 100 == 0:
-                        print(f"  Processed {i}/{len(parquet_files)} files...")
-                    pf = pq.ParquetFile(str(fpath))
-                    for batch in pf.iter_batches():
-                        writer.write_batch(batch)
-            print(f"Master Parquet saved at: {output_file}")
-        except Exception as e:
-            print(f"Error during Parquet aggregation: {e}")
-            if output_file.exists():
-                output_file.unlink()
-            raise
-
-        if delete_temp:
-            tmp_dir = batch_path / "tmp"
-            if tmp_dir.exists():
-                shutil.rmtree(tmp_dir)
-                print(f"Deleted temporary directory: {tmp_dir}")
-        return output_file
-
-    # --- Legacy CSV path ---
-    if not csv_files:
-        print(f"No result files found in {tmp_results_path}")
-        return None
-
-    if not output_file:
-        output_file = batch_path / f"{RAW_RESULTS_STEM}.csv"
-    else:
-        output_file = Path(output_file)
-
-    if output_file.exists():
-        print(f"File {output_file} already exists!")
-        return output_file
-
-    print(f"Found {len(csv_files)} CSV files. Aggregating...")
-    try:
-        with open(output_file, 'w', encoding='utf-8') as outfile:
-            for i, fpath in enumerate(csv_files):
-                if i > 0 and i % 100 == 0:
-                    print(f"  Processed {i}/{len(csv_files)} files...")
-                with open(fpath, 'r', encoding='utf-8') as infile:
-                    if i == 0:
-                        shutil.copyfileobj(infile, outfile)
-                    else:
-                        next(infile)
-                        shutil.copyfileobj(infile, outfile)
-        print(f"Master CSV saved at: {output_file}")
-    except Exception as e:
-        print(f"Error during CSV aggregation: {e}")
-        if output_file.exists():
-            output_file.unlink()
-        raise
-
-    if delete_temp:
-        tmp_dir = batch_path / "tmp"
-        if tmp_dir.exists():
-            shutil.rmtree(tmp_dir)
-            print(f"Deleted temporary directory: {tmp_dir}")
-    return output_file
-
-
-def build_graph_statistics(results_path, df_graphs, graph_statistics_path, category_filter=None):
-    """Aggregate raw simulation results to one row per (graph, r) with fixation statistics.
-
-    If graph_statistics_path already exists, loads it directly. Otherwise streams results
-    from results_path (Parquet or CSV), merges with df_graphs, sorts, and saves.
-
-    Args:
-        results_path: path to raw_results.parquet (or .csv)
-        df_graphs: DataFrame with graph structural properties (must have 'wl_hash', 'graph_name')
-        graph_statistics_path: path where graph_statistics.csv is saved / loaded from
-        category_filter: if given, returns only rows where category == category_filter
-
-    Returns:
-        analysis_df: aggregated DataFrame ready for plotting
+    See ``plot_steps_violin`` for why only fixation rows are materialised and why
+    subsampling to ``max_points_per_category`` is faithful to the full distribution.
     """
     import polars as pl
 
-    graph_statistics_path = Path(graph_statistics_path)
+    _rp = Path(results_path)
+    _scanner = pl.scan_parquet(str(_rp)) if _rp.suffix == '.parquet' else pl.scan_csv(str(_rp))
+    _has_r = 'r' in _scanner.collect_schema().names()
 
-    if graph_statistics_path.exists():
-        print(f"Aggregated statistics already exist -- loading {graph_statistics_path}...")
-        analysis_df = pd.read_csv(graph_statistics_path)
-    else:
-        results_path = Path(results_path)
-        if results_path.suffix == '.parquet':
-            lazy_df = pl.scan_parquet(str(results_path))
-        else:
-            lazy_df = pl.scan_csv(str(results_path))
+    # Only fixation events are ever drawn/tested, so filter them lazily up front.
+    lf = _scanner.select(['wl_hash', 'steps', 'fixation'] + (['r'] if _has_r else []))
+    lf = lf.filter(pl.col('fixation'))
 
-        agg_results_df = (
-            lazy_df
+    # Pooling several r values would silently overlay distributions, so resolve to a
+    # single r before collecting.
+    r_suffix = ""
+    if _has_r:
+        r_available = sorted(lf.select(pl.col('r')).unique().collect().to_series().to_list())
+        if r is None:
+            if len(r_available) == 1:
+                r = r_available[0]
+            else:
+                raise ValueError(
+                    f"results contain multiple r values {r_available}; pass r=<value> "
+                    f"(one r at a time)"
+                )
+        elif r not in r_available:
+            raise ValueError(f"r={r} not found in results; available: {r_available}")
+        lf = lf.filter(pl.col('r') == r)
+        r_suffix = f"  (r={r})"
+
+    merged_raw = lf.join(
+        pl.from_pandas(df_graphs[['wl_hash', 'category']]).lazy(),
+        on='wl_hash',
+        how='left',
+    ).collect()
+
+    _vc = merged_raw['category'].value_counts()
+    fixation_counts = dict(zip(_vc.get_column('category').to_list(), _vc.get_column('count').to_list()))
+
+    # Subsample each category down to the cap with a within-category shuffle (uniform
+    # sample), keeping every violin's KDE and every pairwise test cheap and faithful.
+    subsampled = False
+    if max_points_per_category is not None:
+        largest_category = max(fixation_counts.values(), default=None)
+        subsampled = largest_category is not None and largest_category > max_points_per_category
+        merged_raw = (
+            merged_raw
             .with_columns(
-                pl.when(pl.col('fixation')).then(pl.col('steps')).otherwise(None).alias('steps_success')
+                pl.int_range(pl.len()).shuffle(seed=0).over('category').alias('_rn')
             )
-            .group_by(['wl_hash', 'r', 'graph_name'])
-            .agg([
-                pl.col('fixation').mean().alias('prob_fixation'),
-                pl.col('steps_success').median().alias('median_steps'),
-                pl.col('steps_success').mean().alias('mean_steps'),
-                pl.col('steps_success').std().alias('std_steps'),
-                pl.col('steps_success').quantile(0.25).alias('q25_steps'),
-                pl.col('steps_success').quantile(0.75).alias('q75_steps'),
-                (pl.col('steps_success').quantile(0.75) - pl.col('steps_success').quantile(0.25)).alias('iqr_steps'),
-                pl.col('fixation').count().alias('n_grouped'),
-            ])
-            .collect(engine='streaming')
-            .to_pandas()
+            .filter(pl.col('_rn') < max_points_per_category)
+            .drop('_rn')
         )
 
-        print("Shape before merging: ", agg_results_df.shape)
-
-        analysis_df = pd.merge(
-            agg_results_df,
-            df_graphs,
-            on=['wl_hash', 'graph_name'],
-            how='left',
-            suffixes=('', '_db')
-        )
-        analysis_df['z_order'] = (analysis_df['category'] != 'Random').astype(int)
-        analysis_df = analysis_df.sort_values('z_order').drop(columns='z_order')
-        analysis_df.to_csv(graph_statistics_path, index=False)
-
-    print("Shape after merging: ", analysis_df.shape)
-
-    if category_filter is not None:
-        analysis_df = analysis_df[analysis_df['category'] == category_filter].copy()
-        print(f"Filtered to '{category_filter}': {len(analysis_df):,} rows")
-
-    print(f"Graph statistics columns: {list(analysis_df.columns)}")
-    return analysis_df
+    return merged_raw.to_pandas(), fixation_counts, r, r_suffix, subsampled
 
 
 def plot_steps_violin(
@@ -684,8 +316,6 @@ def plot_steps_violin(
             category's KDE. None disables subsampling and plots every point (slow for
             large batches). Default 50_000.
     """
-    import polars as pl
-
     if color_dict is None:
         color_dict = {}
 
@@ -700,60 +330,9 @@ def plot_steps_violin(
     if categories is None:
         categories = _sort_categories(df_graphs['category'].dropna().unique().tolist())
 
-    _rp = Path(results_path)
-    _scanner = pl.scan_parquet(str(_rp)) if _rp.suffix == '.parquet' else pl.scan_csv(str(_rp))
-    _has_r = 'r' in _scanner.collect_schema().names()
-
-    # Only fixation events are ever drawn, so filter them lazily before collecting.
-    lf = _scanner.select(['wl_hash', 'steps', 'fixation'] + (['r'] if _has_r else []))
-    lf = lf.filter(pl.col('fixation'))
-
-    # A violin mixes its data on the y-axis only: pooling several r values into one
-    # violin would silently overlay distributions. Resolve to a single r up front.
-    r_suffix = ""
-    if _has_r:
-        r_available = sorted(lf.select(pl.col('r')).unique().collect().to_series().to_list())
-        if r is None:
-            if len(r_available) == 1:
-                r = r_available[0]
-            else:
-                raise ValueError(
-                    f"results contain multiple r values {r_available}; pass r=<value> "
-                    f"to plot_steps_violin (violins show one r at a time)"
-                )
-        elif r not in r_available:
-            raise ValueError(f"r={r} not found in results; available: {r_available}")
-        lf = lf.filter(pl.col('r') == r)
-        r_suffix = f"  (r={r})"
-
-    merged_raw = lf.join(
-        pl.from_pandas(df_graphs[['wl_hash', 'category']]).lazy(),
-        on='wl_hash',
-        how='left',
-    ).collect()
-
-    # True per-category fixation counts, read before any subsampling so the annotation
-    # reflects how much data backs each violin (not the plotted 50k cap).
-    _vc = merged_raw['category'].value_counts()
-    fixation_counts = dict(zip(_vc.get_column('category').to_list(), _vc.get_column('count').to_list()))
-
-    # Subsample each category down to the cap. Shuffling the within-category row index
-    # and keeping the first ``cap`` rows is a uniform sample, so every violin's KDE
-    # stays cheap and faithful to the full distribution.
-    subsampled = False
-    if max_points_per_category is not None:
-        largest_category = max(fixation_counts.values(), default=None)
-        subsampled = largest_category is not None and largest_category > max_points_per_category
-        merged_raw = (
-            merged_raw
-            .with_columns(
-                pl.int_range(pl.len()).shuffle(seed=0).over('category').alias('_rn')
-            )
-            .filter(pl.col('_rn') < max_points_per_category)
-            .drop('_rn')
-        )
-
-    merged_raw = merged_raw.to_pandas()
+    merged_raw, fixation_counts, r, r_suffix, subsampled = _load_fixation_steps_by_category(
+        results_path, df_graphs, r=r, max_points_per_category=max_points_per_category,
+    )
 
     palette = {cat: color_dict[cat] for cat in categories if cat in color_dict}
 
@@ -793,7 +372,137 @@ def plot_steps_violin(
     if fig_path is not None:
         fig.savefig(fig_path, bbox_inches='tight', dpi=150)
         print(f"[cache] Saved: {fig_path.name}")
-    if show: 
+    if show:
+        plt.show()
+
+
+def _significance_stars(p):
+    """Conventional significance markers for a (corrected) p-value."""
+    if p < 0.001:
+        return '***'
+    if p < 0.01:
+        return '**'
+    if p < 0.05:
+        return '*'
+    return 'ns'
+
+
+def plot_steps_pvalue_matrix(
+    results_path,
+    df_graphs,
+    categories=None,
+    figures_dir=None,
+    force_recompute=False,
+    batch_name=None,
+    fig_title=None,
+    show=True,
+    r=None,
+    max_points_per_category=50_000,
+):
+    """Pairwise significance matrix for the steps-to-fixation violins.
+
+    Companion to ``plot_steps_violin``: for every pair of categories it runs a
+    two-sided Mann-Whitney U test on the steps-to-fixation distributions and shows
+    two things per cell:
+
+    - **cell color**: rank-biserial correlation, an effect size in [-1, 1] that is
+      (in expectation) independent of sample size. 0 means the two categories'
+      steps are interchangeable; +-1 means total separation. Sign is row-vs-column:
+      positive (red) means the *row* category fixes slower (larger steps) than the
+      *column* category; negative (blue) means faster.
+    - **cell text**: significance stars from the Bonferroni-corrected p-value
+      (*** < 0.001, ** < 0.01, * < 0.05, ns otherwise), with the effect size above.
+
+    Why both: after subsampling each category still holds tens of thousands of
+    events (millions before), so almost every pair is "significant" and a bare
+    p-value matrix would be near-uniformly tiny. The effect size tells you which
+    differences are large enough to matter; the stars tell you which survive
+    multiple-comparison correction. Mann-Whitney is computed on the same subsample
+    the violins are drawn from, so the two figures agree; the effect size is stable
+    under subsampling while the p-value reflects the subsample size.
+
+    Args mirror ``plot_steps_violin`` (no ``color_dict``: cells are colored by
+    effect size, not by category).
+    """
+    from scipy.stats import mannwhitneyu
+
+    fig_path = _resolve_figure_path(figures_dir, 'plot_steps_pvalue_matrix')
+    if not force_recompute and try_load_cached(fig_path):
+        return
+
+    if categories is None:
+        categories = _sort_categories(df_graphs['category'].dropna().unique().tolist())
+
+    merged, fixation_counts, r, r_suffix, subsampled = _load_fixation_steps_by_category(
+        results_path, df_graphs, r=r, max_points_per_category=max_points_per_category,
+    )
+
+    # Only categories with fixation data can be tested.
+    categories = [c for c in categories if fixation_counts.get(c, 0) > 0]
+    if len(categories) < 2:
+        print("[skip] need at least two categories with fixation events to compare")
+        return
+
+    groups = {c: merged.loc[merged['category'] == c, 'steps'].to_numpy() for c in categories}
+
+    k = len(categories)
+    n_pairs = k * (k - 1) // 2
+    effect = np.full((k, k), np.nan)   # rank-biserial, antisymmetric
+    annot = np.full((k, k), '', dtype=object)
+    for i in range(k):
+        for j in range(i + 1, k):
+            a, b = groups[categories[i]], groups[categories[j]]
+            u, p = mannwhitneyu(a, b, alternative='two-sided')
+            # Common-language effect P(row > col) = U/(n_a*n_b); rank-biserial = 2*P - 1.
+            rb = 2.0 * u / (len(a) * len(b)) - 1.0
+            p_corr = min(p * n_pairs, 1.0)  # Bonferroni over all pairs
+            stars = _significance_stars(p_corr)
+            # effect is antisymmetric, so each triangle's label carries its own sign.
+            effect[i, j], effect[j, i] = rb, -rb
+            annot[i, j] = f"{rb:+.2f}\n{stars}"
+            annot[j, i] = f"{-rb:+.2f}\n{stars}"
+
+    fig, ax = plt.subplots(figsize=(max(8, k * 0.95 + 2), max(6, k * 0.85 + 2)))
+    sns.heatmap(
+        effect,
+        mask=np.eye(k, dtype=bool),
+        annot=annot,
+        fmt='',
+        cmap='coolwarm',
+        center=0.0,
+        vmin=-1.0,
+        vmax=1.0,
+        square=True,
+        linewidths=0.5,
+        linecolor='white',
+        cbar_kws={'label': 'rank-biserial effect (row slower → +1)'},
+        annot_kws={'fontsize': 8},
+        xticklabels=categories,
+        yticklabels=categories,
+        ax=ax,
+    )
+    fig_title = fig_title or f'Pairwise steps-to-fixation significance{r_suffix}'
+    ax.set_title(fig_title, fontsize=14)
+    ax.set_xticklabels(categories, rotation=45, ha='right', fontsize=9)
+    ax.set_yticklabels(categories, rotation=0, fontsize=9)
+    if batch_name:
+        _stamp_batch(fig, batch_name)
+    cap_note = (
+        f"  n capped at {max_points_per_category:,}/category"
+        if max_points_per_category is not None else ""
+    )
+    fig.text(
+        0.01, 0.01,
+        "color = signed rank-biserial effect; stars = Bonferroni Mann-Whitney p "
+        f"(*** <0.001, ** <0.01, * <0.05).{cap_note}",
+        fontsize=8, color="#666666", ha="left", va="bottom",
+        style="italic", transform=fig.transFigure,
+    )
+    fig.tight_layout()
+    if fig_path is not None:
+        fig.savefig(fig_path, bbox_inches='tight', dpi=150)
+        print(f"[cache] Saved: {fig_path.name}")
+    if show:
         plt.show()
 
 
@@ -858,7 +567,7 @@ def plot_steps_histogram(
     if fig_path is not None:
         fig.savefig(fig_path, bbox_inches='tight', dpi=150)
         print(f"[cache] Saved: {fig_path.name}")
-    if show: 
+    if show:
         plt.show()
 
 
@@ -973,19 +682,19 @@ def plot_outcome_vs_property(
         if len(all_x_sorted) > 1:
             diffs = np.diff(all_x_sorted)
             total_span = all_x_sorted[-1] - all_x_sorted[0]
-            if total_span == 0: 
-                total_span = 1.0 
-            
+            if total_span == 0:
+                total_span = 1.0
+
             # Filter out tiny sub-gaps (threshold: 2% of total span)
-            min_valid_gap_threshold = total_span * 0.02 
+            min_valid_gap_threshold = total_span * 0.02
             valid_gaps = diffs[diffs > min_valid_gap_threshold]
-            
+
             if len(valid_gaps) > 0:
                 dist_basis = np.min(valid_gaps)
             else:
                 dist_basis = total_span * 0.1
-                
-            violin_width = dist_basis * 0.7 
+
+            violin_width = dist_basis * 0.7
         else:
             violin_width = 0.5
 
@@ -1063,7 +772,7 @@ def plot_outcome_vs_property(
 
     # --- 10. Titles & labels ---
     r_suffix = f"  (r={r_values[0]})" if len(r_values) == 1 else ""
-    fig_title = fig_title or f'{xlabel_base}  →  {ylabel}{r_suffix}' 
+    fig_title = fig_title or f'{xlabel_base}  →  {ylabel}{r_suffix}'
     ax.set_title(fig_title, fontsize=13, pad=8)
     ax.set_xlabel(xlabel, fontsize=10)
     ax.set_ylabel(ylabel, fontsize=11)
