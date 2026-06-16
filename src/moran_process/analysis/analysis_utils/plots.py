@@ -25,7 +25,6 @@ the shared tail.
 """
 import textwrap
 from pathlib import Path
-
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -45,6 +44,20 @@ __all__ = [
     'plot_two_property_effect',
     'plot_two_property_effect_hexbin',
 ]
+
+
+def basic_moran_fixation_prob(n, r):
+    r"""Analytic Moran fixation probability for a single mutant on a complete graph.
+
+        rho(N, r) = (1 - 1/r) / (1 - 1/r^N)
+
+    Vectorized over ``n``: pass either a scalar or an array of population sizes
+    (e.g. a ``np.linspace``) together with a scalar selection coefficient ``r``,
+    and the result broadcasts elementwise (the scalar ``1 - 1/r`` spreads over the
+    array ``np.pow(r, n)``). At ``r == 1`` the expression is 0/0 -> nan; that
+    neutral limit is exactly ``1/N``, which is drawn as a separate reference line.
+    """
+    return (1 - 1 / r) / (1 - 1 / np.pow(r, n))
 
 
 def _resolve_figure_path(figures_dir, func_name: str, **key_kwargs):
@@ -201,17 +214,21 @@ def _finish_two_property_figure(
     *,
     cmap, norm, cbar_ax, color_dict, highlight_categories,
     descriptions_below, default_title, fig_title, batch_name,
-    fig_path, show, save,
+    fig_path, show, save, r_value=None,
 ):
     """Draw the shared tail of the two-property figures (scatter and hexbin).
 
     Everything after the main artist is identical between
     ``plot_two_property_effect`` and ``plot_two_property_effect_hexbin``:
-    optional highlight scatter, the Pearson-correlation box, axis labels and
-    property glosses, the title, the category legend, the batch stamp, and the
-    save/show handling. The two callers differ only in their primary artist
-    (``scatter`` vs ``hexbin``) and the default title, so they pass those in
-    and delegate the rest here.
+    optional highlight scatter, the analytic reference lines, the
+    Pearson-correlation box, axis labels and property glosses, the title, the
+    legend, the batch stamp, and the save/show handling. The two callers differ
+    only in their primary artist (``scatter`` vs ``hexbin``) and the default
+    title, so they pass those in and delegate the rest here.
+
+    ``r_value`` is the single selection coefficient of the data (or ``None`` when
+    the data mixes several r); it is only used to draw the analytic Moran curve
+    when the axes are the canonical n_nodes-vs-fixation view.
     """
     # Highlight specific categories on top, colored by the same outcome scale.
     if highlight_categories:
@@ -225,6 +242,23 @@ def _finish_two_property_figure(
                     edgecolors=color_dict.get(cat, 'black'),
                     zorder=3, label=cat,
                 )
+
+    # Analytic reference lines: only meaningful when x encodes N and y is the
+    # fixation probability. Mirrors the curves drawn in plot_outcome_vs_property.
+    ref_lines_drawn = False
+    if x_prop == 'n_nodes' and y_prop == 'prob_fixation':
+        n_col = plot_df['n_nodes'].dropna()
+        if len(n_col) > 0:
+            x_range = np.linspace(max(1, n_col.min()), n_col.max(), 300)
+            # Neutral drift baseline y = 1/N (independent of r).
+            ax.plot(x_range, 1.0 / x_range, color='black', linestyle='--',
+                    linewidth=1.4, label=r'Neutral  $1/N$', zorder=4)
+            # Complete-graph Moran fixation probability rho(N, r); needs one r.
+            if r_value is not None:
+                ax.plot(x_range, basic_moran_fixation_prob(x_range, r_value),
+                        color='tab:red', linestyle='--', linewidth=1.4,
+                        label=r'Moran  $\rho=\frac{1-1/r}{1-1/r^{N}}$', zorder=4)
+            ref_lines_drawn = True
 
     corr_x = _safe_corr(plot_df[x_prop], plot_df[outcome])
     corr_y = _safe_corr(plot_df[y_prop], plot_df[outcome])
@@ -245,8 +279,14 @@ def _finish_two_property_figure(
     ax.set_title(fig_title or default_title, fontsize=13)
     ax.grid(True, linestyle='--', alpha=0.4)
 
-    legend = (ax.legend(title="Category", bbox_to_anchor=(1.18, 1), loc='upper left')
-              if highlight_categories else None)
+    # One legend covering whatever labeled artists exist (category highlights
+    # and/or the analytic reference lines). Title only reads "Category" when the
+    # only labeled artists are highlights.
+    if highlight_categories or ref_lines_drawn:
+        legend_title = "Category" if highlight_categories and not ref_lines_drawn else None
+        legend = ax.legend(title=legend_title, bbox_to_anchor=(1.18, 1), loc='upper left')
+    else:
+        legend = None
 
     if batch_name:
         _stamp_batch(fig, batch_name)
@@ -938,14 +978,18 @@ def plot_outcome_vs_property(
                     pc.set_edgecolor('lightgray')
                     pc.set_alpha(1.0)
 
-        # Vectorized jitter -- much faster than apply(func, axis=1)
+        # Vectorized jitter -- much faster than apply(func, axis=1).
+        # Seeded local RNG so the same data always jitters to the same x-offsets
+        # (a fresh np.random draw would shift dots on every regeneration). Seed 0
+        # matches the deterministic-plot convention used for the violin subsample.
         mask = plot_df['x_plot'].isin(dense_x_values) & plot_df['x_plot'].notna()
         jitter_half = violin_width * 0.15
         plot_df['x_jittered'] = plot_df['x_plot'].copy().astype(float)
         if mask.any():
+            jitter_rng = np.random.default_rng(0)
             plot_df.loc[mask, 'x_jittered'] = (
                 plot_df.loc[mask, 'x_plot']
-                + np.random.uniform(-jitter_half, jitter_half, size=int(mask.sum()))
+                + jitter_rng.uniform(-jitter_half, jitter_half, size=int(mask.sum()))
             )
     else:
         plot_df['x_jittered'] = plot_df['x_plot']
@@ -991,8 +1035,16 @@ def plot_outcome_vs_property(
             if x_prop == 'n_nodes':
                 # x encodes N directly: draw the theoretical y = 1/x curve
                 x_range = np.linspace(max(1, n_col.min()), n_col.max(), 300)
+                # Neutral drift baseline: y = 1/N (independent of r)
                 ax.plot(x_range, 1.0 / x_range, color='black', linestyle='--',
-                        linewidth=1.2, label='Neutral (1/N)', zorder=1)
+                        linewidth=1.2, label=r'Neutral  $1/N$', zorder=1)
+                # Analytic complete-graph fixation probability rho(N, r). It depends
+                # on a single r, so only draw it when the data has exactly one r.
+                if len(r_values) == 1:
+                    r = r_values[0]
+                    ax.plot(x_range, basic_moran_fixation_prob(x_range, r),
+                            color='tab:blue', linestyle='--', linewidth=1.2,
+                            label=r'Moran  $\rho=\frac{1-1/r}{1-1/r^{N}}$', zorder=1)
             else:
                 # Only draw a flat line when N is homogeneous (CV < 5%)
                 n_mean = n_col.mean()
@@ -1131,6 +1183,7 @@ def plot_two_property_effect(
         descriptions_below=descriptions_below,
         default_title=default_title, fig_title=fig_title, batch_name=batch_name,
         fig_path=fig_path, show=show, save=save,
+        r_value=r_vals[0] if len(r_vals) == 1 else None,
     )
 
 
@@ -1226,4 +1279,5 @@ def plot_two_property_effect_hexbin(
         descriptions_below=descriptions_below,
         default_title=default_title, fig_title=fig_title, batch_name=batch_name,
         fig_path=fig_path, show=show, save=save,
+        r_value=r_vals[0] if len(r_vals) == 1 else None,
     )

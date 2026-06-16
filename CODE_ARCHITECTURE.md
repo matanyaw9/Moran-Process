@@ -190,6 +190,24 @@ Current config: `n_nodes=range(29,34)`, `edge_range=5`, `n_random_graphs_per_com
 
 ---
 
+## Streamlit Dashboard (`streamlit_app.py`)
+
+Interactive browser over a single batch's results (`uv run streamlit run streamlit_app.py`). Pick a batch and an `r`; three pages share the same loaded data:
+
+| Page | Contents |
+|---|---|
+| Overview | Batch info card and run speed / resource report |
+| Fixation time | Steps-to-fixation violins, pairwise Mann-Whitney significance matrix, per-metric histograms |
+| Property effects | Outcome vs. a single structural property, and the combined two-property view |
+
+**On-disk figure cache (`cached_figure`).** Every plot is served from a cached PNG under `simulation_data/<batch>/figures/`, built with the *same* `_resolve_figure_path` the `plot_*` functions use, so the dashboard and notebooks share the same cache files in both directions. The cache has no code-version awareness: a figure that gained content from a code change still shows the old PNG until rebuilt. Each plot exposes **Regenerate** (rebuild from raw data, show unsaved) and **Save / Overwrite** (persist the displayed bytes). `cache_key` carries everything that changes the figure (`r`, selected columns, style) so distinct selections map to distinct files. The freshly built PNG bytes are stashed in `session_state`, so Save writes instantly instead of re-running a multi-GB scan.
+
+**Combined two-property view.** X, Y, and Color can each show *either* a structural trait *or* a simulation result; the selectbox groups them with a `Property ·` / `Result ·` label prefix. When X is `n_nodes` and Y is `prob_fixation`, the plot overlays analytic reference lines: the neutral `1/N` baseline (always) and the complete-graph Moran curve `rho(N, r)` (only when the data is a single `r`). Both lines are drawn in the shared tail `_finish_two_property_figure`, so scatter and hexbin styles get them identically.
+
+**Analytic curve (`basic_moran_fixation_prob`, `analysis_utils/plots.py`).** `rho(N, r) = (1 - 1/r) / (1 - 1/r^N)`, vectorized over `N`. At `r == 1` it is 0/0 -> nan; that neutral limit is exactly `1/N`, drawn as the separate baseline.
+
+---
+
 ## ML Pipeline (`notebooks/ml_predictors.ipynb`)
 
 1. **Configuration:** set `BATCH_NAME`, `TARGET_COLUMNS` (list), and `R_FILTER` at the top of the notebook.
