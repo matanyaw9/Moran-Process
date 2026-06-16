@@ -16,3 +16,4 @@ venv/
 *.ipynb_checkpoints
 # directories that start with 'tmp'
 tmp*   
+images/

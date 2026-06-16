@@ -938,17 +938,14 @@ def plot_outcome_vs_property(
                     pc.set_edgecolor('lightgray')
                     pc.set_alpha(1.0)
 
-        # Vectorized jitter -- much faster than apply(func, axis=1). A local seeded
-        # generator (not the global np.random) keeps the scatter reproducible, so a
-        # re-render matches the cached PNG instead of reshuffling every point.
-        rng = np.random.default_rng(0)
+        # Vectorized jitter -- much faster than apply(func, axis=1)
         mask = plot_df['x_plot'].isin(dense_x_values) & plot_df['x_plot'].notna()
         jitter_half = violin_width * 0.15
         plot_df['x_jittered'] = plot_df['x_plot'].copy().astype(float)
         if mask.any():
             plot_df.loc[mask, 'x_jittered'] = (
                 plot_df.loc[mask, 'x_plot']
-                + rng.uniform(-jitter_half, jitter_half, size=int(mask.sum()))
+                + np.random.uniform(-jitter_half, jitter_half, size=int(mask.sum()))
             )
     else:
         plot_df['x_jittered'] = plot_df['x_plot']
