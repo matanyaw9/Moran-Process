@@ -209,6 +209,36 @@ def _safe_corr(a, b):
     return np.nan
 
 
+def _outcome_color_norm(values, *, log_dynamic_range=50.0, clip_pct=(2, 98)):
+    """Pick a color normalization that keeps the dense bulk of the data visible.
+
+    The two-property outcomes are heavy right-tailed: e.g. mean_steps spans
+    ~4000x, with most graphs near the median and a few large-N graphs far above.
+    A plain linear Normalize then maps ~90% of points into the bottom sliver of
+    the colormap (the indistinguishable dark end). To spread them out:
+
+    - strictly-positive outcomes whose dynamic range (max/min) exceeds
+      ``log_dynamic_range`` get a LogNorm, so the median graph lands near the
+      middle of the colormap and the dense cluster uses its full span;
+    - everything else (bounded or signed, e.g. prob_fixation) gets a linear
+      Normalize clipped to the ``clip_pct`` percentiles, so a handful of
+      outliers cannot eat the whole color range.
+
+    Returns a matplotlib Normalize/LogNorm instance shared by the main artist
+    and the highlight scatter so their colors stay on one scale.
+    """
+    s = pd.Series(values).replace([np.inf, -np.inf], np.nan).dropna()
+    if s.empty:
+        return mcolors.Normalize()
+    vmin, vmax = float(s.min()), float(s.max())
+    if vmin > 0 and vmax / vmin > log_dynamic_range:
+        return mcolors.LogNorm(vmin=vmin, vmax=vmax)
+    lo, hi = (float(v) for v in np.percentile(s.to_numpy(), clip_pct))
+    if lo == hi:  # degenerate after clipping (near-constant): fall back to full range
+        lo, hi = vmin, vmax
+    return mcolors.Normalize(vmin=lo, vmax=hi)
+
+
 def _finish_two_property_figure(
     fig, ax, plot_df, x_prop, y_prop, outcome,
     *,
@@ -1181,7 +1211,7 @@ def plot_two_property_effect(
         return
 
     fig, ax = plt.subplots(figsize=DEFAULT_FIG_SIZE)
-    norm = mcolors.Normalize(vmin=plot_df[outcome].min(), vmax=plot_df[outcome].max())
+    norm = _outcome_color_norm(plot_df[outcome])
     sc = ax.scatter(
         plot_df[x_prop], plot_df[y_prop],
         c=plot_df[outcome], norm=norm, cmap=cmap,
@@ -1269,19 +1299,21 @@ def plot_two_property_effect_hexbin(
         return
 
     fig, ax = plt.subplots(figsize=DEFAULT_FIG_SIZE)
+    # One shared norm (log for heavy-tailed positive outcomes, else robust-clipped
+    # linear) drives both the hexbin cells and the highlight scatter, so their
+    # colors stay on a single, readable scale instead of a dark-crowded linear one.
+    norm = _outcome_color_norm(plot_df[outcome])
     hb = ax.hexbin(
         plot_df[x_prop], plot_df[y_prop],
         C=plot_df[outcome],
         gridsize=gridsize,
         cmap=cmap,
+        norm=norm,
         reduce_C_function=reduce_C_function,
         mincnt=1,
         linewidths=0.2,
     )
     cbar = fig.colorbar(hb, ax=ax, label=outcome.replace("_", " ").title())
-    # The hexbin colors come from reduce_C_function per cell; highlight scatter needs
-    # its own Normalize over the raw outcome so its colors share the hexbin scale.
-    norm = mcolors.Normalize(vmin=plot_df[outcome].min(), vmax=plot_df[outcome].max())
 
     outcome_label = outcome.replace("_", " ").title()
     reduce_name = getattr(reduce_C_function, '__name__', str(reduce_C_function))
