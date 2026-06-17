@@ -259,6 +259,39 @@ class PopulationGraph:
         name = f'star_n{n_nodes}'
         return cls(G, name=name, category='Star', params={'n_nodes': n_nodes}, labeled_edges=labeled_edges)
 
+
+    
+    @classmethod
+    def grid_graph(cls, width: int, height: int, labeled_edges: bool = False):
+        """
+        Creates a rectangular grid (2D lattice) of size width x height.
+
+        Every node is connected to its left/right and top/bottom neighbors only
+        (4-connectivity), so when drawn it looks like a filled rectangle.
+
+        Args:
+            width (int): Number of columns.
+            height (int): Number of rows.
+        """
+        if width < 1 or height < 1:
+            raise ValueError("width and height must both be at least 1")
+
+        # nx.grid_2d_graph(rows, cols) yields the exact left/right/top/bottom
+        # lattice; nodes are (row, col) tuples.
+        G = nx.grid_2d_graph(height, width)
+
+        # Layout: column -> x, row -> -y so row 0 sits at the top, matching the
+        # screen-oriented convention used by mammalian_lung_graph.
+        pos = {(r, c): np.array([float(c), -float(r)]) for r, c in G.nodes()}
+        nx.set_node_attributes(G, pos, 'pos')
+
+        # Compact integer labels (and keep pos) for hashing/simulation layers.
+        G = nx.convert_node_labels_to_integers(G)
+        name = f'grid_w{width}_h{height}'
+        return cls(G, name=name, category='Grid',
+                   params={'width': width, 'height': height},
+                   labeled_edges=labeled_edges)
+
     @classmethod
     def mammalian_lung_graph(cls, branching_factor:int=2, depth:int=3, name='mammalian', labeled_edges: bool = False):
         """Generates a tree shaped population graph mimicking mammalian lung topology."""

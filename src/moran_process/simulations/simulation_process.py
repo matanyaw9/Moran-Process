@@ -13,6 +13,15 @@ class SimulationProcess(ABC):
         max_steps: int = 1_000_000,
         seed=None,
     ):
+        # Accept either a GraphCore or a PopulationGraph-like object that knows
+        # how to produce one. Duck-typed on purpose: checking for the method
+        # rather than importing PopulationGraph keeps this module dependency
+        # -light (numpy-only), so unpickling a zoo shard in a worker never drags
+        # in NetworkX/matplotlib. HPC workers pass a GraphCore directly; the toy
+        # notebooks pass a PopulationGraph and it is converted here.
+        if hasattr(graph_core, "to_simulation_struct"):
+            graph_core = graph_core.to_simulation_struct()
+
         self.max_steps = max_steps
         self.n_nodes = graph_core.n_nodes
         self.nbrs = graph_core.nbrs
