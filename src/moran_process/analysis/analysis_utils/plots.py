@@ -281,17 +281,35 @@ def _finish_two_property_figure(
 
     # One legend covering whatever labeled artists exist (category highlights
     # and/or the analytic reference lines). Title only reads "Category" when the
-    # only labeled artists are highlights.
+    # only labeled artists are highlights. Its final position is set after layout
+    # (below the colorbar); the anchor here is just a sensible pre-layout value.
     if highlight_categories or ref_lines_drawn:
         legend_title = "Category" if highlight_categories and not ref_lines_drawn else None
-        legend = ax.legend(title=legend_title, bbox_to_anchor=(1.18, 1), loc='upper left')
+        legend = ax.legend(title=legend_title, bbox_to_anchor=(1.02, 1.0), loc='upper left')
     else:
         legend = None
 
     if batch_name:
         _stamp_batch(fig, batch_name)
     fig.tight_layout()
-    # After layout: under the category legend when present, else under the colorbar.
+
+    # Stack the three right-margin guides top-to-bottom: colorbar, then legend,
+    # then correlation box. This only needs rearranging when a legend exists;
+    # otherwise the colorbar keeps its full height and the box sits beneath it.
+    if legend is not None and cbar_ax is not None:
+        fig.canvas.draw()  # realize positions before measuring/repositioning
+        # Confine the colorbar to its top ~55% so there is room below it.
+        pos = cbar_ax.get_position()
+        new_h = pos.height * 0.55
+        cbar_ax.set_position([pos.x0, pos.y0 + pos.height - new_h, pos.width, new_h])
+        fig.canvas.draw()
+        # Anchor the legend just below the colorbar, left-aligned to it.
+        cb = cbar_ax.get_window_extent()
+        cb_left, cb_bottom = ax.transAxes.inverted().transform((cb.x0, cb.y0))
+        legend.set_bbox_to_anchor((cb_left, cb_bottom - 0.04), transform=ax.transAxes)
+
+    # Under the legend when present (which now sits under the colorbar), else
+    # directly under the colorbar.
     _add_corr_box(ax, corr_text, anchor=legend if legend is not None else cbar_ax)
     if fig_path is not None and save:
         fig.savefig(fig_path, bbox_inches='tight', dpi=150)
