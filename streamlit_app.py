@@ -54,6 +54,12 @@ from moran_process.analysis.analysis_utils import (
     plot_two_property_effect,
     plot_two_property_effect_hexbin,
 )
+# PROTOTYPE: interactive (plotly) twin of plot_two_property_effect. Not part of
+# the analysis_utils public API, so imported directly from its module.
+from moran_process.analysis.analysis_utils.plotly_prototype import (
+    plot_two_property_effect_plotly,
+    plot_outcome_vs_property_plotly,
+)
 
 SIM_DATA_DIR = Path(__file__).parent / "simulation_data"
 LOGO_PATH = Path(__file__).parent / "images" / "logo-5.png"
@@ -396,14 +402,32 @@ elif page == "Property effects":
     c1, c2 = st.columns(2)
     x_prop = c1.selectbox("X property", available_props, key="ovp_x")
     y_outcome = c2.selectbox("Y outcome", OUTCOME_COLUMNS, key="ovp_y")
-    cached_figure(
-        plot_outcome_vs_property,
-        df_r, x_prop,
-        cache_name="plot_outcome_vs_property",
-        cache_key={"r": selected_r, "x": x_prop, "y": y_outcome},
-        figures_dir=figures_dir,
-        y_outcome=y_outcome, color_dict=color_dict, batch_name=batch_name,
+    ovp_style = st.radio(
+        "Style", ["static", "interactive"], horizontal=True, key="ovp_style"
     )
+    if ovp_style == "interactive":
+        # PROTOTYPE: plotly twin. Built from df_r (light), so it skips the PNG
+        # cache. Hover a point for its graph name / category; biological
+        # topologies are outlined; dense discrete x values get violins.
+        try:
+            fig = plot_outcome_vs_property_plotly(
+                df_r, x_prop, y_outcome=y_outcome, color_dict=color_dict,
+                highlight_categories=[
+                    c for c in ("Mammalian", "Avian", "Fish") if c in categories
+                ],
+            )
+            st.plotly_chart(fig, width='stretch')
+        except Exception as exc:
+            st.error(f"interactive figure failed: {exc}")
+    else:
+        cached_figure(
+            plot_outcome_vs_property,
+            df_r, x_prop,
+            cache_name="plot_outcome_vs_property",
+            cache_key={"r": selected_r, "x": x_prop, "y": y_outcome},
+            figures_dir=figures_dir,
+            y_outcome=y_outcome, color_dict=color_dict, batch_name=batch_name,
+        )
 
     st.markdown("#### Combined effect of two properties")
     # X, Y and color can each show either a structural trait or a simulation
@@ -432,16 +456,34 @@ elif page == "Property effects":
         "Color by", tp_options, key="tp_outcome",
         index=_opt_index("mean_steps"), format_func=_grouped_label,
     )
-    style = st.radio("Style", ["scatter", "hexbin"], horizontal=True, key="tp_style")
-    if style == "scatter":
-        plot_fn, tp_cache_name = plot_two_property_effect, "plot_two_property_effect"
-    else:
-        plot_fn, tp_cache_name = plot_two_property_effect_hexbin, "plot_two_property_effect_hexbin"
-    cached_figure(
-        plot_fn,
-        df_r, tp_x, tp_y,
-        cache_name=tp_cache_name,
-        cache_key={"r": selected_r, "x": tp_x, "y": tp_y, "outcome": tp_outcome},
-        figures_dir=figures_dir,
-        outcome=tp_outcome, color_dict=color_dict, batch_name=batch_name, descriptions_below=True,
+    style = st.radio(
+        "Style", ["scatter", "hexbin", "interactive"], horizontal=True, key="tp_style"
     )
+    if style == "interactive":
+        # PROTOTYPE: plotly twin of the scatter. Built straight from df_r (light,
+        # already loaded), so it skips the PNG cache entirely - it is interactive
+        # in the browser, there is nothing to persist. Hover a point to read its
+        # category and exact outcome; biological topologies are outlined.
+        try:
+            fig = plot_two_property_effect_plotly(
+                df_r, tp_x, tp_y, outcome=tp_outcome, color_dict=color_dict,
+                highlight_categories=[
+                    c for c in ("Mammalian", "Avian", "Fish") if c in categories
+                ],
+            )
+            st.plotly_chart(fig, width='stretch')
+        except Exception as exc:  # mirror cached_figure: show the error, don't crash
+            st.error(f"interactive figure failed: {exc}")
+    else:
+        if style == "scatter":
+            plot_fn, tp_cache_name = plot_two_property_effect, "plot_two_property_effect"
+        else:
+            plot_fn, tp_cache_name = plot_two_property_effect_hexbin, "plot_two_property_effect_hexbin"
+        cached_figure(
+            plot_fn,
+            df_r, tp_x, tp_y,
+            cache_name=tp_cache_name,
+            cache_key={"r": selected_r, "x": tp_x, "y": tp_y, "outcome": tp_outcome},
+            figures_dir=figures_dir,
+            outcome=tp_outcome, color_dict=color_dict, batch_name=batch_name, descriptions_below=True,
+        )
