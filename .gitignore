@@ -17,3 +17,6 @@ venv/
 # directories that start with 'tmp'
 tmp*   
 images/
+# generated takeover GIFs / figures from notebooks
+notebooks/figures/
+/figures/
