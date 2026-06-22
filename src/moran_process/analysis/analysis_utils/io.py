@@ -147,17 +147,25 @@ def aggregate_results_no_load(batch_dir, delete_temp=False, output_file=None):
     return output_file
 
 
-def build_graph_statistics(results_path, df_graphs, graph_statistics_path, category_filter=None):
+def build_graph_statistics(results_path, df_graphs, graph_statistics_path,
+                           category_filter=None, r_filter=None):
     """Aggregate raw simulation results to one row per (graph, r) with fixation statistics.
 
     If graph_statistics_path already exists, loads it directly. Otherwise streams results
     from results_path (Parquet or CSV), merges with df_graphs, sorts, and saves.
 
+    Filtering is applied as a view *after* the full table is built/loaded, so the cached
+    graph_statistics.csv always holds every category and r value; only the returned frame
+    is narrowed.
+
     Args:
         results_path: path to raw_results.parquet (or .csv)
         df_graphs: DataFrame with graph structural properties (must have 'wl_hash', 'graph_name')
         graph_statistics_path: path where graph_statistics.csv is saved / loaded from
-        category_filter: if given, returns only rows where category == category_filter
+        category_filter: keep only these categories. A single value or a list/tuple/set;
+            None keeps all categories.
+        r_filter: keep only these selection coefficients. A single value or a
+            list/tuple/set; None keeps all r values.
 
     Returns:
         analysis_df: aggregated DataFrame ready for plotting
@@ -211,9 +219,18 @@ def build_graph_statistics(results_path, df_graphs, graph_statistics_path, categ
 
     print("Shape after merging: ", analysis_df.shape)
 
+    def _as_list(val):
+        return list(val) if isinstance(val, (list, tuple, set)) else [val]
+
     if category_filter is not None:
-        analysis_df = analysis_df[analysis_df['category'] == category_filter].copy()
-        print(f"Filtered to '{category_filter}': {len(analysis_df):,} rows")
+        cats = _as_list(category_filter)
+        analysis_df = analysis_df[analysis_df['category'].isin(cats)].copy()
+        print(f"Filtered to categories {sorted(map(str, cats))}: {len(analysis_df):,} rows")
+
+    if r_filter is not None:
+        rs = _as_list(r_filter)
+        analysis_df = analysis_df[analysis_df['r'].isin(rs)].copy()
+        print(f"Filtered to r in {sorted(rs)}: {len(analysis_df):,} rows")
 
     print(f"Graph statistics columns: {list(analysis_df.columns)}")
     return analysis_df
