@@ -29,6 +29,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
+from matplotlib.ticker import FuncFormatter, MaxNLocator
 import seaborn as sns
 
 from .colors import DEFAULT_FIG_SIZE, GRAPH_PROPERTY_DESCRIPTION, _sort_categories
@@ -194,9 +195,10 @@ def _add_corr_box(ax, text, anchor=None, default=(0.03, 0.97), fontsize=9) -> No
     )
 
 
-def _safe_corr(a, b):
-    """Pearson correlation of two aligned series, ignoring NaN/inf pairs.
+def _safe_corr(a, b, method='pearson'):
+    """Correlation of two aligned series, ignoring NaN/inf pairs.
 
+    `method` is passed through to pandas ('pearson' or 'spearman').
     Returns NaN when fewer than two valid pairs remain or either side is
     constant (correlation is undefined there). Shared by every figure that
     annotates a correlation, so the number means the same thing everywhere.
@@ -205,8 +207,21 @@ def _safe_corr(a, b):
     b = pd.Series(b).replace([np.inf, -np.inf], np.nan)
     mask = a.notna() & b.notna()
     if mask.sum() > 1 and a[mask].std() > 0 and b[mask].std() > 0:
-        return a[mask].corr(b[mask])
+        return a[mask].corr(b[mask], method=method)
     return np.nan
+
+
+def _human_tick(x, _pos=None):
+    """Abbreviate large axis ticks: 10000 -> '10K', 2.5e6 -> '2.5M'.
+
+    Values below 1000 (including fractional ones like density) are left
+    as-is, so the same formatter is safe across every x property.
+    """
+    for div, suffix in ((1e9, 'B'), (1e6, 'M'), (1e3, 'K')):
+        if abs(x) >= div:
+            v = x / div
+            return f'{v:.0f}{suffix}' if v == int(v) else f'{v:g}{suffix}'
+    return f'{x:g}'
 
 
 def _outcome_color_norm(values, *, log_dynamic_range=50.0, clip_pct=(2, 98)):
@@ -244,7 +259,7 @@ def _finish_two_property_figure(
     *,
     cmap, norm, cbar_ax, color_dict, highlight_categories,
     descriptions_below, default_title, fig_title, batch_name,
-    fig_path, show, save, r_value=None,
+    fig_path, show, save, r_value=None, corr='spearman',
 ):
     """Draw the shared tail of the two-property figures (scatter and hexbin).
 
@@ -290,14 +305,18 @@ def _finish_two_property_figure(
                         label=r'Moran  $\rho=\frac{1-1/r}{1-1/r^{N}}$', zorder=4)
             ref_lines_drawn = True
 
-    corr_x = _safe_corr(plot_df[x_prop], plot_df[outcome])
-    corr_y = _safe_corr(plot_df[y_prop], plot_df[outcome])
-    corr_text = (
-        f"Pearson corr with {outcome.replace('_', ' ')}\n"
-        + "-" * 30 + "\n"
-        + f"{x_prop}: {corr_x:.3f}\n"
-        + f"{y_prop}: {corr_y:.3f}"
-    )
+    # Correlation box: corr is None / 'spearman' / 'pearson', matching
+    # plot_outcome_vs_property. Each property is correlated against the outcome.
+    corr_text = None
+    if corr:
+        corr_x = _safe_corr(plot_df[x_prop], plot_df[outcome], method=corr)
+        corr_y = _safe_corr(plot_df[y_prop], plot_df[outcome], method=corr)
+        corr_text = (
+            f"{corr.capitalize()} corr with {outcome.replace('_', ' ')}\n"
+            + "-" * 30 + "\n"
+            + f"{x_prop}: {corr_x:.3f}\n"
+            + f"{y_prop}: {corr_y:.3f}"
+        )
 
     ax.set_xlabel(x_prop.replace("_", " ").title(), fontsize=12)
     ax.set_ylabel(y_prop.replace("_", " ").title(), fontsize=12)
@@ -339,8 +358,9 @@ def _finish_two_property_figure(
         legend.set_bbox_to_anchor((cb_left, cb_bottom - 0.04), transform=ax.transAxes)
 
     # Under the legend when present (which now sits under the colorbar), else
-    # directly under the colorbar.
-    _add_corr_box(ax, corr_text, anchor=legend if legend is not None else cbar_ax)
+    # directly under the colorbar. Skipped entirely when corr is None.
+    if corr_text is not None:
+        _add_corr_box(ax, corr_text, anchor=legend if legend is not None else cbar_ax)
     if fig_path is not None and save:
         fig.savefig(fig_path, bbox_inches='tight', dpi=150)
         print(f"[cache] Saved: {fig_path.name}")
@@ -507,6 +527,8 @@ def _load_fixation_steps_by_category(
     - a tidy pandas DataFrame with columns ['category', 'steps'] (subsampled);
     - ``fixation_counts``: true per-category fixation counts, read *before*
       subsampling so callers can annotate how much data backs each category;
+    - ``total_counts``: per-category total run counts (fixation + non-fixation),
+      counted before the fixation filter, so callers can report rho = fix / total;
     - the resolved ``r`` and an ``r_suffix`` label for titles;
     - ``subsampled``: whether the cap actually trimmed any category.
 
@@ -519,9 +541,7 @@ def _load_fixation_steps_by_category(
     _scanner = pl.scan_parquet(str(_rp)) if _rp.suffix == '.parquet' else pl.scan_csv(str(_rp))
     _has_r = 'r' in _scanner.collect_schema().names()
 
-    # Only fixation events are ever drawn/tested, so filter them lazily up front.
     lf = _scanner.select(['wl_hash', 'steps', 'fixation'] + (['r'] if _has_r else []))
-    lf = lf.filter(pl.col('fixation'))
 
     # Pooling several r values would silently overlay distributions, so resolve to a
     # single r before collecting.
@@ -541,11 +561,22 @@ def _load_fixation_steps_by_category(
         lf = lf.filter(pl.col('r') == r)
         r_suffix = f"  (r={r})"
 
-    merged_raw = lf.join(
+    # Attach category to every run (lazy). Totals per category must be counted before
+    # the fixation filter so we can report rho = fixations / total runs, hence the join
+    # happens here rather than after filtering.
+    lf = lf.join(
         pl.from_pandas(df_graphs[['wl_hash', 'category']]).lazy(),
         on='wl_hash',
         how='left',
-    ).collect()
+    )
+
+    # Total runs per category (the rho denominator), counted before non-fixation rows
+    # are dropped. Streamed, so the full frame is never materialised.
+    _tot = lf.group_by('category').agg(pl.len().alias('total')).collect(engine='streaming')
+    total_counts = dict(zip(_tot.get_column('category').to_list(), _tot.get_column('total').to_list()))
+
+    # Only fixation events are ever drawn/tested, so materialise just those.
+    merged_raw = lf.filter(pl.col('fixation')).collect()
 
     _vc = merged_raw['category'].value_counts()
     fixation_counts = dict(zip(_vc.get_column('category').to_list(), _vc.get_column('count').to_list()))
@@ -565,7 +596,7 @@ def _load_fixation_steps_by_category(
             .drop('_rn')
         )
 
-    return merged_raw.to_pandas(), fixation_counts, r, r_suffix, subsampled
+    return merged_raw.to_pandas(), fixation_counts, total_counts, r, r_suffix, subsampled
 
 
 def plot_steps_violin(
@@ -619,9 +650,15 @@ def plot_steps_violin(
     if categories is None:
         categories = _sort_categories(df_graphs['category'].dropna().unique().tolist())
 
-    merged_raw, fixation_counts, r, r_suffix, subsampled = _load_fixation_steps_by_category(
+    merged_raw, fixation_counts, total_counts, r, r_suffix, subsampled = _load_fixation_steps_by_category(
         results_path, df_graphs, r=r, max_points_per_category=max_points_per_category,
     )
+
+    # The loader left-joins every graph, so merged_raw carries categories outside the
+    # requested set (e.g. 'Grid'). Because hue='category' equals x='category', seaborn
+    # maps hue to every value present in the data and demands a palette key for each,
+    # ignoring `order`. Drop out-of-filter rows so hue levels stay a subset of palette.
+    merged_raw = merged_raw[merged_raw['category'].isin(categories)]
 
     # seaborn needs a palette entry for every hue level; fill any category the
     # caller did not color with a distinct husl fallback so a partial color_dict
@@ -645,10 +682,18 @@ def plot_steps_violin(
         ax=ax,
     )
     fig_title = fig_title or f'Distribution of Steps to Fixation by Category{r_suffix}'
-    # Annotate each violin with its true fixation count (n) on a second label line.
+    # Annotate each violin with its fixation probability and the raw fixation count
+    # (n) on a second label line. rho = fixations / total runs makes clear that an
+    # unequal n reflects a different success rate, not a different number of runs.
+    def _violin_label(cat):
+        fix = fixation_counts.get(cat, 0)
+        tot = total_counts.get(cat, 0)
+        rho = fix / tot if tot else 0.0
+        return f"{cat}\nρ = {rho:.3f}  (n = {fix:,})"
+
     ax.set_xticks(range(len(categories)))
     ax.set_xticklabels(
-        [f"{cat}\nn = {fixation_counts.get(cat, 0):,}" for cat in categories],
+        [_violin_label(cat) for cat in categories],
         rotation=45, ha='right', fontsize=10,
     )
     ax.set_xlabel('Category', fontsize=13)
@@ -734,7 +779,7 @@ def plot_steps_pvalue_matrix(
     if categories is None:
         categories = _sort_categories(df_graphs['category'].dropna().unique().tolist())
 
-    merged, fixation_counts, r, r_suffix, subsampled = _load_fixation_steps_by_category(
+    merged, fixation_counts, _total_counts, r, r_suffix, subsampled = _load_fixation_steps_by_category(
         results_path, df_graphs, r=r, max_points_per_category=max_points_per_category,
     )
 
@@ -895,6 +940,7 @@ def plot_outcome_vs_property(
     force_recompute=False,
     fig_title=None,
     batch_name=None,
+    corr='spearman',
     show=True,
     save=True,
 ):
@@ -952,21 +998,24 @@ def plot_outcome_vs_property(
     # can carry its own muted, distinct font; the axis label stays clean.
     xlabel = xlabel_base
 
-    # --- 2. Pearson correlation (per r value, compactly) ---
+    # --- 2. Correlation (per r value, compactly); corr is None / 'spearman' / 'pearson' ---
     r_values = sorted(df['r'].dropna().unique()) if 'r' in df.columns else []
-    cols_for_corr = [x_prop, y_outcome] + (['r'] if r_values else [])
-    clean_df = df[cols_for_corr].replace([np.inf, -np.inf], np.nan).dropna()
+    stats_text = None
+    if corr:
+        cols_for_corr = [x_prop, y_outcome] + (['r'] if r_values else [])
+        clean_df = df[cols_for_corr].replace([np.inf, -np.inf], np.nan).dropna()
+        header = f"{corr.capitalize()} corr"
 
-    if len(r_values) > 1:
-        corr_lines = ["Pearson corr", "-" * 18]
-        for rv in r_values:
-            sub = clean_df[clean_df['r'] == rv]
-            c = _safe_corr(sub[x_prop], sub[y_outcome])
-            corr_lines.append(f"r={rv}: {c:.3f}" if pd.notna(c) else f"r={rv}: N/A")
-    else:
-        c = _safe_corr(clean_df[x_prop], clean_df[y_outcome])
-        corr_lines = ["Pearson corr", f"{c:.3f}" if pd.notna(c) else "N/A"]
-    stats_text = "\n".join(corr_lines)
+        if len(r_values) > 1:
+            corr_lines = [header, "-" * 18]
+            for rv in r_values:
+                sub = clean_df[clean_df['r'] == rv]
+                c = _safe_corr(sub[x_prop], sub[y_outcome], method=corr)
+                corr_lines.append(f"r={rv}: {c:.3f}" if pd.notna(c) else f"r={rv}: N/A")
+        else:
+            c = _safe_corr(clean_df[x_prop], clean_df[y_outcome], method=corr)
+            corr_lines = [header, f"{c:.3f}" if pd.notna(c) else "N/A"]
+        stats_text = "\n".join(corr_lines)
 
     # --- 3. X-axis processing ---
     plot_df = df.copy()
@@ -1044,6 +1093,12 @@ def plot_outcome_vs_property(
 
     # --- 6. Scatter (background) ---
     hue_order = _sort_categories(plot_df['category'].dropna().unique().tolist())
+    # Draw order is the REVERSE of legend order. matplotlib paints last-on-top, and
+    # _sort_categories puts 'Random' last (the right reading order for the legend),
+    # which would paint the large, pale Random cloud OVER the biological categories.
+    # Drawing in reverse lands Random in the back; the legend is re-sorted to
+    # hue_order in step 12, so its reading order is unaffected.
+    draw_order = list(reversed(hue_order))
     # seaborn requires a dict palette to cover every hue level. Keep the caller's
     # colors and fill any uncolored category with a distinct fallback so the plot
     # never crashes on a missing/partial color_dict.
@@ -1051,14 +1106,19 @@ def plot_outcome_vs_property(
     missing_cats = [c for c in hue_order if c not in palette]
     if missing_cats:
         palette.update(zip(missing_cats, sns.color_palette('husl', len(missing_cats))))
+    # Fixed dot size, applied only when not encoding a column as size (else seaborn's
+    # size/sizes mapping owns 's' and passing both raises).
+    base_dot_size = 55
+    fixed_size = {'s': base_dot_size} if size_property is None else {}
     sns.scatterplot(
         data=plot_df, ax=ax,
         x='x_jittered', y=y_outcome,
-        hue='category', hue_order=hue_order,
+        hue='category', hue_order=draw_order,
         style='r' if len(r_values) > 1 else None,
         size=size_property, sizes=(20, 100),
         palette=palette,
         alpha=0.7, edgecolor='w', linewidth=0.5, zorder=2,
+        **fixed_size,
     )
 
     # --- 7. Highlighted categories (foreground) ---
@@ -1072,8 +1132,11 @@ def plot_outcome_vs_property(
                 style='r' if len(r_values) > 1 else None,
                 size=size_property, sizes=(20, 100),
                 palette=palette,
-                alpha=1.0, edgecolor='black', linewidth=1.8,
+                # 1.3 pt matches the Plotly version's 1.8 px edge at inline DPI (100):
+                # matplotlib linewidth is in points, Plotly's is in pixels.
+                alpha=1.0, edgecolor='black', linewidth=0.8,
                 legend=False, zorder=3,
+                **fixed_size,
             )
 
     # --- 8. Neutral 1/N reference line ---
@@ -1083,9 +1146,10 @@ def plot_outcome_vs_property(
             if x_prop == 'n_nodes':
                 # x encodes N directly: draw the theoretical y = 1/x curve
                 x_range = np.linspace(max(1, n_col.min()), n_col.max(), 300)
-                # Neutral drift baseline: y = 1/N (independent of r)
+                # Neutral drift baseline: y = 1/N (independent of r). zorder 4 keeps it
+                # above both dot layers (background 2, highlights 3).
                 ax.plot(x_range, 1.0 / x_range, color='black', linestyle='--',
-                        linewidth=1.2, label=r'Neutral  $1/N$', zorder=1)
+                        linewidth=1.2, label=r'Neutral  $1/N$', zorder=4)
                 # Analytic complete-graph fixation probability rho(N, r). It depends
                 # on a single r, so only draw it when the data has exactly one r.
                 if len(r_values) == 1:
@@ -1099,18 +1163,37 @@ def plot_outcome_vs_property(
                 n_cv = n_col.std() / n_mean if n_mean > 0 else 1.0
                 if n_cv < 0.05:
                     ax.axhline(1.0 / n_mean, color='black', linestyle=':',
-                               linewidth=1.0, label=f'Neutral (1/N={n_mean:.0f})', zorder=1)
+                               linewidth=1.0, label=f'Neutral (1/N={n_mean:.0f})', zorder=4)
                 # else: N varies too much -- a flat line would be misleading, so skip
 
     # --- 9. Categorical x-axis ticks ---
     if not is_numeric_x and unique_cats is not None:
         ax.set_xticks(range(len(unique_cats)))
         ax.set_xticklabels(unique_cats)
+    elif is_numeric_x:
+        # Human-readable numeric ticks (10000 -> '10K'); harmless for small/fractional x.
+        ax.xaxis.set_major_formatter(FuncFormatter(_human_tick))
+        # If the property is integer-valued (e.g. n_nodes, n_edges, diameter), pin the
+        # locator to integers so matplotlib never invents fractional ticks like 29.5.
+        # Detected from the data, not the name, so it generalises to any integer column
+        # while leaving genuinely fractional ones (density, centralities) alone.
+        _xv = plot_df[x_prop].dropna()
+        if len(_xv) and np.all(_xv == _xv.round()):
+            ax.xaxis.set_major_locator(MaxNLocator(integer=True))
 
     # --- 10. Titles & labels ---
     r_suffix = f"  (r={r_values[0]})" if len(r_values) == 1 else ""
     fig_title = fig_title or f'{xlabel_base}  →  {ylabel}{r_suffix}'
-    ax.set_title(fig_title, fontsize=13, pad=8)
+    # Secondary title: how many Moran runs back each data point (n_grouped is the
+    # per-config run count from aggregation). Use the typical value if it varies.
+    if 'n_grouped' in df.columns and df['n_grouped'].notna().any():
+        reps = int(df['n_grouped'].dropna().mode().iloc[0])
+        ax.set_title(fig_title, fontsize=13, pad=20)
+        ax.text(0.5, 1.012, f'{reps:,} simulation runs per configuration',
+                transform=ax.transAxes, ha='center', va='bottom',
+                fontsize=9, color='dimgray')
+    else:
+        ax.set_title(fig_title, fontsize=13, pad=8)
     ax.set_xlabel(xlabel, fontsize=10)
     ax.set_ylabel(ylabel, fontsize=11)
     _add_property_description(ax, x_prop)
@@ -1123,11 +1206,11 @@ def plot_outcome_vs_property(
             if lbl in highlight_categories:
                 if hasattr(h, 'set_markeredgecolor'):
                     h.set_markeredgecolor('black')
-                    h.set_markeredgewidth(1.8)
+                    h.set_markeredgewidth(1.3)
                     h.set_alpha(1.0)
                 elif hasattr(h, 'set_edgecolor'):
                     h.set_edgecolor('black')
-                    h.set_linewidth(1.8)
+                    h.set_linewidth(1.3)
                     h.set_alpha(1.0)
 
     # Sort category entries; non-category entries (neutral line, r marker styles) follow
@@ -1137,6 +1220,8 @@ def plot_outcome_vs_property(
     _others      = [(l, h) for l, h in zip(labels_leg, handles) if l not in _cat_set]
     labels_leg = [l for l, _ in _sorted_cats + _others]
     handles    = [h for _, h in _sorted_cats + _others]
+    # seaborn's style='r' inserts a bare 'r' sub-header; spell out what r means.
+    labels_leg = ['r  (mutant relative fitness)' if l == 'r' else l for l in labels_leg]
 
     legend = ax.legend(handles=handles, labels=labels_leg,
                        bbox_to_anchor=(1.02, 1), loc='upper left', borderaxespad=0., fontsize=9)
@@ -1145,7 +1230,8 @@ def plot_outcome_vs_property(
         _stamp_batch(fig, batch_name)
     fig.tight_layout()
     # After layout so the legend's measured extent is final.
-    _add_corr_box(ax, stats_text, anchor=legend)
+    if stats_text is not None:
+        _add_corr_box(ax, stats_text, anchor=legend)
     if fig_path is not None and save:
         fig.savefig(fig_path, bbox_inches='tight', dpi=150)
         print(f"[cache] Saved: {fig_path.name}")
@@ -1167,6 +1253,7 @@ def plot_two_property_effect(
     force_recompute=False,
     fig_title=None,
     batch_name=None,
+    corr='spearman',
     show=True,
     save=True,
 ):
@@ -1186,6 +1273,9 @@ def plot_two_property_effect(
         highlight_categories: list of category names to draw with black outlines on top
         descriptions_below: if True, both property glosses are stacked flat below the
             x-axis instead of x-below / y-rotated; often easier to read
+        corr: correlation method for the box annotating each property's correlation
+            with the outcome; None / 'spearman' / 'pearson' (default 'spearman').
+            None suppresses the box entirely.
 
     See the module docstring for the shared output tail (figures_dir,
     force_recompute, fig_title, batch_name, show, save).
@@ -1231,7 +1321,7 @@ def plot_two_property_effect(
         descriptions_below=descriptions_below,
         default_title=default_title, fig_title=fig_title, batch_name=batch_name,
         fig_path=fig_path, show=show, save=save,
-        r_value=r_vals[0] if len(r_vals) == 1 else None,
+        r_value=r_vals[0] if len(r_vals) == 1 else None, corr=corr,
     )
 
 
@@ -1251,6 +1341,7 @@ def plot_two_property_effect_hexbin(
     force_recompute=False,
     fig_title=None,
     batch_name=None,
+    corr='spearman',
     show=True,
     save=True,
 ):
@@ -1274,6 +1365,9 @@ def plot_two_property_effect_hexbin(
             x-axis instead of x-below / y-rotated; often easier to read
         gridsize: number of hexagons across the x-axis (higher = finer grid)
         reduce_C_function: aggregation applied per bin (np.mean, np.median, etc.)
+        corr: correlation method for the box annotating each property's correlation
+            with the outcome; None / 'spearman' / 'pearson' (default 'spearman').
+            None suppresses the box entirely.
 
     See the module docstring for the shared output tail (figures_dir,
     force_recompute, fig_title, batch_name, show, save).
@@ -1329,5 +1423,5 @@ def plot_two_property_effect_hexbin(
         descriptions_below=descriptions_below,
         default_title=default_title, fig_title=fig_title, batch_name=batch_name,
         fig_path=fig_path, show=show, save=save,
-        r_value=r_vals[0] if len(r_vals) == 1 else None,
+        r_value=r_vals[0] if len(r_vals) == 1 else None, corr=corr,
     )
