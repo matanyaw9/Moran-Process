@@ -5,17 +5,18 @@ and roll raw results up to per-(graph, r) fixation statistics.
 Heavy readers (polars, pyarrow) are imported lazily inside the functions that
 need them, so importing this module stays cheap.
 """
+
 import shutil
 from pathlib import Path
 
 import pandas as pd
 
 __all__ = [
-    'RAW_RESULTS_STEM',
-    'PER_JOB_RESULT_STEM',
-    'resolve_results_path',
-    'aggregate_results_no_load',
-    'build_graph_statistics',
+    "RAW_RESULTS_STEM",
+    "PER_JOB_RESULT_STEM",
+    "resolve_results_path",
+    "aggregate_results_no_load",
+    "build_graph_statistics",
 ]
 
 
@@ -64,11 +65,11 @@ def aggregate_results_no_load(batch_dir, delete_temp=False, output_file=None):
     # Detect format: Parquet takes priority over CSV
     parquet_files = sorted(
         tmp_results_path.glob(f"{PER_JOB_RESULT_STEM}_*.parquet"),
-        key=lambda p: int(p.stem.split('_')[-1]),
+        key=lambda p: int(p.stem.split("_")[-1]),
     )
     csv_files = sorted(
         tmp_results_path.glob(f"{PER_JOB_RESULT_STEM}_*.csv"),
-        key=lambda p: int(p.stem.split('_')[-1]),
+        key=lambda p: int(p.stem.split("_")[-1]),
     )
 
     # --- Parquet path ---
@@ -122,11 +123,11 @@ def aggregate_results_no_load(batch_dir, delete_temp=False, output_file=None):
 
     print(f"Found {len(csv_files)} CSV files. Aggregating...")
     try:
-        with open(output_file, 'w', encoding='utf-8') as outfile:
+        with open(output_file, "w", encoding="utf-8") as outfile:
             for i, fpath in enumerate(csv_files):
                 if i > 0 and i % 100 == 0:
                     print(f"  Processed {i}/{len(csv_files)} files...")
-                with open(fpath, 'r', encoding='utf-8') as infile:
+                with open(fpath, "r", encoding="utf-8") as infile:
                     if i == 0:
                         shutil.copyfileobj(infile, outfile)
                     else:
@@ -147,8 +148,9 @@ def aggregate_results_no_load(batch_dir, delete_temp=False, output_file=None):
     return output_file
 
 
-def build_graph_statistics(results_path, df_graphs, graph_statistics_path,
-                           category_filter=None, r_filter=None):
+def build_graph_statistics(
+    results_path, df_graphs, graph_statistics_path, category_filter=None, r_filter=None
+):
     """Aggregate raw simulation results to one row per (graph, r) with fixation statistics.
 
     If graph_statistics_path already exists, loads it directly. Otherwise streams results
@@ -175,32 +177,41 @@ def build_graph_statistics(results_path, df_graphs, graph_statistics_path,
     graph_statistics_path = Path(graph_statistics_path)
 
     if graph_statistics_path.exists():
-        print(f"Aggregated statistics already exist -- loading {graph_statistics_path}...")
+        print(
+            f"Aggregated statistics already exist -- loading {graph_statistics_path}..."
+        )
         analysis_df = pd.read_csv(graph_statistics_path)
     else:
         results_path = Path(results_path)
-        if results_path.suffix == '.parquet':
+        if results_path.suffix == ".parquet":
             lazy_df = pl.scan_parquet(str(results_path))
         else:
             lazy_df = pl.scan_csv(str(results_path))
 
         agg_results_df = (
-            lazy_df
-            .with_columns(
-                pl.when(pl.col('fixation')).then(pl.col('steps')).otherwise(None).alias('steps_success')
+            lazy_df.with_columns(
+                pl.when(pl.col("fixation"))
+                .then(pl.col("steps"))
+                .otherwise(None)
+                .alias("steps_success")
             )
-            .group_by(['wl_hash', 'r', 'graph_name'])
-            .agg([
-                pl.col('fixation').mean().alias('prob_fixation'),
-                pl.col('steps_success').median().alias('median_steps'),
-                pl.col('steps_success').mean().alias('mean_steps'),
-                pl.col('steps_success').std().alias('std_steps'),
-                pl.col('steps_success').quantile(0.25).alias('q25_steps'),
-                pl.col('steps_success').quantile(0.75).alias('q75_steps'),
-                (pl.col('steps_success').quantile(0.75) - pl.col('steps_success').quantile(0.25)).alias('iqr_steps'),
-                pl.col('fixation').count().alias('n_grouped'),
-            ])
-            .collect(engine='streaming')
+            .group_by(["wl_hash", "r", "graph_name"])
+            .agg(
+                [
+                    pl.col("fixation").mean().alias("prob_fixation"),
+                    pl.col("steps_success").median().alias("median_steps"),
+                    pl.col("steps_success").mean().alias("mean_steps"),
+                    pl.col("steps_success").std().alias("std_steps"),
+                    pl.col("steps_success").quantile(0.25).alias("q25_steps"),
+                    pl.col("steps_success").quantile(0.75).alias("q75_steps"),
+                    (
+                        pl.col("steps_success").quantile(0.75)
+                        - pl.col("steps_success").quantile(0.25)
+                    ).alias("iqr_steps"),
+                    pl.col("fixation").count().alias("n_grouped"),
+                ]
+            )
+            .collect(engine="streaming")
             .to_pandas()
         )
 
@@ -209,12 +220,12 @@ def build_graph_statistics(results_path, df_graphs, graph_statistics_path,
         analysis_df = pd.merge(
             agg_results_df,
             df_graphs,
-            on=['wl_hash', 'graph_name'],
-            how='left',
-            suffixes=('', '_db')
+            on=["wl_hash", "graph_name"],
+            how="left",
+            suffixes=("", "_db"),
         )
-        analysis_df['z_order'] = (analysis_df['category'] != 'Random').astype(int)
-        analysis_df = analysis_df.sort_values('z_order').drop(columns='z_order')
+        analysis_df["z_order"] = (analysis_df["category"] != "Random").astype(int)
+        analysis_df = analysis_df.sort_values("z_order").drop(columns="z_order")
         analysis_df.to_csv(graph_statistics_path, index=False)
 
     print("Shape after merging: ", analysis_df.shape)
@@ -224,12 +235,14 @@ def build_graph_statistics(results_path, df_graphs, graph_statistics_path,
 
     if category_filter is not None:
         cats = _as_list(category_filter)
-        analysis_df = analysis_df[analysis_df['category'].isin(cats)].copy()
-        print(f"Filtered to categories {sorted(map(str, cats))}: {len(analysis_df):,} rows")
+        analysis_df = analysis_df[analysis_df["category"].isin(cats)].copy()
+        print(
+            f"Filtered to categories {sorted(map(str, cats))}: {len(analysis_df):,} rows"
+        )
 
     if r_filter is not None:
         rs = _as_list(r_filter)
-        analysis_df = analysis_df[analysis_df['r'].isin(rs)].copy()
+        analysis_df = analysis_df[analysis_df["r"].isin(rs)].copy()
         print(f"Filtered to r in {sorted(rs)}: {len(analysis_df):,} rows")
 
     print(f"Graph statistics columns: {list(analysis_df.columns)}")

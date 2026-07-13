@@ -6,6 +6,7 @@ Deliberately matplotlib-free (stdlib only) so the submission path
 (``process_lab.create_batch_info``) does not pull in the plotting stack. The
 title-card figure built from this metadata lives in ``plots.plot_batch_info_card``.
 """
+
 import sys
 import socket
 import subprocess
@@ -14,9 +15,9 @@ from pathlib import Path
 from datetime import datetime
 
 __all__ = [
-    'load_batch_info',
-    'capture_provenance',
-    'create_batch_info',
+    "load_batch_info",
+    "capture_provenance",
+    "create_batch_info",
 ]
 
 
@@ -60,16 +61,31 @@ def capture_provenance() -> dict:
     }
 
 
-def create_batch_info(batch_dir, name, description="", notes="",
-                      # simulation parameters
-                      r_values=None, n_repeats=None, total_simulations=None,
-                      batch_seed=None, engine=None,
-                      # zoo description
-                      n_graphs=None, graph_types=None, node_sizes=None,
-                      zoo_path=None, zoo_config=None,
-                      # HPC submission
-                      n_requested_jobs=None, queue=None, memory_mb=None,
-                      job_array_name=None, lsf_job_id=None, bsub_command=None) -> dict:
+def create_batch_info(
+    batch_dir,
+    name,
+    description="",
+    notes="",
+    # simulation parameters
+    r_values=None,
+    n_repeats=None,
+    total_simulations=None,
+    batch_seed=None,
+    engine=None,
+    # zoo description
+    n_graphs=None,
+    graph_types=None,
+    node_sizes=None,
+    zoo_path=None,
+    zoo_config=None,
+    # HPC submission
+    n_requested_jobs=None,
+    queue=None,
+    memory_mb=None,
+    job_array_name=None,
+    lsf_job_id=None,
+    bsub_command=None,
+) -> dict:
     """Write a nested, fully-provenanced batch_info.json. Overwrites any existing file.
 
     The intent is that this file alone documents how the batch was created and

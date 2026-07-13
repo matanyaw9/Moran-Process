@@ -23,6 +23,7 @@ needs; per-figure options (colors, r, density, cmap, ...) sit in between.
 Per-function docstrings document only those specifics and refer back here for
 the shared tail.
 """
+
 import textwrap
 from pathlib import Path
 import numpy as np
@@ -36,14 +37,14 @@ from .colors import DEFAULT_FIG_SIZE, GRAPH_PROPERTY_DESCRIPTION, _sort_categori
 from .provenance import _bi_get
 
 __all__ = [
-    'try_load_cached',
-    'plot_batch_info_card',
-    'plot_steps_violin',
-    'plot_steps_pvalue_matrix',
-    'plot_steps_histogram',
-    'plot_outcome_vs_property',
-    'plot_two_property_effect',
-    'plot_two_property_effect_hexbin',
+    "try_load_cached",
+    "plot_batch_info_card",
+    "plot_steps_violin",
+    "plot_steps_pvalue_matrix",
+    "plot_steps_histogram",
+    "plot_outcome_vs_property",
+    "plot_two_property_effect",
+    "plot_two_property_effect_hexbin",
 ]
 
 
@@ -77,6 +78,7 @@ def try_load_cached(path) -> bool:
     if path is not None and Path(path).exists():
         try:
             from IPython.display import Image, display
+
             display(Image(str(path), width=int(DEFAULT_FIG_SIZE[0] * 100)))
             print(f"[cache] Loaded: {Path(path).name}")
             return True
@@ -88,9 +90,15 @@ def try_load_cached(path) -> bool:
 def _stamp_batch(fig, batch_name: str) -> None:
     """Add a source label to the bottom-right corner of the figure."""
     fig.text(
-        0.99, 0.01, f"source: {batch_name}",
-        fontsize=8, color="#666666", ha="right", va="bottom",
-        style="italic", transform=fig.transFigure,
+        0.99,
+        0.01,
+        f"source: {batch_name}",
+        fontsize=8,
+        color="#666666",
+        ha="right",
+        va="bottom",
+        style="italic",
+        transform=fig.transFigure,
     )
 
 
@@ -120,7 +128,7 @@ def _gloss_text(prop, width):
     plain = textwrap.fill(f"{name}: {desc}", width=width)
     # Bold just the leading "Name:" (spaces escaped for mathtext); the rest stays italic.
     bold_name = r"$\bf{" + name.replace(" ", r"\ ") + r":}$"
-    return bold_name + plain[len(name) + 1:]
+    return bold_name + plain[len(name) + 1 :]
 
 
 def _add_property_description(ax, prop, axis="x", width=90) -> None:
@@ -140,14 +148,27 @@ def _add_property_description(ax, prop, axis="x", width=90) -> None:
     if axis == "y":
         # Sit outside (left of) the y-axis title so the gloss never overlaps it.
         ax.text(
-            -0.22, 0.5, text, transform=ax.transAxes,
-            ha="center", va="center", rotation=90, rotation_mode="anchor",
-            math_fontfamily=_DESC_MATH_FONT, **_DESC_FONT,
+            -0.22,
+            0.5,
+            text,
+            transform=ax.transAxes,
+            ha="center",
+            va="center",
+            rotation=90,
+            rotation_mode="anchor",
+            math_fontfamily=_DESC_MATH_FONT,
+            **_DESC_FONT,
         )
     else:
         ax.text(
-            0.5, -0.16, text, transform=ax.transAxes,
-            ha="center", va="top", math_fontfamily=_DESC_MATH_FONT, **_DESC_FONT,
+            0.5,
+            -0.16,
+            text,
+            transform=ax.transAxes,
+            ha="center",
+            va="top",
+            math_fontfamily=_DESC_MATH_FONT,
+            **_DESC_FONT,
         )
 
 
@@ -163,8 +184,14 @@ def _add_property_descriptions_below(ax, props, width=90) -> None:
     if not blocks:
         return
     ax.text(
-        0.5, -0.16,  "\n"+"\n".join(blocks), transform=ax.transAxes,
-        ha="center", va="top", math_fontfamily=_DESC_MATH_FONT, **_DESC_FONT,
+        0.5,
+        -0.16,
+        "\n" + "\n".join(blocks),
+        transform=ax.transAxes,
+        ha="center",
+        va="top",
+        math_fontfamily=_DESC_MATH_FONT,
+        **_DESC_FONT,
     )
 
 
@@ -179,23 +206,38 @@ def _add_corr_box(ax, text, anchor=None, default=(0.03, 0.97), fontsize=9) -> No
 
     With no anchor, falls back to `default` (axes-fraction, inside top-left).
     """
-    box = dict(boxstyle="round,pad=0.4", facecolor="white", alpha=0.9, edgecolor="lightgray")
+    box = dict(
+        boxstyle="round,pad=0.4", facecolor="white", alpha=0.9, edgecolor="lightgray"
+    )
     if anchor is None:
         ax.text(
-            *default, text, transform=ax.transAxes, fontsize=fontsize,
-            ha="left", va="top", bbox=box, zorder=5,
+            *default,
+            text,
+            transform=ax.transAxes,
+            fontsize=fontsize,
+            ha="left",
+            va="top",
+            bbox=box,
+            zorder=5,
         )
         return
     ax.figure.canvas.draw()  # realize the anchor so it has a measurable extent
     disp = anchor.get_window_extent()
     x_left, y_bottom = ax.transAxes.inverted().transform((disp.x0, disp.y0))
     ax.text(
-        x_left, y_bottom - 0.03, text, transform=ax.transAxes, fontsize=fontsize,
-        ha="left", va="top", bbox=box, zorder=5,
+        x_left,
+        y_bottom - 0.03,
+        text,
+        transform=ax.transAxes,
+        fontsize=fontsize,
+        ha="left",
+        va="top",
+        bbox=box,
+        zorder=5,
     )
 
 
-def _safe_corr(a, b, method='pearson'):
+def _safe_corr(a, b, method="pearson"):
     """Correlation of two aligned series, ignoring NaN/inf pairs.
 
     `method` is passed through to pandas ('pearson' or 'spearman').
@@ -217,11 +259,11 @@ def _human_tick(x, _pos=None):
     Values below 1000 (including fractional ones like density) are left
     as-is, so the same formatter is safe across every x property.
     """
-    for div, suffix in ((1e9, 'B'), (1e6, 'M'), (1e3, 'K')):
+    for div, suffix in ((1e9, "B"), (1e6, "M"), (1e3, "K")):
         if abs(x) >= div:
             v = x / div
-            return f'{v:.0f}{suffix}' if v == int(v) else f'{v:g}{suffix}'
-    return f'{x:g}'
+            return f"{v:.0f}{suffix}" if v == int(v) else f"{v:g}{suffix}"
+    return f"{x:g}"
 
 
 def _outcome_color_norm(values, *, log_dynamic_range=50.0, clip_pct=(2, 98)):
@@ -255,11 +297,27 @@ def _outcome_color_norm(values, *, log_dynamic_range=50.0, clip_pct=(2, 98)):
 
 
 def _finish_two_property_figure(
-    fig, ax, plot_df, x_prop, y_prop, outcome,
+    fig,
+    ax,
+    plot_df,
+    x_prop,
+    y_prop,
+    outcome,
     *,
-    cmap, norm, cbar_ax, color_dict, highlight_categories,
-    descriptions_below, default_title, fig_title, batch_name,
-    fig_path, show, save, r_value=None, corr='spearman',
+    cmap,
+    norm,
+    cbar_ax,
+    color_dict,
+    highlight_categories,
+    descriptions_below,
+    default_title,
+    fig_title,
+    batch_name,
+    fig_path,
+    show,
+    save,
+    r_value=None,
+    corr="spearman",
 ):
     """Draw the shared tail of the two-property figures (scatter and hexbin).
 
@@ -277,32 +335,50 @@ def _finish_two_property_figure(
     """
     # Highlight specific categories on top, colored by the same outcome scale.
     if highlight_categories:
-        hl_df = plot_df[plot_df['category'].isin(highlight_categories)]
+        hl_df = plot_df[plot_df["category"].isin(highlight_categories)]
         if not hl_df.empty:
-            for cat, grp in hl_df.groupby('category'):
+            for cat, grp in hl_df.groupby("category"):
                 ax.scatter(
-                    grp[x_prop], grp[y_prop],
-                    c=grp[outcome], norm=norm, cmap=cmap,
-                    s=120, linewidths=1.8,
-                    edgecolors=color_dict.get(cat, 'black'),
-                    zorder=3, label=cat,
+                    grp[x_prop],
+                    grp[y_prop],
+                    c=grp[outcome],
+                    norm=norm,
+                    cmap=cmap,
+                    s=120,
+                    linewidths=1.8,
+                    edgecolors=color_dict.get(cat, "black"),
+                    zorder=3,
+                    label=cat,
                 )
 
     # Analytic reference lines: only meaningful when x encodes N and y is the
     # fixation probability. Mirrors the curves drawn in plot_outcome_vs_property.
     ref_lines_drawn = False
-    if x_prop == 'n_nodes' and y_prop == 'prob_fixation':
-        n_col = plot_df['n_nodes'].dropna()
+    if x_prop == "n_nodes" and y_prop == "prob_fixation":
+        n_col = plot_df["n_nodes"].dropna()
         if len(n_col) > 0:
             x_range = np.linspace(max(1, n_col.min()), n_col.max(), 300)
             # Neutral drift baseline y = 1/N (independent of r).
-            ax.plot(x_range, 1.0 / x_range, color='black', linestyle='--',
-                    linewidth=1.4, label=r'Neutral  $1/N$', zorder=4)
+            ax.plot(
+                x_range,
+                1.0 / x_range,
+                color="black",
+                linestyle="--",
+                linewidth=1.4,
+                label=r"Neutral  $1/N$",
+                zorder=4,
+            )
             # Complete-graph Moran fixation probability rho(N, r); needs one r.
             if r_value is not None:
-                ax.plot(x_range, basic_moran_fixation_prob(x_range, r_value),
-                        color='tab:red', linestyle='--', linewidth=1.4,
-                        label=r'Moran  $\rho=\frac{1-1/r}{1-1/r^{N}}$', zorder=4)
+                ax.plot(
+                    x_range,
+                    basic_moran_fixation_prob(x_range, r_value),
+                    color="tab:red",
+                    linestyle="--",
+                    linewidth=1.4,
+                    label=r"Moran  $\rho=\frac{1-1/r}{1-1/r^{N}}$",
+                    zorder=4,
+                )
             ref_lines_drawn = True
 
     # Correlation box: corr is None / 'spearman' / 'pearson', matching
@@ -313,7 +389,8 @@ def _finish_two_property_figure(
         corr_y = _safe_corr(plot_df[y_prop], plot_df[outcome], method=corr)
         corr_text = (
             f"{corr.capitalize()} corr with {outcome.replace('_', ' ')}\n"
-            + "-" * 30 + "\n"
+            + "-" * 30
+            + "\n"
             + f"{x_prop}: {corr_x:.3f}\n"
             + f"{y_prop}: {corr_y:.3f}"
         )
@@ -326,15 +403,19 @@ def _finish_two_property_figure(
         _add_property_description(ax, x_prop, axis="x")
         _add_property_description(ax, y_prop, axis="y", width=60)
     ax.set_title(fig_title or default_title, fontsize=13)
-    ax.grid(True, linestyle='--', alpha=0.4)
+    ax.grid(True, linestyle="--", alpha=0.4)
 
     # One legend covering whatever labeled artists exist (category highlights
     # and/or the analytic reference lines). Title only reads "Category" when the
     # only labeled artists are highlights. Its final position is set after layout
     # (below the colorbar); the anchor here is just a sensible pre-layout value.
     if highlight_categories or ref_lines_drawn:
-        legend_title = "Category" if highlight_categories and not ref_lines_drawn else None
-        legend = ax.legend(title=legend_title, bbox_to_anchor=(1.02, 1.0), loc='upper left')
+        legend_title = (
+            "Category" if highlight_categories and not ref_lines_drawn else None
+        )
+        legend = ax.legend(
+            title=legend_title, bbox_to_anchor=(1.02, 1.0), loc="upper left"
+        )
     else:
         legend = None
 
@@ -362,7 +443,7 @@ def _finish_two_property_figure(
     if corr_text is not None:
         _add_corr_box(ax, corr_text, anchor=legend if legend is not None else cbar_ax)
     if fig_path is not None and save:
-        fig.savefig(fig_path, bbox_inches='tight', dpi=150)
+        fig.savefig(fig_path, bbox_inches="tight", dpi=150)
         print(f"[cache] Saved: {fig_path.name}")
     if show:
         plt.show()
@@ -385,128 +466,198 @@ def plot_batch_info_card(
         show: set False to build the figure without displaying it
         save: set False to skip writing the PNG even when figures_dir is given
     """
-    fig_path = _resolve_figure_path(figures_dir, 'batch_info_card')
+    fig_path = _resolve_figure_path(figures_dir, "batch_info_card")
     if not force_recompute and try_load_cached(fig_path):
         return
 
     # Read fields from the nested batch_info (with flat fallback for legacy files).
-    name              = batch_info.get('name', 'Unknown Batch')
-    description       = batch_info.get('description', '')
-    notes             = batch_info.get('notes', '')
-    created_at        = _bi_get(batch_info, 'created_at') or _bi_get(batch_info, 'date_created', default='')
-    graph_types       = _bi_get(batch_info, 'zoo', 'graph_types', default=[])
-    node_sizes        = _bi_get(batch_info, 'zoo', 'node_sizes', default=[])
-    n_graphs          = _bi_get(batch_info, 'zoo', 'n_graphs')
-    r_values          = _bi_get(batch_info, 'simulation', 'r_values', default=[])
-    n_repeats         = _bi_get(batch_info, 'simulation', 'n_repeats')
-    total_simulations = _bi_get(batch_info, 'simulation', 'total_simulations')
-    engine            = _bi_get(batch_info, 'simulation', 'engine')
-    n_requested_jobs  = _bi_get(batch_info, 'hpc', 'n_requested_jobs')
-    queue             = _bi_get(batch_info, 'hpc', 'queue')
-    memory_mb         = _bi_get(batch_info, 'hpc', 'memory_mb')
-    lsf_job_id        = _bi_get(batch_info, 'hpc', 'lsf_job_id')
-    git_commit        = _bi_get(batch_info, 'provenance', 'git_commit')
-    git_branch        = _bi_get(batch_info, 'provenance', 'git_branch')
-    git_dirty         = _bi_get(batch_info, 'provenance', 'git_dirty')
-    hostname          = _bi_get(batch_info, 'provenance', 'hostname')
+    name = batch_info.get("name", "Unknown Batch")
+    description = batch_info.get("description", "")
+    notes = batch_info.get("notes", "")
+    created_at = _bi_get(batch_info, "created_at") or _bi_get(
+        batch_info, "date_created", default=""
+    )
+    graph_types = _bi_get(batch_info, "zoo", "graph_types", default=[])
+    node_sizes = _bi_get(batch_info, "zoo", "node_sizes", default=[])
+    n_graphs = _bi_get(batch_info, "zoo", "n_graphs")
+    r_values = _bi_get(batch_info, "simulation", "r_values", default=[])
+    n_repeats = _bi_get(batch_info, "simulation", "n_repeats")
+    total_simulations = _bi_get(batch_info, "simulation", "total_simulations")
+    engine = _bi_get(batch_info, "simulation", "engine")
+    n_requested_jobs = _bi_get(batch_info, "hpc", "n_requested_jobs")
+    queue = _bi_get(batch_info, "hpc", "queue")
+    memory_mb = _bi_get(batch_info, "hpc", "memory_mb")
+    lsf_job_id = _bi_get(batch_info, "hpc", "lsf_job_id")
+    git_commit = _bi_get(batch_info, "provenance", "git_commit")
+    git_branch = _bi_get(batch_info, "provenance", "git_branch")
+    git_dirty = _bi_get(batch_info, "provenance", "git_dirty")
+    hostname = _bi_get(batch_info, "provenance", "hostname")
 
     # 16:9 canvas so the card drops straight onto a widescreen slide.
     fig, ax = plt.subplots(figsize=(12.8, 7.2))
-    ax.axis('off')
-    fig.patch.set_facecolor('white')
+    ax.axis("off")
+    fig.patch.set_facecolor("white")
 
     # Title
-    ax.text(0.05, 0.93, name, transform=ax.transAxes,
-            fontsize=30, fontweight='bold', va='top', ha='left', color='#1a1a1a')
+    ax.text(
+        0.05,
+        0.93,
+        name,
+        transform=ax.transAxes,
+        fontsize=30,
+        fontweight="bold",
+        va="top",
+        ha="left",
+        color="#1a1a1a",
+    )
 
     # Subtitle: date + engine (muted, just under the title)
     subtitle_bits = []
     if created_at:
-        subtitle_bits.append(str(created_at).replace('T', '  '))
+        subtitle_bits.append(str(created_at).replace("T", "  "))
     if engine:
-        subtitle_bits.append(f'{engine} engine')
+        subtitle_bits.append(f"{engine} engine")
     if subtitle_bits:
-        ax.text(0.05, 0.845, '   ·   '.join(subtitle_bits), transform=ax.transAxes,
-                fontsize=13, va='top', ha='left', color='#888888')
+        ax.text(
+            0.05,
+            0.845,
+            "   ·   ".join(subtitle_bits),
+            transform=ax.transAxes,
+            fontsize=13,
+            va="top",
+            ha="left",
+            color="#888888",
+        )
 
     # Horizontal rule under the title block
-    ax.plot([0.04, 0.96], [0.80, 0.80], transform=ax.transAxes,
-            color='#cccccc', linewidth=1.2, solid_capstyle='butt')
+    ax.plot(
+        [0.04, 0.96],
+        [0.80, 0.80],
+        transform=ax.transAxes,
+        color="#cccccc",
+        linewidth=1.2,
+        solid_capstyle="butt",
+    )
 
     # Description
     if description:
         wrapped = textwrap.fill(description, width=95)
-        ax.text(0.05, 0.74, wrapped, transform=ax.transAxes,
-                fontsize=14, va='top', ha='left', color='#333333',
-                style='italic', linespacing=1.5)
+        ax.text(
+            0.05,
+            0.74,
+            wrapped,
+            transform=ax.transAxes,
+            fontsize=14,
+            va="top",
+            ha="left",
+            color="#333333",
+            style="italic",
+            linespacing=1.5,
+        )
 
     # Dense grouped metadata rows: label on the left, a single packed value line.
     def _meta_row(label, value, y):
-        ax.text(0.05, y, label, transform=ax.transAxes,
-                fontsize=13, va='top', ha='left', fontweight='bold', color='#444444')
-        ax.text(0.20, y, value, transform=ax.transAxes,
-                fontsize=13, va='top', ha='left', color='#222222')
+        ax.text(
+            0.05,
+            y,
+            label,
+            transform=ax.transAxes,
+            fontsize=13,
+            va="top",
+            ha="left",
+            fontweight="bold",
+            color="#444444",
+        )
+        ax.text(
+            0.20,
+            y,
+            value,
+            transform=ax.transAxes,
+            fontsize=13,
+            va="top",
+            ha="left",
+            color="#222222",
+        )
 
     def _join(parts):
-        return '      '.join(p for p in parts if p)
+        return "      ".join(p for p in parts if p)
 
     y = 0.56
     row_h = 0.105
 
     zoo_parts = []
     if n_graphs is not None:
-        zoo_parts.append(f'{int(n_graphs):,} graphs')
+        zoo_parts.append(f"{int(n_graphs):,} graphs")
     if graph_types:
         zoo_parts.append(f'types: {", ".join(graph_types)}')
     if node_sizes:
         zoo_parts.append(f'sizes: {", ".join(str(n) for n in node_sizes)}')
     if zoo_parts:
-        _meta_row('Zoo', _join(zoo_parts), y);  y -= row_h
+        _meta_row("Zoo", _join(zoo_parts), y)
+        y -= row_h
 
     sim_parts = []
     if r_values:
         sim_parts.append(f'r = {", ".join(str(r) for r in r_values)}')
     if n_repeats is not None:
-        sim_parts.append(f'{int(n_repeats):,} reps/config')
+        sim_parts.append(f"{int(n_repeats):,} reps/config")
     if total_simulations is not None:
-        sim_parts.append(f'{int(total_simulations):,} total sims')
+        sim_parts.append(f"{int(total_simulations):,} total sims")
     if sim_parts:
-        _meta_row('Simulation', _join(sim_parts), y);  y -= row_h
+        _meta_row("Simulation", _join(sim_parts), y)
+        y -= row_h
 
     hpc_parts = []
     if n_requested_jobs is not None:
-        hpc_parts.append(f'{int(n_requested_jobs):,} jobs')
+        hpc_parts.append(f"{int(n_requested_jobs):,} jobs")
     if queue:
-        hpc_parts.append(f'queue: {queue}')
+        hpc_parts.append(f"queue: {queue}")
     if memory_mb is not None:
-        hpc_parts.append(f'{int(memory_mb):,} MB/job')
+        hpc_parts.append(f"{int(memory_mb):,} MB/job")
     if lsf_job_id:
-        hpc_parts.append(f'job {lsf_job_id}')
+        hpc_parts.append(f"job {lsf_job_id}")
     if hpc_parts:
-        _meta_row('HPC', _join(hpc_parts), y);  y -= row_h
+        _meta_row("HPC", _join(hpc_parts), y)
+        y -= row_h
 
     # Provenance + notes footer (muted, bottom of the slide)
     footer_bits = []
     if git_commit:
-        commit = f'commit {git_commit[:8]}'
+        commit = f"commit {git_commit[:8]}"
         if git_branch:
-            commit += f' ({git_branch})'
+            commit += f" ({git_branch})"
         if git_dirty:
-            commit += ' +dirty'
+            commit += " +dirty"
         footer_bits.append(commit)
     if hostname:
         footer_bits.append(hostname)
     if footer_bits:
-        ax.text(0.05, 0.13, '   ·   '.join(footer_bits), transform=ax.transAxes,
-                fontsize=10, va='top', ha='left', color='#aaaaaa')
+        ax.text(
+            0.05,
+            0.13,
+            "   ·   ".join(footer_bits),
+            transform=ax.transAxes,
+            fontsize=10,
+            va="top",
+            ha="left",
+            color="#aaaaaa",
+        )
     if notes:
-        ax.text(0.05, 0.07, textwrap.fill(f'Notes: {notes}', width=110),
-                transform=ax.transAxes,
-                fontsize=10, va='top', ha='left', color='#999999', style='italic')
+        ax.text(
+            0.05,
+            0.07,
+            textwrap.fill(f"Notes: {notes}", width=110),
+            transform=ax.transAxes,
+            fontsize=10,
+            va="top",
+            ha="left",
+            color="#999999",
+            style="italic",
+        )
 
     fig.tight_layout()
     if fig_path is not None and save:
-        fig.savefig(fig_path, bbox_inches='tight', dpi=200, facecolor='white')
+        fig.savefig(fig_path, bbox_inches="tight", dpi=200, facecolor="white")
         print(f"[cache] Saved: {fig_path.name}")
     if show:
         plt.show()
@@ -538,16 +689,20 @@ def _load_fixation_steps_by_category(
     import polars as pl
 
     _rp = Path(results_path)
-    _scanner = pl.scan_parquet(str(_rp)) if _rp.suffix == '.parquet' else pl.scan_csv(str(_rp))
-    _has_r = 'r' in _scanner.collect_schema().names()
+    _scanner = (
+        pl.scan_parquet(str(_rp)) if _rp.suffix == ".parquet" else pl.scan_csv(str(_rp))
+    )
+    _has_r = "r" in _scanner.collect_schema().names()
 
-    lf = _scanner.select(['wl_hash', 'steps', 'fixation'] + (['r'] if _has_r else []))
+    lf = _scanner.select(["wl_hash", "steps", "fixation"] + (["r"] if _has_r else []))
 
     # Pooling several r values would silently overlay distributions, so resolve to a
     # single r before collecting.
     r_suffix = ""
     if _has_r:
-        r_available = sorted(lf.select(pl.col('r')).unique().collect().to_series().to_list())
+        r_available = sorted(
+            lf.select(pl.col("r")).unique().collect().to_series().to_list()
+        )
         if r is None:
             if len(r_available) == 1:
                 r = r_available[0]
@@ -558,45 +713,59 @@ def _load_fixation_steps_by_category(
                 )
         elif r not in r_available:
             raise ValueError(f"r={r} not found in results; available: {r_available}")
-        lf = lf.filter(pl.col('r') == r)
+        lf = lf.filter(pl.col("r") == r)
         r_suffix = f"  (r={r})"
 
     # Attach category to every run (lazy). Totals per category must be counted before
     # the fixation filter so we can report rho = fixations / total runs, hence the join
     # happens here rather than after filtering.
     lf = lf.join(
-        pl.from_pandas(df_graphs[['wl_hash', 'category']]).lazy(),
-        on='wl_hash',
-        how='left',
+        pl.from_pandas(df_graphs[["wl_hash", "category"]]).lazy(),
+        on="wl_hash",
+        how="left",
     )
 
     # Total runs per category (the rho denominator), counted before non-fixation rows
     # are dropped. Streamed, so the full frame is never materialised.
-    _tot = lf.group_by('category').agg(pl.len().alias('total')).collect(engine='streaming')
-    total_counts = dict(zip(_tot.get_column('category').to_list(), _tot.get_column('total').to_list()))
+    _tot = (
+        lf.group_by("category").agg(pl.len().alias("total")).collect(engine="streaming")
+    )
+    total_counts = dict(
+        zip(_tot.get_column("category").to_list(), _tot.get_column("total").to_list())
+    )
 
     # Only fixation events are ever drawn/tested, so materialise just those.
-    merged_raw = lf.filter(pl.col('fixation')).collect()
+    merged_raw = lf.filter(pl.col("fixation")).collect()
 
-    _vc = merged_raw['category'].value_counts()
-    fixation_counts = dict(zip(_vc.get_column('category').to_list(), _vc.get_column('count').to_list()))
+    _vc = merged_raw["category"].value_counts()
+    fixation_counts = dict(
+        zip(_vc.get_column("category").to_list(), _vc.get_column("count").to_list())
+    )
 
     # Subsample each category down to the cap with a within-category shuffle (uniform
     # sample), keeping every violin's KDE and every pairwise test cheap and faithful.
     subsampled = False
     if max_points_per_category is not None:
         largest_category = max(fixation_counts.values(), default=None)
-        subsampled = largest_category is not None and largest_category > max_points_per_category
+        subsampled = (
+            largest_category is not None and largest_category > max_points_per_category
+        )
         merged_raw = (
-            merged_raw
-            .with_columns(
-                pl.int_range(pl.len()).shuffle(seed=0).over('category').alias('_rn')
+            merged_raw.with_columns(
+                pl.int_range(pl.len()).shuffle(seed=0).over("category").alias("_rn")
             )
-            .filter(pl.col('_rn') < max_points_per_category)
-            .drop('_rn')
+            .filter(pl.col("_rn") < max_points_per_category)
+            .drop("_rn")
         )
 
-    return merged_raw.to_pandas(), fixation_counts, total_counts, r, r_suffix, subsampled
+    return (
+        merged_raw.to_pandas(),
+        fixation_counts,
+        total_counts,
+        r,
+        r_suffix,
+        subsampled,
+    )
 
 
 def plot_steps_violin(
@@ -643,22 +812,27 @@ def plot_steps_violin(
     if color_dict is None:
         color_dict = {}
 
-    fig_path = _resolve_figure_path(figures_dir, 'plot_steps_violin')
+    fig_path = _resolve_figure_path(figures_dir, "plot_steps_violin")
     if not force_recompute and try_load_cached(fig_path):
         return
 
     if categories is None:
-        categories = _sort_categories(df_graphs['category'].dropna().unique().tolist())
+        categories = _sort_categories(df_graphs["category"].dropna().unique().tolist())
 
-    merged_raw, fixation_counts, total_counts, r, r_suffix, subsampled = _load_fixation_steps_by_category(
-        results_path, df_graphs, r=r, max_points_per_category=max_points_per_category,
+    merged_raw, fixation_counts, total_counts, r, r_suffix, subsampled = (
+        _load_fixation_steps_by_category(
+            results_path,
+            df_graphs,
+            r=r,
+            max_points_per_category=max_points_per_category,
+        )
     )
 
     # The loader left-joins every graph, so merged_raw carries categories outside the
     # requested set (e.g. 'Grid'). Because hue='category' equals x='category', seaborn
     # maps hue to every value present in the data and demands a palette key for each,
     # ignoring `order`. Drop out-of-filter rows so hue levels stay a subset of palette.
-    merged_raw = merged_raw[merged_raw['category'].isin(categories)]
+    merged_raw = merged_raw[merged_raw["category"].isin(categories)]
 
     # seaborn needs a palette entry for every hue level; fill any category the
     # caller did not color with a distinct husl fallback so a partial color_dict
@@ -666,22 +840,23 @@ def plot_steps_violin(
     palette = {cat: color_dict[cat] for cat in categories if cat in color_dict}
     missing_cats = [c for c in categories if c not in palette]
     if missing_cats:
-        palette.update(zip(missing_cats, sns.color_palette('husl', len(missing_cats))))
+        palette.update(zip(missing_cats, sns.color_palette("husl", len(missing_cats))))
 
     fig, ax = plt.subplots(figsize=(max(12, len(categories) * 1.1), 7))
     sns.violinplot(
         data=merged_raw,
-        x='category',
-        y='steps',
+        x="category",
+        y="steps",
         order=categories,
-        hue='category',
+        hue="category",
         palette=palette,
         legend=False,
-        inner='box',
+        inner="box",
         linewidth=1.2,
         ax=ax,
     )
-    fig_title = fig_title or f'Distribution of Steps to Fixation by Category{r_suffix}'
+    fig_title = fig_title or f"Distribution of Steps to Fixation by Category{r_suffix}"
+
     # Annotate each violin with its fixation probability and the raw fixation count
     # (n) on a second label line. rho = fixations / total runs makes clear that an
     # unequal n reflects a different success rate, not a different number of runs.
@@ -694,23 +869,30 @@ def plot_steps_violin(
     ax.set_xticks(range(len(categories)))
     ax.set_xticklabels(
         [_violin_label(cat) for cat in categories],
-        rotation=45, ha='right', fontsize=10,
+        rotation=45,
+        ha="right",
+        fontsize=10,
     )
-    ax.set_xlabel('Category', fontsize=13)
-    ax.set_ylabel('Steps to Fixation', fontsize=13)
+    ax.set_xlabel("Category", fontsize=13)
+    ax.set_ylabel("Steps to Fixation", fontsize=13)
     ax.set_title(fig_title, fontsize=14)
     if batch_name:
         _stamp_batch(fig, batch_name)
     if subsampled:
         fig.text(
-            0.01, 0.01,
+            0.01,
+            0.01,
             f"violins drawn from a random subsample of {max_points_per_category:,} points/category",
-            fontsize=8, color="#666666", ha="left", va="bottom",
-            style="italic", transform=fig.transFigure,
+            fontsize=8,
+            color="#666666",
+            ha="left",
+            va="bottom",
+            style="italic",
+            transform=fig.transFigure,
         )
     fig.tight_layout()
     if fig_path is not None and save:
-        fig.savefig(fig_path, bbox_inches='tight', dpi=150)
+        fig.savefig(fig_path, bbox_inches="tight", dpi=150)
         print(f"[cache] Saved: {fig_path.name}")
     if show:
         plt.show()
@@ -719,12 +901,12 @@ def plot_steps_violin(
 def _significance_stars(p):
     """Conventional significance markers for a (corrected) p-value."""
     if p < 0.001:
-        return '***'
+        return "***"
     if p < 0.01:
-        return '**'
+        return "**"
     if p < 0.05:
-        return '*'
-    return 'ns'
+        return "*"
+    return "ns"
 
 
 def plot_steps_pvalue_matrix(
@@ -772,15 +954,20 @@ def plot_steps_pvalue_matrix(
     if save and not figures_dir:
         raise ValueError("figures_dir must be provided if save=True")
 
-    fig_path = _resolve_figure_path(figures_dir, 'plot_steps_pvalue_matrix')
+    fig_path = _resolve_figure_path(figures_dir, "plot_steps_pvalue_matrix")
     if not force_recompute and try_load_cached(fig_path):
         return
 
     if categories is None:
-        categories = _sort_categories(df_graphs['category'].dropna().unique().tolist())
+        categories = _sort_categories(df_graphs["category"].dropna().unique().tolist())
 
-    merged, fixation_counts, _total_counts, r, r_suffix, subsampled = _load_fixation_steps_by_category(
-        results_path, df_graphs, r=r, max_points_per_category=max_points_per_category,
+    merged, fixation_counts, _total_counts, r, r_suffix, subsampled = (
+        _load_fixation_steps_by_category(
+            results_path,
+            df_graphs,
+            r=r,
+            max_points_per_category=max_points_per_category,
+        )
     )
 
     # Only categories with fixation data can be tested.
@@ -789,16 +976,18 @@ def plot_steps_pvalue_matrix(
         print("[skip] need at least two categories with fixation events to compare")
         return
 
-    groups = {c: merged.loc[merged['category'] == c, 'steps'].to_numpy() for c in categories}
+    groups = {
+        c: merged.loc[merged["category"] == c, "steps"].to_numpy() for c in categories
+    }
 
     k = len(categories)
     n_pairs = k * (k - 1) // 2
-    effect = np.full((k, k), np.nan)   # rank-biserial, antisymmetric
-    annot = np.full((k, k), '', dtype=object)
+    effect = np.full((k, k), np.nan)  # rank-biserial, antisymmetric
+    annot = np.full((k, k), "", dtype=object)
     for i in range(k):
         for j in range(i + 1, k):
             a, b = groups[categories[i]], groups[categories[j]]
-            u, p = mannwhitneyu(a, b, alternative='two-sided')
+            u, p = mannwhitneyu(a, b, alternative="two-sided")
             # Common-language effect P(row > col) = U/(n_a*n_b); rank-biserial = 2*P - 1.
             rb = 2.0 * u / (len(a) * len(b)) - 1.0
             p_corr = min(p * n_pairs, 1.0)  # Bonferroni over all pairs
@@ -813,40 +1002,46 @@ def plot_steps_pvalue_matrix(
         effect,
         mask=np.eye(k, dtype=bool),
         annot=annot,
-        fmt='',
-        cmap='coolwarm',
+        fmt="",
+        cmap="coolwarm",
         center=0.0,
         vmin=-1.0,
         vmax=1.0,
         square=True,
         linewidths=0.5,
-        linecolor='white',
-        cbar_kws={'label': 'rank-biserial effect (row slower → +1)'},
-        annot_kws={'fontsize': 8},
+        linecolor="white",
+        cbar_kws={"label": "rank-biserial effect (row slower → +1)"},
+        annot_kws={"fontsize": 8},
         xticklabels=categories,
         yticklabels=categories,
         ax=ax,
     )
-    fig_title = fig_title or f'Pairwise steps-to-fixation significance{r_suffix}'
+    fig_title = fig_title or f"Pairwise steps-to-fixation significance{r_suffix}"
     ax.set_title(fig_title, fontsize=14)
-    ax.set_xticklabels(categories, rotation=45, ha='right', fontsize=9)
+    ax.set_xticklabels(categories, rotation=45, ha="right", fontsize=9)
     ax.set_yticklabels(categories, rotation=0, fontsize=9)
     if batch_name:
         _stamp_batch(fig, batch_name)
     cap_note = (
         f"  n capped at {max_points_per_category:,}/category"
-        if max_points_per_category is not None else ""
+        if max_points_per_category is not None
+        else ""
     )
     fig.text(
-        0.01, 0.01,
+        0.01,
+        0.01,
         "color = signed rank-biserial effect; stars = Bonferroni Mann-Whitney p "
         f"(*** <0.001, ** <0.01, * <0.05).{cap_note}",
-        fontsize=8, color="#666666", ha="left", va="bottom",
-        style="italic", transform=fig.transFigure,
+        fontsize=8,
+        color="#666666",
+        ha="left",
+        va="bottom",
+        style="italic",
+        transform=fig.transFigure,
     )
     fig.tight_layout()
     if fig_path is not None and save:
-        fig.savefig(fig_path, bbox_inches='tight', dpi=150)
+        fig.savefig(fig_path, bbox_inches="tight", dpi=150)
         print(f"[cache] Saved: {fig_path.name}")
     if show:
         plt.show()
@@ -854,7 +1049,7 @@ def plot_steps_pvalue_matrix(
 
 def plot_steps_histogram(
     df,
-    metric='mean_steps',
+    metric="mean_steps",
     category=None,
     color_dict=None,
     bins=50,
@@ -883,44 +1078,51 @@ def plot_steps_histogram(
     if color_dict is None:
         color_dict = {}
 
-    r_vals = sorted(df['r'].dropna().unique().tolist()) if 'r' in df.columns else []
+    r_vals = sorted(df["r"].dropna().unique().tolist()) if "r" in df.columns else []
     r_suffix = f"  (r={r_vals[0]})" if len(r_vals) == 1 else ""
     # Unlike the violin/matrix loaders, the histogram does not resolve to a single
     # r; with several r values present it pools them into one distribution. Warn so
     # that pooling is never silent (the blank r_suffix is the only other hint).
     if len(r_vals) > 1:
-        print(f"[plot_steps_histogram] pooling {len(r_vals)} r values {r_vals} into one "
-              f"histogram; pass a single-r df to separate them")
+        print(
+            f"[plot_steps_histogram] pooling {len(r_vals)} r values {r_vals} into one "
+            f"histogram; pass a single-r df to separate them"
+        )
 
-    cat_key = category or 'all'
-    fig_path = _resolve_figure_path(figures_dir, 'plot_steps_histogram',
-                                    metric=metric, category=cat_key)
+    cat_key = category or "all"
+    fig_path = _resolve_figure_path(
+        figures_dir, "plot_steps_histogram", metric=metric, category=cat_key
+    )
     if not force_recompute and try_load_cached(fig_path):
         return
 
-    plot_df = df if category is None else df.loc[df['category'] == category]
+    plot_df = df if category is None else df.loc[df["category"] == category]
     data = plot_df[metric].dropna()
 
     if data.empty:
-        print(f"[plot_steps_histogram] No data for metric={metric!r}, category={category!r}")
+        print(
+            f"[plot_steps_histogram] No data for metric={metric!r}, category={category!r}"
+        )
         return
 
-    label = category or 'All Graphs'
-    metric_label = metric.replace('_', ' ').title()
-    bar_color = color_dict.get(category, '#4c72b0') if category else '#4c72b0'
+    label = category or "All Graphs"
+    metric_label = metric.replace("_", " ").title()
+    bar_color = color_dict.get(category, "#4c72b0") if category else "#4c72b0"
 
     fig, ax = plt.subplots(figsize=DEFAULT_FIG_SIZE)
-    ax.hist(data, bins=bins, color=bar_color, edgecolor='black', alpha=0.7)
+    ax.hist(data, bins=bins, color=bar_color, edgecolor="black", alpha=0.7)
     ax.set_xlabel(metric_label, fontsize=12)
-    ax.set_ylabel('Frequency', fontsize=12)
-    ax.set_title(fig_title or f'Distribution of {metric_label} - {label}{r_suffix}', fontsize=14)
-    ax.grid(axis='y', alpha=0.3)
+    ax.set_ylabel("Frequency", fontsize=12)
+    ax.set_title(
+        fig_title or f"Distribution of {metric_label} - {label}{r_suffix}", fontsize=14
+    )
+    ax.grid(axis="y", alpha=0.3)
 
     if batch_name:
         _stamp_batch(fig, batch_name)
     fig.tight_layout()
     if fig_path is not None and save:
-        fig.savefig(fig_path, bbox_inches='tight', dpi=150)
+        fig.savefig(fig_path, bbox_inches="tight", dpi=150)
         print(f"[cache] Saved: {fig_path.name}")
     if show:
         plt.show()
@@ -929,7 +1131,7 @@ def plot_steps_histogram(
 def plot_outcome_vs_property(
     df,
     x_prop,
-    y_outcome='prob_fixation',
+    y_outcome="prob_fixation",
     color_dict=None,
     density_threshold=50,
     highlight_categories=None,
@@ -940,7 +1142,7 @@ def plot_outcome_vs_property(
     force_recompute=False,
     fig_title=None,
     batch_name=None,
-    corr='spearman',
+    corr="spearman",
     show=True,
     save=True,
 ):
@@ -974,42 +1176,44 @@ def plot_outcome_vs_property(
     # clobber the unfiltered one (and vice versa).
     cache_key = dict(x=x_prop, y=y_outcome)
     if filter_categories is not None:
-        cache_key['cats'] = "-".join(map(str, filter_categories))
-    fig_path = _resolve_figure_path(figures_dir, 'plot_outcome_vs_property', **cache_key)
+        cache_key["cats"] = "-".join(map(str, filter_categories))
+    fig_path = _resolve_figure_path(
+        figures_dir, "plot_outcome_vs_property", **cache_key
+    )
     if not force_recompute and try_load_cached(fig_path):
         return
 
     if filter_categories is not None:
-        df = df[df['category'].isin(filter_categories)]
+        df = df[df["category"].isin(filter_categories)]
 
     # --- 1. Labels ---
     prob_label = "Fixation Probability ($P_{fix}$)"
-    is_prob = (y_outcome == 'prob_fixation')
-    ylabel = prob_label if is_prob else y_outcome.replace('_', ' ').title()
+    is_prob = y_outcome == "prob_fixation"
+    ylabel = prob_label if is_prob else y_outcome.replace("_", " ").title()
 
-    if x_prop == 'prob_fixation':
+    if x_prop == "prob_fixation":
         xlabel_base = prob_label
-    elif x_prop == 'std_steps':
-        xlabel_base = 'Std. Steps to Fixation'
+    elif x_prop == "std_steps":
+        xlabel_base = "Std. Steps to Fixation"
     else:
-        xlabel_base = x_prop.replace('_', ' ').title()
+        xlabel_base = x_prop.replace("_", " ").title()
 
     # The property gloss is rendered separately (see _add_property_description) so it
     # can carry its own muted, distinct font; the axis label stays clean.
     xlabel = xlabel_base
 
     # --- 2. Correlation (per r value, compactly); corr is None / 'spearman' / 'pearson' ---
-    r_values = sorted(df['r'].dropna().unique()) if 'r' in df.columns else []
+    r_values = sorted(df["r"].dropna().unique()) if "r" in df.columns else []
     stats_text = None
     if corr:
-        cols_for_corr = [x_prop, y_outcome] + (['r'] if r_values else [])
+        cols_for_corr = [x_prop, y_outcome] + (["r"] if r_values else [])
         clean_df = df[cols_for_corr].replace([np.inf, -np.inf], np.nan).dropna()
         header = f"{corr.capitalize()} corr"
 
         if len(r_values) > 1:
             corr_lines = [header, "-" * 18]
             for rv in r_values:
-                sub = clean_df[clean_df['r'] == rv]
+                sub = clean_df[clean_df["r"] == rv]
                 c = _safe_corr(sub[x_prop], sub[y_outcome], method=corr)
                 corr_lines.append(f"r={rv}: {c:.3f}" if pd.notna(c) else f"r={rv}: N/A")
         else:
@@ -1022,16 +1226,18 @@ def plot_outcome_vs_property(
     is_numeric_x = pd.api.types.is_numeric_dtype(plot_df[x_prop])
 
     if is_numeric_x:
-        plot_df[x_prop] = pd.to_numeric(plot_df[x_prop], errors='coerce')
-        plot_df['x_plot'] = plot_df[x_prop].round(3)
+        plot_df[x_prop] = pd.to_numeric(plot_df[x_prop], errors="coerce")
+        plot_df["x_plot"] = plot_df[x_prop].round(3)
         unique_cats = None
     else:
         plot_df = plot_df.dropna(subset=[x_prop])
         unique_cats = sorted(plot_df[x_prop].unique())
-        plot_df['x_plot'] = plot_df[x_prop].map({v: i for i, v in enumerate(unique_cats)})
+        plot_df["x_plot"] = plot_df[x_prop].map(
+            {v: i for i, v in enumerate(unique_cats)}
+        )
 
     # --- 4. Auto-detect discrete x (few unique values relative to data size) ---
-    valid_x = plot_df['x_plot'].dropna()
+    valid_x = plot_df["x_plot"].dropna()
     n_unique = valid_x.nunique()
     n_total = len(valid_x)
     is_discrete_x = is_numeric_x and (n_unique <= max(20, n_total * 0.02))
@@ -1066,33 +1272,37 @@ def plot_outcome_vs_property(
             violin_width = 0.5
 
         for x_val in dense_x_values:
-            subset = plot_df.loc[plot_df['x_plot'] == x_val, y_outcome].dropna()
+            subset = plot_df.loc[plot_df["x_plot"] == x_val, y_outcome].dropna()
             if len(subset) > 0:
-                parts = ax.violinplot(subset, positions=[x_val], widths=violin_width,
-                                      showmeans=False, showextrema=False)
-                for pc in parts['bodies']:
-                    pc.set_facecolor('whitesmoke')
-                    pc.set_edgecolor('lightgray')
+                parts = ax.violinplot(
+                    subset,
+                    positions=[x_val],
+                    widths=violin_width,
+                    showmeans=False,
+                    showextrema=False,
+                )
+                for pc in parts["bodies"]:
+                    pc.set_facecolor("whitesmoke")
+                    pc.set_edgecolor("lightgray")
                     pc.set_alpha(1.0)
 
         # Vectorized jitter -- much faster than apply(func, axis=1).
         # Seeded local RNG so the same data always jitters to the same x-offsets
         # (a fresh np.random draw would shift dots on every regeneration). Seed 0
         # matches the deterministic-plot convention used for the violin subsample.
-        mask = plot_df['x_plot'].isin(dense_x_values) & plot_df['x_plot'].notna()
+        mask = plot_df["x_plot"].isin(dense_x_values) & plot_df["x_plot"].notna()
         jitter_half = violin_width * 0.15
-        plot_df['x_jittered'] = plot_df['x_plot'].copy().astype(float)
+        plot_df["x_jittered"] = plot_df["x_plot"].copy().astype(float)
         if mask.any():
             jitter_rng = np.random.default_rng(0)
-            plot_df.loc[mask, 'x_jittered'] = (
-                plot_df.loc[mask, 'x_plot']
-                + jitter_rng.uniform(-jitter_half, jitter_half, size=int(mask.sum()))
-            )
+            plot_df.loc[mask, "x_jittered"] = plot_df.loc[
+                mask, "x_plot"
+            ] + jitter_rng.uniform(-jitter_half, jitter_half, size=int(mask.sum()))
     else:
-        plot_df['x_jittered'] = plot_df['x_plot']
+        plot_df["x_jittered"] = plot_df["x_plot"]
 
     # --- 6. Scatter (background) ---
-    hue_order = _sort_categories(plot_df['category'].dropna().unique().tolist())
+    hue_order = _sort_categories(plot_df["category"].dropna().unique().tolist())
     # Draw order is the REVERSE of legend order. matplotlib paints last-on-top, and
     # _sort_categories puts 'Random' last (the right reading order for the legend),
     # which would paint the large, pale Random cloud OVER the biological categories.
@@ -1105,65 +1315,98 @@ def plot_outcome_vs_property(
     palette = dict(color_dict)
     missing_cats = [c for c in hue_order if c not in palette]
     if missing_cats:
-        palette.update(zip(missing_cats, sns.color_palette('husl', len(missing_cats))))
+        palette.update(zip(missing_cats, sns.color_palette("husl", len(missing_cats))))
     # Fixed dot size, applied only when not encoding a column as size (else seaborn's
     # size/sizes mapping owns 's' and passing both raises).
     base_dot_size = 55
-    fixed_size = {'s': base_dot_size} if size_property is None else {}
+    fixed_size = {"s": base_dot_size} if size_property is None else {}
     sns.scatterplot(
-        data=plot_df, ax=ax,
-        x='x_jittered', y=y_outcome,
-        hue='category', hue_order=draw_order,
-        style='r' if len(r_values) > 1 else None,
-        size=size_property, sizes=(20, 100),
+        data=plot_df,
+        ax=ax,
+        x="x_jittered",
+        y=y_outcome,
+        hue="category",
+        hue_order=draw_order,
+        style="r" if len(r_values) > 1 else None,
+        size=size_property,
+        sizes=(20, 100),
         palette=palette,
-        alpha=0.7, edgecolor='w', linewidth=0.5, zorder=2,
+        alpha=0.7,
+        edgecolor="w",
+        linewidth=0.5,
+        zorder=2,
         **fixed_size,
     )
 
     # --- 7. Highlighted categories (foreground) ---
     if highlight_categories:
-        hl_df = plot_df[plot_df['category'].isin(highlight_categories)]
+        hl_df = plot_df[plot_df["category"].isin(highlight_categories)]
         if not hl_df.empty:
             sns.scatterplot(
-                data=hl_df, ax=ax,
-                x='x_jittered', y=y_outcome,
-                hue='category', hue_order=hue_order,
-                style='r' if len(r_values) > 1 else None,
-                size=size_property, sizes=(20, 100),
+                data=hl_df,
+                ax=ax,
+                x="x_jittered",
+                y=y_outcome,
+                hue="category",
+                hue_order=hue_order,
+                style="r" if len(r_values) > 1 else None,
+                size=size_property,
+                sizes=(20, 100),
                 palette=palette,
                 # 1.3 pt matches the Plotly version's 1.8 px edge at inline DPI (100):
                 # matplotlib linewidth is in points, Plotly's is in pixels.
-                alpha=1.0, edgecolor='black', linewidth=0.8,
-                legend=False, zorder=3,
+                alpha=1.0,
+                edgecolor="black",
+                linewidth=0.8,
+                legend=False,
+                zorder=3,
                 **fixed_size,
             )
 
     # --- 8. Neutral 1/N reference line ---
-    if is_prob and 'n_nodes' in plot_df.columns:
-        n_col = plot_df['n_nodes'].dropna()
+    if is_prob and "n_nodes" in plot_df.columns:
+        n_col = plot_df["n_nodes"].dropna()
         if len(n_col) > 0:
-            if x_prop == 'n_nodes':
+            if x_prop == "n_nodes":
                 # x encodes N directly: draw the theoretical y = 1/x curve
                 x_range = np.linspace(max(1, n_col.min()), n_col.max(), 300)
                 # Neutral drift baseline: y = 1/N (independent of r). zorder 4 keeps it
                 # above both dot layers (background 2, highlights 3).
-                ax.plot(x_range, 1.0 / x_range, color='black', linestyle='--',
-                        linewidth=1.2, label=r'Neutral  $1/N$', zorder=4)
+                ax.plot(
+                    x_range,
+                    1.0 / x_range,
+                    color="black",
+                    linestyle="--",
+                    linewidth=1.2,
+                    label=r"Neutral  $1/N$",
+                    zorder=4,
+                )
                 # Analytic complete-graph fixation probability rho(N, r). It depends
                 # on a single r, so only draw it when the data has exactly one r.
                 if len(r_values) == 1:
                     r = r_values[0]
-                    ax.plot(x_range, basic_moran_fixation_prob(x_range, r),
-                            color='tab:blue', linestyle='--', linewidth=1.2,
-                            label=r'Moran  $\rho=\frac{1-1/r}{1-1/r^{N}}$', zorder=1)
+                    ax.plot(
+                        x_range,
+                        basic_moran_fixation_prob(x_range, r),
+                        color="tab:blue",
+                        linestyle="--",
+                        linewidth=1.2,
+                        label=r"Moran  $\rho=\frac{1-1/r}{1-1/r^{N}}$",
+                        zorder=1,
+                    )
             else:
                 # Only draw a flat line when N is homogeneous (CV < 5%)
                 n_mean = n_col.mean()
                 n_cv = n_col.std() / n_mean if n_mean > 0 else 1.0
                 if n_cv < 0.05:
-                    ax.axhline(1.0 / n_mean, color='black', linestyle=':',
-                               linewidth=1.0, label=f'Neutral (1/N={n_mean:.0f})', zorder=4)
+                    ax.axhline(
+                        1.0 / n_mean,
+                        color="black",
+                        linestyle=":",
+                        linewidth=1.0,
+                        label=f"Neutral (1/N={n_mean:.0f})",
+                        zorder=4,
+                    )
                 # else: N varies too much -- a flat line would be misleading, so skip
 
     # --- 9. Categorical x-axis ticks ---
@@ -1183,48 +1426,61 @@ def plot_outcome_vs_property(
 
     # --- 10. Titles & labels ---
     r_suffix = f"  (r={r_values[0]})" if len(r_values) == 1 else ""
-    fig_title = fig_title or f'{xlabel_base}  →  {ylabel}{r_suffix}'
+    fig_title = fig_title or f"{xlabel_base}  →  {ylabel}{r_suffix}"
     # Secondary title: how many Moran runs back each data point (n_grouped is the
     # per-config run count from aggregation). Use the typical value if it varies.
-    if 'n_grouped' in df.columns and df['n_grouped'].notna().any():
-        reps = int(df['n_grouped'].dropna().mode().iloc[0])
+    if "n_grouped" in df.columns and df["n_grouped"].notna().any():
+        reps = int(df["n_grouped"].dropna().mode().iloc[0])
         ax.set_title(fig_title, fontsize=13, pad=20)
-        ax.text(0.5, 1.012, f'{reps:,} simulation runs per configuration',
-                transform=ax.transAxes, ha='center', va='bottom',
-                fontsize=9, color='dimgray')
+        ax.text(
+            0.5,
+            1.012,
+            f"{reps:,} simulation runs per configuration",
+            transform=ax.transAxes,
+            ha="center",
+            va="bottom",
+            fontsize=9,
+            color="dimgray",
+        )
     else:
         ax.set_title(fig_title, fontsize=13, pad=8)
     ax.set_xlabel(xlabel, fontsize=10)
     ax.set_ylabel(ylabel, fontsize=11)
     _add_property_description(ax, x_prop)
-    ax.grid(True, linestyle='--', alpha=0.4)
+    ax.grid(True, linestyle="--", alpha=0.4)
 
     # --- 12. Legend with highlight styling and sorted order ---
     handles, labels_leg = ax.get_legend_handles_labels()
     if highlight_categories:
         for h, lbl in zip(handles, labels_leg):
             if lbl in highlight_categories:
-                if hasattr(h, 'set_markeredgecolor'):
-                    h.set_markeredgecolor('black')
+                if hasattr(h, "set_markeredgecolor"):
+                    h.set_markeredgecolor("black")
                     h.set_markeredgewidth(1.3)
                     h.set_alpha(1.0)
-                elif hasattr(h, 'set_edgecolor'):
-                    h.set_edgecolor('black')
+                elif hasattr(h, "set_edgecolor"):
+                    h.set_edgecolor("black")
                     h.set_linewidth(1.3)
                     h.set_alpha(1.0)
 
     # Sort category entries; non-category entries (neutral line, r marker styles) follow
-    _cat_set = set(plot_df['category'].dropna().unique())
+    _cat_set = set(plot_df["category"].dropna().unique())
     _handle_map = dict(zip(labels_leg, handles))
     _sorted_cats = [(l, _handle_map[l]) for l in hue_order if l in _handle_map]
-    _others      = [(l, h) for l, h in zip(labels_leg, handles) if l not in _cat_set]
+    _others = [(l, h) for l, h in zip(labels_leg, handles) if l not in _cat_set]
     labels_leg = [l for l, _ in _sorted_cats + _others]
-    handles    = [h for _, h in _sorted_cats + _others]
+    handles = [h for _, h in _sorted_cats + _others]
     # seaborn's style='r' inserts a bare 'r' sub-header; spell out what r means.
-    labels_leg = ['r  (mutant relative fitness)' if l == 'r' else l for l in labels_leg]
+    labels_leg = ["r  (mutant relative fitness)" if l == "r" else l for l in labels_leg]
 
-    legend = ax.legend(handles=handles, labels=labels_leg,
-                       bbox_to_anchor=(1.02, 1), loc='upper left', borderaxespad=0., fontsize=9)
+    legend = ax.legend(
+        handles=handles,
+        labels=labels_leg,
+        bbox_to_anchor=(1.02, 1),
+        loc="upper left",
+        borderaxespad=0.0,
+        fontsize=9,
+    )
 
     if batch_name:
         _stamp_batch(fig, batch_name)
@@ -1233,7 +1489,7 @@ def plot_outcome_vs_property(
     if stats_text is not None:
         _add_corr_box(ax, stats_text, anchor=legend)
     if fig_path is not None and save:
-        fig.savefig(fig_path, bbox_inches='tight', dpi=150)
+        fig.savefig(fig_path, bbox_inches="tight", dpi=150)
         print(f"[cache] Saved: {fig_path.name}")
     if show:
         plt.show()
@@ -1243,9 +1499,9 @@ def plot_two_property_effect(
     df,
     x_prop,
     y_prop,
-    outcome='mean_steps',
+    outcome="mean_steps",
     color_dict=None,
-    cmap='viridis',
+    cmap="viridis",
     highlight_categories=None,
     descriptions_below=False,
     *,
@@ -1253,7 +1509,7 @@ def plot_two_property_effect(
     force_recompute=False,
     fig_title=None,
     batch_name=None,
-    corr='spearman',
+    corr="spearman",
     show=True,
     save=True,
 ):
@@ -1285,15 +1541,16 @@ def plot_two_property_effect(
     if color_dict is None:
         color_dict = {}
 
-    r_vals = sorted(df['r'].dropna().unique().tolist()) if 'r' in df.columns else []
+    r_vals = sorted(df["r"].dropna().unique().tolist()) if "r" in df.columns else []
     r_suffix = f"  (r={r_vals[0]})" if len(r_vals) == 1 else ""
 
-    fig_path = _resolve_figure_path(figures_dir, 'plot_two_property_effect',
-                                    x=x_prop, y=y_prop, outcome=outcome)
+    fig_path = _resolve_figure_path(
+        figures_dir, "plot_two_property_effect", x=x_prop, y=y_prop, outcome=outcome
+    )
     if not force_recompute and try_load_cached(fig_path):
         return
 
-    cols = [x_prop, y_prop, outcome, 'category']
+    cols = [x_prop, y_prop, outcome, "category"]
     plot_df = df[cols].replace([np.inf, -np.inf], np.nan).dropna()
 
     if plot_df.empty:
@@ -1303,9 +1560,15 @@ def plot_two_property_effect(
     fig, ax = plt.subplots(figsize=DEFAULT_FIG_SIZE)
     norm = _outcome_color_norm(plot_df[outcome])
     sc = ax.scatter(
-        plot_df[x_prop], plot_df[y_prop],
-        c=plot_df[outcome], norm=norm, cmap=cmap,
-        alpha=0.6, s=40, linewidths=0, zorder=2,
+        plot_df[x_prop],
+        plot_df[y_prop],
+        c=plot_df[outcome],
+        norm=norm,
+        cmap=cmap,
+        alpha=0.6,
+        s=40,
+        linewidths=0,
+        zorder=2,
     )
     cbar = fig.colorbar(sc, ax=ax, label=outcome.replace("_", " ").title())
 
@@ -1315,13 +1578,26 @@ def plot_two_property_effect(
         f"{y_prop.replace('_', ' ').title()}\non {outcome_label}{r_suffix}"
     )
     _finish_two_property_figure(
-        fig, ax, plot_df, x_prop, y_prop, outcome,
-        cmap=cmap, norm=norm, cbar_ax=cbar.ax,
-        color_dict=color_dict, highlight_categories=highlight_categories,
+        fig,
+        ax,
+        plot_df,
+        x_prop,
+        y_prop,
+        outcome,
+        cmap=cmap,
+        norm=norm,
+        cbar_ax=cbar.ax,
+        color_dict=color_dict,
+        highlight_categories=highlight_categories,
         descriptions_below=descriptions_below,
-        default_title=default_title, fig_title=fig_title, batch_name=batch_name,
-        fig_path=fig_path, show=show, save=save,
-        r_value=r_vals[0] if len(r_vals) == 1 else None, corr=corr,
+        default_title=default_title,
+        fig_title=fig_title,
+        batch_name=batch_name,
+        fig_path=fig_path,
+        show=show,
+        save=save,
+        r_value=r_vals[0] if len(r_vals) == 1 else None,
+        corr=corr,
     )
 
 
@@ -1329,9 +1605,9 @@ def plot_two_property_effect_hexbin(
     df,
     x_prop,
     y_prop,
-    outcome='mean_steps',
+    outcome="mean_steps",
     color_dict=None,
-    cmap='viridis',
+    cmap="viridis",
     highlight_categories=None,
     descriptions_below=False,
     gridsize=25,
@@ -1341,7 +1617,7 @@ def plot_two_property_effect_hexbin(
     force_recompute=False,
     fig_title=None,
     batch_name=None,
-    corr='spearman',
+    corr="spearman",
     show=True,
     save=True,
 ):
@@ -1377,15 +1653,20 @@ def plot_two_property_effect_hexbin(
     if color_dict is None:
         color_dict = {}
 
-    r_vals = sorted(df['r'].dropna().unique().tolist()) if 'r' in df.columns else []
+    r_vals = sorted(df["r"].dropna().unique().tolist()) if "r" in df.columns else []
     r_suffix = f"  (r={r_vals[0]})" if len(r_vals) == 1 else ""
 
-    fig_path = _resolve_figure_path(figures_dir, 'plot_two_property_effect_hexbin',
-                                    x=x_prop, y=y_prop, outcome=outcome)
+    fig_path = _resolve_figure_path(
+        figures_dir,
+        "plot_two_property_effect_hexbin",
+        x=x_prop,
+        y=y_prop,
+        outcome=outcome,
+    )
     if not force_recompute and try_load_cached(fig_path):
         return
 
-    cols = [x_prop, y_prop, outcome, 'category']
+    cols = [x_prop, y_prop, outcome, "category"]
     plot_df = df[cols].replace([np.inf, -np.inf], np.nan).dropna()
 
     if plot_df.empty:
@@ -1398,7 +1679,8 @@ def plot_two_property_effect_hexbin(
     # colors stay on a single, readable scale instead of a dark-crowded linear one.
     norm = _outcome_color_norm(plot_df[outcome])
     hb = ax.hexbin(
-        plot_df[x_prop], plot_df[y_prop],
+        plot_df[x_prop],
+        plot_df[y_prop],
         C=plot_df[outcome],
         gridsize=gridsize,
         cmap=cmap,
@@ -1410,18 +1692,31 @@ def plot_two_property_effect_hexbin(
     cbar = fig.colorbar(hb, ax=ax, label=outcome.replace("_", " ").title())
 
     outcome_label = outcome.replace("_", " ").title()
-    reduce_name = getattr(reduce_C_function, '__name__', str(reduce_C_function))
+    reduce_name = getattr(reduce_C_function, "__name__", str(reduce_C_function))
     default_title = (
         f"Combined effect of {x_prop.replace('_', ' ').title()} & "
         f"{y_prop.replace('_', ' ').title()}\non {outcome_label}"
         f" (hex={reduce_name}){r_suffix}"
     )
     _finish_two_property_figure(
-        fig, ax, plot_df, x_prop, y_prop, outcome,
-        cmap=cmap, norm=norm, cbar_ax=cbar.ax,
-        color_dict=color_dict, highlight_categories=highlight_categories,
+        fig,
+        ax,
+        plot_df,
+        x_prop,
+        y_prop,
+        outcome,
+        cmap=cmap,
+        norm=norm,
+        cbar_ax=cbar.ax,
+        color_dict=color_dict,
+        highlight_categories=highlight_categories,
         descriptions_below=descriptions_below,
-        default_title=default_title, fig_title=fig_title, batch_name=batch_name,
-        fig_path=fig_path, show=show, save=save,
-        r_value=r_vals[0] if len(r_vals) == 1 else None, corr=corr,
+        default_title=default_title,
+        fig_title=fig_title,
+        batch_name=batch_name,
+        fig_path=fig_path,
+        show=show,
+        save=save,
+        r_value=r_vals[0] if len(r_vals) == 1 else None,
+        corr=corr,
     )

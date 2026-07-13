@@ -7,6 +7,7 @@ runs simulations from a GraphCore shard never imports the plotting/analysis
 stack. Each name is resolved (and cached) on first access, so the flat API
 (`from moran_process import GraphZoo`) keeps working exactly as before.
 """
+
 import importlib
 
 # Public name -> "submodule:attribute". Nothing here is imported until accessed.

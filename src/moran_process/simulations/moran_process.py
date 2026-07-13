@@ -13,8 +13,13 @@ class MoranProcess(SimulationProcess):
     Terminates at fixation (all 1) or extinction (all 0).
     """
 
-    def __init__(self, graph_core, selection_coefficient: float = 1.0,
-                 max_steps: int = 1_000_000, seed=None):
+    def __init__(
+        self,
+        graph_core,
+        selection_coefficient: float = 1.0,
+        max_steps: int = 1_000_000,
+        seed=None,
+    ):
         super().__init__(graph_core, max_steps, seed=seed)
         self.r = selection_coefficient
         self.mutant_count: int = 0

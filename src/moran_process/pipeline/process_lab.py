@@ -20,6 +20,7 @@ from moran_process.analysis.analysis_utils import create_batch_info
 
 log = logging.getLogger(__name__)
 
+
 def _parse_memory_mb(memory) -> int:
     """Convert a human-readable memory string to MB (integer) for LSF rusage.
 
@@ -51,25 +52,35 @@ def _parse_lsf_job_id(bsub_stdout: str) -> str | None:
     if not bsub_stdout:
         return None
     import re
+
     m = re.search(r"Job <(\d+)>", bsub_stdout)
     return m.group(1) if m else None
 
 
 class ProcessLab:
-    """ Manages multiple process runs and stores their results"""
-    def __init__(self):                     
-        """
-        """
-    def run_comparative_study(self, graphs_zoo, r_values, n_repeats=100, print_time=True, output_path=None, engine="cpp"):
+    """Manages multiple process runs and stores their results"""
+
+    def __init__(self):
+        """ """
+
+    def run_comparative_study(
+        self,
+        graphs_zoo,
+        r_values,
+        n_repeats=100,
+        print_time=True,
+        output_path=None,
+        engine="cpp",
+    ):
         """
         Run comparative study across multiple graphs and selection coefficients.
-        
+
         :param graphs: List of instantiated PopulationGraph objects
         :param r_values: List of floats (selection coefficients)
         :param n_repeats: Number of repetitions per configuration
         :param print_time: Whether to print timing information for each run
-        :param output_path: Optional path to save results CSV. If provided, results will be 
-                           appended to existing file or create new file. Can be absolute or 
+        :param output_path: Optional path to save results CSV. If provided, results will be
+                           appended to existing file or create new file. Can be absolute or
                            relative path (e.g., 'simulation_data/results.csv')
         :return: DataFrame with all results
         """
@@ -82,9 +93,15 @@ class ProcessLab:
         # Total iterations for progress bar
         total_sims = len(graphs_zoo) * len(r_values) * n_repeats
 
-        log.info("--- Starting Study: %d Graphs x %d r-vals x %d = %d repeats (engine=%s) ---",
-                 len(graphs_zoo), len(r_values), n_repeats, total_sims, engine)
-        
+        log.info(
+            "--- Starting Study: %d Graphs x %d r-vals x %d = %d repeats (engine=%s) ---",
+            len(graphs_zoo),
+            len(r_values),
+            n_repeats,
+            total_sims,
+            engine,
+        )
+
         # We can optimize by converting graphs to adjacency lists ONCE
         for graph_obj in graphs_zoo:
             # Convert once per graph; reused across all r values and repeats
@@ -105,25 +122,31 @@ class ProcessLab:
                     }
                     all_results.append(record)
                     if print_time:
-                        seconds = raw_result['duration']
-                        log.info("Graph: %s, r: %s, Fixation: %s, n_nodes: %d, Steps: %s, Time: %.4fs",
-                                 graph_obj.name, r, raw_result['fixation'],
-                                 graph_obj.number_of_nodes(), raw_result['steps'], seconds)
+                        seconds = raw_result["duration"]
+                        log.info(
+                            "Graph: %s, r: %s, Fixation: %s, n_nodes: %d, Steps: %s, Time: %.4fs",
+                            graph_obj.name,
+                            r,
+                            raw_result["fixation"],
+                            graph_obj.number_of_nodes(),
+                            raw_result["steps"],
+                            seconds,
+                        )
 
         log.info("Done.")
         df = pd.DataFrame(all_results)
-        
+
         # Save to CSV if output_path is provided
         if output_path:
             ProcessLab.save_results(df, output_path)
-        
+
         return df
-    
+
     @staticmethod
     def save_results(df, output_path):
         """
         Save results to CSV file, appending to existing file if it exists.
-        
+
         :param df: DataFrame with results to save
         :param output_path: Path to CSV file
         """
@@ -131,12 +154,16 @@ class ProcessLab:
         output_dir = os.path.dirname(output_path)
         if output_dir:
             os.makedirs(output_dir, exist_ok=True)
-        
+
         # Append to existing CSV if it exists, otherwise create new
         if os.path.exists(output_path):
             existing_df = pd.read_csv(output_path)
             combined_df = pd.concat([existing_df, df], ignore_index=True)
-            log.info("Appending %d new rows to existing CSV with %d rows", len(df), len(existing_df))
+            log.info(
+                "Appending %d new rows to existing CSV with %d rows",
+                len(df),
+                len(existing_df),
+            )
             combined_df.to_csv(output_path, index=False)
             log.info("Total rows in CSV: %d", len(combined_df))
         else:
@@ -144,27 +171,27 @@ class ProcessLab:
             log.info("Created new CSV file with %d rows", len(df))
 
         log.info("Results saved to: %s", output_path)
-     
 
     # --- HPC SUBMISSION ENGINE ---
-    def submit_jobs(self,
-                    zoo_path,
-                    n_graphs,
-                    r_values,
-                    batch_name,
-                    batch_dir,
-                    n_repeats=10,
-                    n_requested_jobs=1,
-                    queue="short",
-                    memory="2GB",
-                    graph_types=None,
-                    node_sizes=None,
-                    description="",
-                    notes="",
-                    batch_seed=None,
-                    engine="cpp",
-                    zoo_config=None,
-                    ):
+    def submit_jobs(
+        self,
+        zoo_path,
+        n_graphs,
+        r_values,
+        batch_name,
+        batch_dir,
+        n_repeats=10,
+        n_requested_jobs=1,
+        queue="short",
+        memory="2GB",
+        graph_types=None,
+        node_sizes=None,
+        description="",
+        notes="",
+        batch_seed=None,
+        engine="cpp",
+        zoo_config=None,
+    ):
         """
         1. Dumps all graphs to 'graphs.pkl'
         2. Creates 'task_manifest.csv' (The Huge Table)
@@ -177,14 +204,21 @@ class ProcessLab:
             that file alone. main.py assembles it; everything else here is
             captured automatically.
         """
-        log.info("Submitting batch '%s' (engine=%s, %d jobs, queue=%s)",
-                 batch_name, engine, n_requested_jobs, queue)
+        log.info(
+            "Submitting batch '%s' (engine=%s, %d jobs, queue=%s)",
+            batch_name,
+            engine,
+            n_requested_jobs,
+            queue,
+        )
 
         # Create subdirs for logs and results
         if os.path.exists(batch_dir):
-            log.warning("Batch directory %s already exists. Appending/Overwriting.", batch_name)
+            log.warning(
+                "Batch directory %s already exists. Appending/Overwriting.", batch_name
+            )
 
-        tmp_dir = os.path.join(batch_dir, 'tmp')
+        tmp_dir = os.path.join(batch_dir, "tmp")
         os.makedirs(tmp_dir, exist_ok=True)
         results_dir = os.path.join(tmp_dir, "results")
         os.makedirs(results_dir, exist_ok=True)
@@ -198,12 +232,14 @@ class ProcessLab:
         # 3. Generate Task Manifest (The Huge Table)
         # We expand the loops into a list of rows
         manifest_path = os.path.join(tmp_dir, "task_manifest.csv")
-        manifest_df = ProcessLab._create_task_list(n_graphs,
-                                                   r_values,
-                                                   n_repeats,
-                                                   n_requested_jobs,
-                                                   output_path=manifest_path,
-                                                   batch_seed=batch_seed)
+        manifest_df = ProcessLab._create_task_list(
+            n_graphs,
+            r_values,
+            n_repeats,
+            n_requested_jobs,
+            output_path=manifest_path,
+            batch_seed=batch_seed,
+        )
 
         log.info("Created manifest with %d rows.", len(manifest_df))
 
@@ -216,7 +252,9 @@ class ProcessLab:
         log.info("Zoo loaded: %d graphs.", len(graph_zoo))
 
         zoo_shards_dir = os.path.join(tmp_dir, "zoo_shards")
-        manifest_df = ProcessLab._write_zoo_shards(manifest_df, graph_zoo, zoo_shards_dir)
+        manifest_df = ProcessLab._write_zoo_shards(
+            manifest_df, graph_zoo, zoo_shards_dir
+        )
         del graph_zoo  # free the full zoo; shards are on disk now
 
         manifest_df.to_csv(manifest_path, index=False)
@@ -230,21 +268,33 @@ class ProcessLab:
 
         cmd_job = [
             "bsub",
-            "-q", queue,
-            "-J", f"batch_{batch_name}[1-{n_requested_jobs}]",
-            "-o", os.path.join(logs_dir, "job_%J_%I.out"),
-            "-e", os.path.join(logs_dir, "job_%J_%I.err"),
-            "-R", f"rusage[mem={memory_mb}]",
-            "-env", "OMP_NUM_THREADS=1, MKL_NUM_THREADS=1, OPENBLAS_NUM_THREADS=1, PYTHONPATH=src",
+            "-q",
+            queue,
+            "-J",
+            f"batch_{batch_name}[1-{n_requested_jobs}]",
+            "-o",
+            os.path.join(logs_dir, "job_%J_%I.out"),
+            "-e",
+            os.path.join(logs_dir, "job_%J_%I.err"),
+            "-R",
+            f"rusage[mem={memory_mb}]",
+            "-env",
+            "OMP_NUM_THREADS=1, MKL_NUM_THREADS=1, OPENBLAS_NUM_THREADS=1, PYTHONPATH=src",
         ]
 
         cmd_process = [
-            python_exec, "-u",
-            "-m", "moran_process.pipeline.worker_lsf",
-            "--zoo-shard-dir", str(zoo_shards_dir),
-            "--manifest-path", str(manifest_path),
-            "--batch-dir", str(tmp_dir),
-            "--engine", str(engine),
+            python_exec,
+            "-u",
+            "-m",
+            "moran_process.pipeline.worker_lsf",
+            "--zoo-shard-dir",
+            str(zoo_shards_dir),
+            "--manifest-path",
+            str(manifest_path),
+            "--batch-dir",
+            str(tmp_dir),
+            "--engine",
+            str(engine),
         ]
         cmd = cmd_job + cmd_process
         bsub_command = " ".join(cmd)
@@ -258,8 +308,11 @@ class ProcessLab:
         if result.returncode == 0:
             log.info("Submitted. LSF job id: %s", lsf_job_id or "unknown")
         else:
-            log.error("bsub failed with return code %d: %s",
-                      result.returncode, (result.stderr or "").strip())
+            log.error(
+                "bsub failed with return code %d: %s",
+                result.returncode,
+                (result.stderr or "").strip(),
+            )
         log.info("Batch submitted! Logs: %s | Results: %s", logs_dir, results_dir)
 
         create_batch_info(
@@ -285,13 +338,12 @@ class ProcessLab:
             bsub_command=bsub_command,
         )
 
-
     # @staticmethod
     # def _create_task_list(n_graphs, r_values, n_jobs, n_repeats):
     #     """Create CSV task list for job array execution."""
     #     tasks = []
     #     task_id = 0
-    #     simulations_per_worker = math.ceil((n_graphs * len(r_values) * n_repeats) / n_jobs) 
+    #     simulations_per_worker = math.ceil((n_graphs * len(r_values) * n_repeats) / n_jobs)
     #     simulations = simulations_per_worker
     #     for graph_idx in range(n_graphs):
     #         for r in r_values:
@@ -304,12 +356,17 @@ class ProcessLab:
     #             })
     #             task_id += 1
     #             simulations -= repeats
-        
+
     #     return pd.DataFrame(tasks)
 
-
-    def _create_task_list(n_graphs, r_values, repeats_per_config, num_workers,
-                          output_path="task_manifest.csv", batch_seed=None):
+    def _create_task_list(
+        n_graphs,
+        r_values,
+        repeats_per_config,
+        num_workers,
+        output_path="task_manifest.csv",
+        batch_seed=None,
+    ):
         """
         Allocates simulations to workers as evenly as possible.
         Splits a single configuration across multiple workers if necessary.
@@ -319,6 +376,7 @@ class ProcessLab:
                     storing batch_seed in batch_info.json. None = random (no seeds stored).
         """
         import numpy as np
+
         # None → seeds from OS entropy; int → deterministic. Either way, seeds are
         # stored in the manifest so any batch can be replayed from its manifest alone.
         task_rng = np.random.default_rng(batch_seed)
@@ -326,59 +384,64 @@ class ProcessLab:
         # 1. Generate all unique configurations (Graph X, r Y)
         configs = list(itertools.product(range(n_graphs), r_values))
         num_configs = len(configs)
-        
+
         # 2. Calculate total work and fair share
         total_sims = num_configs * repeats_per_config
         base_share = total_sims // num_workers
         remainder = total_sims % num_workers
-        
+
         tasks = []
-        
+
         # Trackers for our position in the configurations list
         current_config_idx = 0
         # How many repeats of the current config are still waiting to be assigned?
-        repeats_left_in_current_config = repeats_per_config 
+        repeats_left_in_current_config = repeats_per_config
         task_id = 0
         # 3. Assign work to each worker
         for worker_id in range(num_workers):
-            
+
             # Calculate exactly how many repeats this worker should handle
             # (Distribute the remainder: first few workers get +1 simulation)
             worker_target = base_share + (1 if worker_id < remainder else 0)
-            
+
             while worker_target > 0 and current_config_idx < num_configs:
                 graph_idx, r = configs[current_config_idx]
-                
+
                 # How many can we take from the current config?
                 # Either all that are left in this config, or just enough to fill the worker.
                 take = min(worker_target, repeats_left_in_current_config)
-                
+
                 # Add the row to our manifest
-                tasks.append({
-                    'task_id': task_id,
-                    'worker_id': worker_id+1,
-                    'graph_idx': graph_idx,
-                    'r_value': r,
-                    'n_repeats': take,
-                    'seed': int(task_rng.integers(0, 2**31)),
-                })
-                
+                tasks.append(
+                    {
+                        "task_id": task_id,
+                        "worker_id": worker_id + 1,
+                        "graph_idx": graph_idx,
+                        "r_value": r,
+                        "n_repeats": take,
+                        "seed": int(task_rng.integers(0, 2**31)),
+                    }
+                )
+
                 # Update counters
                 worker_target -= take
                 repeats_left_in_current_config -= take
-                
+
                 # If we used up this configuration, move to the next one
                 if repeats_left_in_current_config == 0:
                     current_config_idx += 1
                     repeats_left_in_current_config = repeats_per_config
-                
+
                 task_id += 1
         # 4. Create DataFrame and save
         manifest = pd.DataFrame(tasks)
         manifest.to_csv(output_path, index=False)
 
-        log.info("Manifest created! Total Sims: %d. Distributed across %d workers.",
-                 total_sims, num_workers)
+        log.info(
+            "Manifest created! Total Sims: %d. Distributed across %d workers.",
+            total_sims,
+            num_workers,
+        )
         return manifest
 
     @staticmethod
@@ -394,11 +457,11 @@ class ProcessLab:
         os.makedirs(shards_dir, exist_ok=True)
         local_idx_map = {}  # (worker_id, global_graph_idx) -> local_graph_idx
 
-        n_workers = manifest_df['worker_id'].nunique()
+        n_workers = manifest_df["worker_id"].nunique()
         log.info("Creating %d zoo shards (GraphCore / CSR format)...", n_workers)
 
-        for worker_id, group in manifest_df.groupby('worker_id'):
-            global_idxs = sorted(group['graph_idx'].unique())
+        for worker_id, group in manifest_df.groupby("worker_id"):
+            global_idxs = sorted(group["graph_idx"].unique())
             for local_i, global_i in enumerate(global_idxs):
                 local_idx_map[(worker_id, global_i)] = local_i
 
@@ -407,19 +470,26 @@ class ProcessLab:
             joblib.dump(shard, shard_path)
 
             if worker_id % 100 == 0 or worker_id == 1:
-                log.info("  [Shards] %s/%d - %d graphs -> %s",
-                         worker_id, n_workers, len(shard), os.path.basename(shard_path))
+                log.info(
+                    "  [Shards] %s/%d - %d graphs -> %s",
+                    worker_id,
+                    n_workers,
+                    len(shard),
+                    os.path.basename(shard_path),
+                )
 
         manifest_df = manifest_df.copy()
-        manifest_df['local_graph_idx'] = [
-            local_idx_map[(r.worker_id, r.graph_idx)]
-            for r in manifest_df.itertuples()
+        manifest_df["local_graph_idx"] = [
+            local_idx_map[(r.worker_id, r.graph_idx)] for r in manifest_df.itertuples()
         ]
 
         log.info("All %d shards written to %s", n_workers, shards_dir)
         return manifest_df
 
-def register_graphs_job(graph_zoo_path, batch_name, batch_dir, queue='short', memory="8GB"):
+
+def register_graphs_job(
+    graph_zoo_path, batch_name, batch_dir, queue="short", memory="8GB"
+):
 
     log.info("Submitting register_graphs job for batch %s", batch_name)
     logs_dir = os.path.join(batch_dir, "logs")
@@ -429,25 +499,34 @@ def register_graphs_job(graph_zoo_path, batch_name, batch_dir, queue='short', me
     memory_mb = _parse_memory_mb(memory)
 
     cmd_job = [
-            "bsub",
-            "-q", queue,
-            "-J", f"batch_{batch_name}_register_graphs",
-            "-o", os.path.join(logs_dir, "job_%J_register_graphs.out"), # Log stdout
-            "-e", os.path.join(logs_dir, "job_%J_register_graphs.err"), # Log stderr
-            "-R", f"rusage[mem={memory_mb}]",
-            "-env", "PYTHONPATH=src",  
-        ]
+        "bsub",
+        "-q",
+        queue,
+        "-J",
+        f"batch_{batch_name}_register_graphs",
+        "-o",
+        os.path.join(logs_dir, "job_%J_register_graphs.out"),  # Log stdout
+        "-e",
+        os.path.join(logs_dir, "job_%J_register_graphs.err"),  # Log stderr
+        "-R",
+        f"rusage[mem={memory_mb}]",
+        "-env",
+        "PYTHONPATH=src",
+    ]
 
     cmd_process = [
-            python_exec, "-u", "-m", "moran_process.core.population_graph",
-            "--register",
-            "--batch-dir", str(batch_dir),
-            "--graph-zoo-path", str(graph_zoo_path)
-        ]
+        python_exec,
+        "-u",
+        "-m",
+        "moran_process.core.population_graph",
+        "--register",
+        "--batch-dir",
+        str(batch_dir),
+        "--graph-zoo-path",
+        str(graph_zoo_path),
+    ]
     cmd = cmd_job + cmd_process
     # cmd = cmd_process + ['--job-index', '1']
 
     log.info("Submitting register_graphs: %s", " ".join(cmd))
     subprocess.run(cmd)
-
-

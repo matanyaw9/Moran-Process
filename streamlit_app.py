@@ -20,6 +20,7 @@ st.tabs() on every rerun, even hidden ones. With multi-GB batches that meant the
 heavy violin/p-value scans ran on load before anything was shown. A sidebar
 radio runs only the selected page's code, so heavy work happens on demand.
 """
+
 import io
 import contextlib
 from pathlib import Path
@@ -28,6 +29,7 @@ from pathlib import Path
 # pyplot state is created. The plot_* functions call plt.show() internally; with
 # show=False they never do, and we grab the figure they built via plt.gcf().
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
@@ -35,6 +37,7 @@ import pandas as pd
 import streamlit as st
 
 from moran_process.analysis.batch_speed_report import batch_speed_report
+
 # _resolve_figure_path is the same path-builder the plot_* functions use
 # internally; reusing it (rather than re-deriving the slug here) guarantees the
 # app's cache filenames never drift from the ones the notebook writes.
@@ -54,6 +57,7 @@ from moran_process.analysis.analysis_utils import (
     plot_two_property_effect,
     plot_two_property_effect_hexbin,
 )
+
 # PROTOTYPE: interactive (plotly) twin of plot_two_property_effect. Not part of
 # the analysis_utils public API, so imported directly from its module.
 from moran_process.analysis.analysis_utils.plotly_prototype import (
@@ -189,8 +193,13 @@ def _build_png(plot_fn, *args, spinner=None, save_kwargs=None, **kwargs):
 
 
 def cached_figure(
-    plot_fn, *args,
-    cache_name, figures_dir, cache_key=None, spinner=None, save_kwargs=None,
+    plot_fn,
+    *args,
+    cache_name,
+    figures_dir,
+    cache_key=None,
+    spinner=None,
+    save_kwargs=None,
     **kwargs,
 ):
     """Cache-aware figure rendering, mirroring the plot_* on-disk PNG cache.
@@ -222,7 +231,9 @@ def cached_figure(
 
     def regenerate():
         """Rebuild from data and stash the bytes; rerun so they render."""
-        png = _build_png(plot_fn, *args, spinner=spinner, save_kwargs=save_kwargs, **kwargs)
+        png = _build_png(
+            plot_fn, *args, spinner=spinner, save_kwargs=save_kwargs, **kwargs
+        )
         if png is not None:
             st.session_state[png_key] = png
             st.rerun()
@@ -230,7 +241,7 @@ def cached_figure(
 
     # Cached view: show the saved PNG; Regenerate rebuilds from data on demand.
     if not st.session_state.get(png_key) and fig_path.exists():
-        st.image(str(fig_path), width='stretch')
+        st.image(str(fig_path), width="stretch")
         st.caption(f"Cached: {fig_path.name}")
         if st.button("Regenerate", key=f"btn-regen::{base}"):
             regenerate()
@@ -238,14 +249,16 @@ def cached_figure(
 
     # No cache and nothing stashed: build once, since there is nothing to show.
     if not st.session_state.get(png_key):
-        png = _build_png(plot_fn, *args, spinner=spinner, save_kwargs=save_kwargs, **kwargs)
+        png = _build_png(
+            plot_fn, *args, spinner=spinner, save_kwargs=save_kwargs, **kwargs
+        )
         if png is None:
             return
         st.session_state[png_key] = png
 
     # Fresh, unsaved figure: show it and offer Save / Regenerate / Discard.
     png = st.session_state[png_key]
-    st.image(png, width='stretch')
+    st.image(png, width="stretch")
     st.caption("Regenerated from data (not saved)")
     cols = st.columns(3 if fig_path.exists() else 2)
     save_label = "Save / Overwrite" if fig_path.exists() else "Save to cache"
@@ -323,7 +336,9 @@ df_graphs, analysis_df, results_path, color_dict, batch_info = load_batch(batch_
 # plot_* functions in a notebook, so the caches are shared in both directions.
 figures_dir = SIM_DATA_DIR / batch_name / "figures"
 
-r_values = sorted(analysis_df["r"].dropna().unique().tolist()) if "r" in analysis_df else []
+r_values = (
+    sorted(analysis_df["r"].dropna().unique().tolist()) if "r" in analysis_df else []
+)
 categories = sorted(analysis_df["category"].dropna().unique().tolist())
 
 st.sidebar.markdown("---")
@@ -337,7 +352,11 @@ st.sidebar.caption(
 )
 
 # analysis_df restricted to the chosen r, for the per-r property figures.
-df_r = analysis_df[analysis_df["r"] == selected_r] if selected_r is not None else analysis_df
+df_r = (
+    analysis_df[analysis_df["r"] == selected_r]
+    if selected_r is not None
+    else analysis_df
+)
 
 
 # --------------------------------------------------------------------------- #
@@ -348,8 +367,10 @@ if page == "Overview":
     if batch_info.get("description"):
         st.write(batch_info["description"])
     cached_figure(
-        plot_batch_info_card, batch_info,
-        cache_name="batch_info_card", figures_dir=figures_dir,
+        plot_batch_info_card,
+        batch_info,
+        cache_name="batch_info_card",
+        figures_dir=figures_dir,
         save_kwargs={"dpi": 200, "facecolor": "white"},
     )
 
@@ -362,20 +383,27 @@ elif page == "Fixation time":
     st.markdown("#### Steps-to-fixation distribution by category")
     cached_figure(
         plot_steps_violin,
-        results_path, df_graphs,
-        cache_name="plot_steps_violin", cache_key={"r": selected_r},
+        results_path,
+        df_graphs,
+        cache_name="plot_steps_violin",
+        cache_key={"r": selected_r},
         figures_dir=figures_dir,
-        color_dict=color_dict, r=selected_r, batch_name=batch_name,
+        color_dict=color_dict,
+        r=selected_r,
+        batch_name=batch_name,
         spinner="Building violins (scanning raw results)...",
     )
 
     st.markdown("#### Pairwise significance (Mann-Whitney, effect size)")
     cached_figure(
         plot_steps_pvalue_matrix,
-        results_path, df_graphs,
-        cache_name="plot_steps_pvalue_matrix", cache_key={"r": selected_r},
+        results_path,
+        df_graphs,
+        cache_name="plot_steps_pvalue_matrix",
+        cache_key={"r": selected_r},
         figures_dir=figures_dir,
-        r=selected_r, batch_name=batch_name,
+        r=selected_r,
+        batch_name=batch_name,
         spinner="Running pairwise Mann-Whitney tests...",
     )
 
@@ -391,7 +419,8 @@ elif page == "Fixation time":
         figures_dir=figures_dir,
         metric=hist_metric,
         category=None if hist_cat == "All" else hist_cat,
-        color_dict=color_dict, batch_name=batch_name,
+        color_dict=color_dict,
+        batch_name=batch_name,
     )
 
 elif page == "Property effects":
@@ -411,22 +440,28 @@ elif page == "Property effects":
         # topologies are outlined; dense discrete x values get violins.
         try:
             fig = plot_outcome_vs_property_plotly(
-                df_r, x_prop, y_outcome=y_outcome, color_dict=color_dict,
+                df_r,
+                x_prop,
+                y_outcome=y_outcome,
+                color_dict=color_dict,
                 highlight_categories=[
                     c for c in ("Mammalian", "Avian", "Fish") if c in categories
                 ],
             )
-            st.plotly_chart(fig, width='stretch')
+            st.plotly_chart(fig, width="stretch")
         except Exception as exc:
             st.error(f"interactive figure failed: {exc}")
     else:
         cached_figure(
             plot_outcome_vs_property,
-            df_r, x_prop,
+            df_r,
+            x_prop,
             cache_name="plot_outcome_vs_property",
             cache_key={"r": selected_r, "x": x_prop, "y": y_outcome},
             figures_dir=figures_dir,
-            y_outcome=y_outcome, color_dict=color_dict, batch_name=batch_name,
+            y_outcome=y_outcome,
+            color_dict=color_dict,
+            batch_name=batch_name,
         )
 
     st.markdown("#### Combined effect of two properties")
@@ -445,16 +480,25 @@ elif page == "Property effects":
 
     c1, c2, c3 = st.columns(3)
     tp_x = c1.selectbox(
-        "X axis", tp_options, key="tp_x",
-        index=_opt_index("n_nodes"), format_func=_grouped_label,
+        "X axis",
+        tp_options,
+        key="tp_x",
+        index=_opt_index("n_nodes"),
+        format_func=_grouped_label,
     )
     tp_y = c2.selectbox(
-        "Y axis", tp_options, key="tp_y",
-        index=_opt_index("prob_fixation"), format_func=_grouped_label,
+        "Y axis",
+        tp_options,
+        key="tp_y",
+        index=_opt_index("prob_fixation"),
+        format_func=_grouped_label,
     )
     tp_outcome = c3.selectbox(
-        "Color by", tp_options, key="tp_outcome",
-        index=_opt_index("mean_steps"), format_func=_grouped_label,
+        "Color by",
+        tp_options,
+        key="tp_outcome",
+        index=_opt_index("mean_steps"),
+        format_func=_grouped_label,
     )
     style = st.radio(
         "Style", ["scatter", "hexbin", "interactive"], horizontal=True, key="tp_style"
@@ -466,24 +510,39 @@ elif page == "Property effects":
         # category and exact outcome; biological topologies are outlined.
         try:
             fig = plot_two_property_effect_plotly(
-                df_r, tp_x, tp_y, outcome=tp_outcome, color_dict=color_dict,
+                df_r,
+                tp_x,
+                tp_y,
+                outcome=tp_outcome,
+                color_dict=color_dict,
                 highlight_categories=[
                     c for c in ("Mammalian", "Avian", "Fish") if c in categories
                 ],
             )
-            st.plotly_chart(fig, width='stretch')
+            st.plotly_chart(fig, width="stretch")
         except Exception as exc:  # mirror cached_figure: show the error, don't crash
             st.error(f"interactive figure failed: {exc}")
     else:
         if style == "scatter":
-            plot_fn, tp_cache_name = plot_two_property_effect, "plot_two_property_effect"
+            plot_fn, tp_cache_name = (
+                plot_two_property_effect,
+                "plot_two_property_effect",
+            )
         else:
-            plot_fn, tp_cache_name = plot_two_property_effect_hexbin, "plot_two_property_effect_hexbin"
+            plot_fn, tp_cache_name = (
+                plot_two_property_effect_hexbin,
+                "plot_two_property_effect_hexbin",
+            )
         cached_figure(
             plot_fn,
-            df_r, tp_x, tp_y,
+            df_r,
+            tp_x,
+            tp_y,
             cache_name=tp_cache_name,
             cache_key={"r": selected_r, "x": tp_x, "y": tp_y, "outcome": tp_outcome},
             figures_dir=figures_dir,
-            outcome=tp_outcome, color_dict=color_dict, batch_name=batch_name, descriptions_below=True,
+            outcome=tp_outcome,
+            color_dict=color_dict,
+            batch_name=batch_name,
+            descriptions_below=True,
         )

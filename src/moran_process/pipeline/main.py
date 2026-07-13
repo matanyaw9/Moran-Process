@@ -2,7 +2,7 @@
 
 """
 Batch Creation and Runnning
-In this file, we create the graph zoo by first creating the graphs we're interested in and then creating lots of 
+In this file, we create the graph zoo by first creating the graphs we're interested in and then creating lots of
 random graphs. We give the newley created batch a name.
 """
 
@@ -20,34 +20,44 @@ from moran_process.pipeline.process_lab import ProcessLab
 
 log = logging.getLogger(__name__)
 
-GRAPH_ZOO_SEED = 42  # controls random graph topology generation; fix for reproducible zoos
+GRAPH_ZOO_SEED = (
+    42  # controls random graph topology generation; fix for reproducible zoos
+)
 
-BATCH_NAME = 'testing_large_batch_17_03_2026-03'
+BATCH_NAME = "testing_large_batch_17_03_2026-03"
 
-ROOT = Path(os.getcwd()) 
+ROOT = Path(os.getcwd())
 
-# Directory constants                                                                                                                                                                                                        
+# Directory constants
 SIMULATION_DATA_DIR = ROOT / "simulation_data"
 GRAPH_ZOOS_DIR = ROOT / "graph_zoos"
 TMP_DIR_NAME = "tmp"
 
 
-EXPERIMENTS_CSV = 'respiratory_runs.csv'
+EXPERIMENTS_CSV = "respiratory_runs.csv"
 
-    # 1. DEFINE THE GRAPH ZOO
-    # We instantiate them here so we can inspect them before running
+# 1. DEFINE THE GRAPH ZOO
+# We instantiate them here so we can inspect them before running
 graph_zoo = [
     # PopulationGraph.complete_graph(n_nodes=31),
     # PopulationGraph.cycle_graph(n_nodes=31),
     PopulationGraph.mammalian_lung_graph(branching_factor=2, depth=4),
     PopulationGraph.avian_graph(n_rods=7, rod_length=4),
     PopulationGraph.avian_graph(n_rods=4, rod_length=7),
-    PopulationGraph.fish_graph(n_rods=3, rod_length=3)
+    PopulationGraph.fish_graph(n_rods=3, rod_length=3),
 ]
 
 
-def print_configuration(n_nodes, min_edges, max_edges, n_graphs_per_combination, 
-                         r_values, n_repeats, n_random_configs, n_graphs_total):
+def print_configuration(
+    n_nodes,
+    min_edges,
+    max_edges,
+    n_graphs_per_combination,
+    r_values,
+    n_repeats,
+    n_random_configs,
+    n_graphs_total,
+):
     """
     Print experiment configuration details.
     """
@@ -61,8 +71,13 @@ def print_configuration(n_nodes, min_edges, max_edges, n_graphs_per_combination,
     log.info("  In total: %s simulations", n_graphs_total * n_repeats)
 
 
-def generate_random_graphs(n_nodes:int, edge_range:int, n_graphs_per_combination:int,
-                           forbidden_wl_hashes: set[str]=set(), rng=None):
+def generate_random_graphs(
+    n_nodes: int,
+    edge_range: int,
+    n_graphs_per_combination: int,
+    forbidden_wl_hashes: set[str] = set(),
+    rng=None,
+):
     """
     Generate random connected graphs and add them to the graph zoo.
 
@@ -95,18 +110,25 @@ def generate_random_graphs(n_nodes:int, edge_range:int, n_graphs_per_combination
                     new_random_graph = PopulationGraph.random_connected_graph(
                         n_nodes=nn,
                         n_edges=ne,
-                        name=f'random_n{nn}_e{ne}_{i}',
+                        name=f"random_n{nn}_e{ne}_{i}",
                         seed=graph_seed,
                     )
                     wl_hash = new_random_graph.wl_hash
                 new_random_graph_zoo.append(new_random_graph)
                 occupied_wl.add(wl_hash)
-    
+
     log.info("Generated %d random graphs.", len(new_random_graph_zoo))
     for graph in new_random_graph_zoo:
-        density = graph.graph.number_of_edges() / (graph.n_nodes * (graph.n_nodes - 1) / 2)
-        log.debug("Graph: %-30s | Nodes: %3d | Edges: %3d | Density: %.3f",
-                  graph.name, graph.n_nodes, graph.graph.number_of_edges(), density)
+        density = graph.graph.number_of_edges() / (
+            graph.n_nodes * (graph.n_nodes - 1) / 2
+        )
+        log.debug(
+            "Graph: %-30s | Nodes: %3d | Edges: %3d | Density: %.3f",
+            graph.name,
+            graph.n_nodes,
+            graph.graph.number_of_edges(),
+            density,
+        )
 
     return new_random_graph_zoo
 
@@ -120,13 +142,12 @@ def main(batch_name=False, engine="cpp"):
     # n_nodes = list(range(29, 34))
     # edge_range = 3
     # n_random_graphs_per_combination = 0  # Number of random graphs per n_edge X n_nodes
-    
-    # r_values = [1.1]  
-    # n_repeats = 10  
-    # n_jobs = 5
-    
 
-    # # Extreme Graphs  
+    # r_values = [1.1]
+    # n_repeats = 10
+    # n_jobs = 5
+
+    # # Extreme Graphs
     # graph_zoo = []      # I intentionally overwrite graph_zoo
     # for fname in os.listdir(GRAPH_ZOOS_DIR):
     #     if not (fname.startswith("extreme_") and fname.endswith(".joblib")):
@@ -134,62 +155,76 @@ def main(batch_name=False, engine="cpp"):
     #     fpath = GRAPH_ZOOS_DIR / fname
     #     zoo = joblib.load(fpath)
     #     graph_zoo.extend(zoo)
-    
+
     # n_nodes = list(range(29, 34))
     # edge_range = 5
     # n_random_graphs_per_combination = 0  # Number of random graphs per n_edge X n_nodes
-    # r_values = [1.1 ]  
-    # n_repeats = 20_000  
+    # r_values = [1.1 ]
+    # n_repeats = 20_000
     # n_jobs = 1_000
 
-    
-    # DEFAULT PARAMS    
+    # DEFAULT PARAMS
     n_nodes = list(range(29, 34))
     edge_range = 5
-    n_random_graphs_per_combination = 500  # Number of random graphs per n_edge X n_nodes
-    
-    r_values = [1.1 ]  
-    n_repeats = 10_000  
+    n_random_graphs_per_combination = (
+        500  # Number of random graphs per n_edge X n_nodes
+    )
+
+    r_values = [1.1]
+    n_repeats = 10_000
     n_jobs = 1000
 
-    # # 100 node graphs   
+    # # 100 node graphs
     # graph_zoo = []      # I intentionally overwrite graph_zoo
     # n_nodes = [100]
     # edge_range = 4
     # n_random_graphs_per_combination = 50  # Number of random graphs per n_edge X n_nodes
-    
-    # r_values = [1.1 ]  
-    # n_repeats = 10_000  
+
+    # r_values = [1.1 ]
+    # n_repeats = 10_000
     # n_jobs = 1000
-    
 
     SIMULATION_DATA_DIR.mkdir(exist_ok=True)
     # 1. Prepare Batch Directory
     batch_name = batch_name or BATCH_NAME or datetime.now().strftime("%Y%m%d_%H%M%S")
     BATCH_DIR = SIMULATION_DATA_DIR / batch_name
     BATCH_DIR.mkdir(exist_ok=True)
-    min_edges = min(n_nodes) - 1 
+    min_edges = min(n_nodes) - 1
     max_edges = max(n_nodes) + edge_range - 2
 
     # 2. PRINT CONFIGURATION
-    n_random_configs = len(n_nodes) * edge_range * len(r_values) * n_random_graphs_per_combination
+    n_random_configs = (
+        len(n_nodes) * edge_range * len(r_values) * n_random_graphs_per_combination
+    )
     n_graphs_total = n_random_configs + len(graph_zoo)
-    print_configuration(n_nodes, min_edges, max_edges, n_random_graphs_per_combination,
-                        r_values, n_repeats, n_random_configs, n_graphs_total)
+    print_configuration(
+        n_nodes,
+        min_edges,
+        max_edges,
+        n_random_graphs_per_combination,
+        r_values,
+        n_repeats,
+        n_random_configs,
+        n_graphs_total,
+    )
 
     # Snapshot the biological graph specs BEFORE we extend the zoo with random
     # graphs, so batch_info records exactly which named graphs were hand-built.
     biological_graph_specs = [
-        {"name": g.name, "category": g.category, "params": g.params}
-        for g in graph_zoo
+        {"name": g.name, "category": g.category, "params": g.params} for g in graph_zoo
     ]
 
     # 3. GENERATE RANDOM GRAPHS
     if n_random_configs:
         graph_zoo_hashes = set([graph.wl_hash for graph in graph_zoo])
         rng = np.random.default_rng(GRAPH_ZOO_SEED)
-        random_graphs = generate_random_graphs(n_nodes, edge_range, n_random_graphs_per_combination,
-                                               forbidden_wl_hashes=graph_zoo_hashes, rng=rng)
+        random_graphs = generate_random_graphs(
+            n_nodes,
+            edge_range,
+            n_random_graphs_per_combination,
+            forbidden_wl_hashes=graph_zoo_hashes,
+            rng=rng,
+        )
         graph_zoo.extend(random_graphs)
     # 4. RUN EXPERIMENT AND SAVE RESULTS
     log.info("Running experiments")
@@ -229,12 +264,19 @@ def main(batch_name=False, engine="cpp"):
         engine=engine,
         zoo_config=zoo_config,
     )
-    
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--batch-name", required=False, type=str, help="The name of the batch")
-    parser.add_argument("--engine", choices=["cpp", "python"], default="cpp",
-                        help="Simulation engine: 'cpp' (fast, default) or 'python' (reference)")
+    parser.add_argument(
+        "--batch-name", required=False, type=str, help="The name of the batch"
+    )
+    parser.add_argument(
+        "--engine",
+        choices=["cpp", "python"],
+        default="cpp",
+        help="Simulation engine: 'cpp' (fast, default) or 'python' (reference)",
+    )
     args = parser.parse_args()
 
     # Configure logging once, at the entry point. stdout -> terminal / log file.
@@ -250,4 +292,3 @@ if __name__ == "__main__":
     main(args.batch_name, engine=args.engine)
     end_time = time.perf_counter()
     log.info("Whole thing took %.4f seconds", end_time - start_time)
-

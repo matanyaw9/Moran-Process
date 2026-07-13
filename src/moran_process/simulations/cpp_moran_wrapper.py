@@ -23,8 +23,13 @@ from moran_process import _moran_cpp
 class CppMoranProcess:
     """Moran process with a C++ core. Interface-compatible with ``MoranProcess``."""
 
-    def __init__(self, graph_core, selection_coefficient: float = 1.0,
-                 max_steps: int = 1_000_000, seed=None):
+    def __init__(
+        self,
+        graph_core,
+        selection_coefficient: float = 1.0,
+        max_steps: int = 1_000_000,
+        seed=None,
+    ):
         self.r = selection_coefficient
         self.n_nodes = graph_core.n_nodes
         self.max_steps = max_steps
@@ -38,8 +43,12 @@ class CppMoranProcess:
         c_seed = -1 if seed is None else int(seed)
 
         self._core = _moran_cpp.MoranProcessCore(
-            self.n_nodes, nbrs, offsets,
-            float(selection_coefficient), int(max_steps), c_seed,
+            self.n_nodes,
+            nbrs,
+            offsets,
+            float(selection_coefficient),
+            int(max_steps),
+            c_seed,
         )
 
     @property

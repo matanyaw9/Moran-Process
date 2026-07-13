@@ -27,13 +27,14 @@ BATCHES = {
     4: "2026-06-04_graph_creation_randomness-4",
 }
 
-SEEDED     = [1, 2]   # same seed=42
-UNSEEDED   = [3, 4]   # seed=None
+SEEDED = [1, 2]  # same seed=42
+UNSEEDED = [3, 4]  # seed=None
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def load_manifest(batch_num: int) -> pd.DataFrame:
     path = os.path.join(BATCH_DIR, BATCHES[batch_num], "tmp", "task_manifest.csv")
@@ -59,7 +60,17 @@ def load_results(batch_num: int) -> pd.DataFrame:
     df["row_within_task"] = df.groupby("task_id").cumcount()
     df = df.sort_values(["task_id", "row_within_task"]).reset_index(drop=True)
 
-    return df[["task_id", "wl_hash", "graph_name", "r", "fixation", "steps", "row_within_task"]]
+    return df[
+        [
+            "task_id",
+            "wl_hash",
+            "graph_name",
+            "r",
+            "fixation",
+            "steps",
+            "row_within_task",
+        ]
+    ]
 
 
 def load_graph_hashes(batch_num: int) -> set:
@@ -119,9 +130,15 @@ print("=" * 60)
 m3_seeds = manifests[3]["seed"].tolist()
 m4_seeds = manifests[4]["seed"].tolist()
 
-assert m3_seeds != m1_seeds, "FAIL: batch 3 seeds identical to batch 1 (expected random)"
-assert m4_seeds != m1_seeds, "FAIL: batch 4 seeds identical to batch 1 (expected random)"
-assert m3_seeds != m4_seeds, "FAIL: batch 3 and 4 seeds are identical (both should be random)"
+assert (
+    m3_seeds != m1_seeds
+), "FAIL: batch 3 seeds identical to batch 1 (expected random)"
+assert (
+    m4_seeds != m1_seeds
+), "FAIL: batch 4 seeds identical to batch 1 (expected random)"
+assert (
+    m3_seeds != m4_seeds
+), "FAIL: batch 3 and 4 seeds are identical (both should be random)"
 print("  PASS: batch 3 and 4 seeds each differ from batch 1/2 and from each other.")
 print(f"  Batch 1 seeds[:3]: {m1_seeds[:3]}")
 print(f"  Batch 2 seeds[:3]: {m2_seeds[:3]}")
@@ -141,8 +158,10 @@ assert results_equal(results[1], results[2]), (
     "FAIL: results differ between batch 1 and batch 2 despite identical seeds.\n"
     + results[1].compare(results[2]).to_string()
 )
-print(f"  PASS: {len(results[1])} rows are identical between batches 1 and 2 "
-      f"(fixation + steps match row-for-row).")
+print(
+    f"  PASS: {len(results[1])} rows are identical between batches 1 and 2 "
+    f"(fixation + steps match row-for-row)."
+)
 
 # ---------------------------------------------------------------------------
 # 4. Results differ: batches 3 & 4 must differ from each other and from 1/2
@@ -179,10 +198,18 @@ assert hashes[1] == hashes[2], (
 print(f"  PASS: batches 1 and 2 have identical graph zoos ({len(hashes[1])} graphs).")
 
 # Batches 3 & 4: GRAPH_ZOO_SEED=None -> different random graph topologies
-assert hashes[3] != hashes[1], "FAIL: batch 3 graphs identical to batch 1 (expected random topology)"
-assert hashes[4] != hashes[1], "FAIL: batch 4 graphs identical to batch 1 (expected random topology)"
-assert hashes[3] != hashes[4], "FAIL: batch 3 and 4 have identical graphs (both should be random)"
-print("  PASS: batches 3 and 4 each have different graph zoos from batch 1/2 and from each other.")
+assert (
+    hashes[3] != hashes[1]
+), "FAIL: batch 3 graphs identical to batch 1 (expected random topology)"
+assert (
+    hashes[4] != hashes[1]
+), "FAIL: batch 4 graphs identical to batch 1 (expected random topology)"
+assert (
+    hashes[3] != hashes[4]
+), "FAIL: batch 3 and 4 have identical graphs (both should be random)"
+print(
+    "  PASS: batches 3 and 4 each have different graph zoos from batch 1/2 and from each other."
+)
 
 # ---------------------------------------------------------------------------
 # Summary

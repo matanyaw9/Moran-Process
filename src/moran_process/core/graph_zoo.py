@@ -20,12 +20,12 @@ class GraphZoo:
         self.graphs.append(graph)
         return self
 
-
     # --- Visualization ---
 
     def draw_all(self, cols: int = 3) -> None:
         """Draw all graphs in a matplotlib grid. Each graph occupies one subplot."""
         import matplotlib.pyplot as plt  # lazy: keep matplotlib off the module-import path
+
         n = len(self.graphs)
         if n == 0:
             print("No graphs in zoo.")

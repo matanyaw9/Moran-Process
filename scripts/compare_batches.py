@@ -65,7 +65,9 @@ def load_batch(batch_dir):
     path = resolve_results_path(batch_path)
 
     if path is None:
-        print(f"[{batch_path.name}] No aggregated file found; aggregating from tmp/results/ ...")
+        print(
+            f"[{batch_path.name}] No aggregated file found; aggregating from tmp/results/ ..."
+        )
         out = aggregate_results_no_load(str(batch_path))
         if out is None:
             raise FileNotFoundError(
@@ -103,8 +105,12 @@ def main():
     )
     parser.add_argument("batch_a", help="Path to the first batch directory")
     parser.add_argument("batch_b", help="Path to the second batch directory")
-    parser.add_argument("--alpha", type=float, default=0.001,
-                        help="Family-wise significance level (default: 0.001)")
+    parser.add_argument(
+        "--alpha",
+        type=float,
+        default=0.001,
+        help="Family-wise significance level (default: 0.001)",
+    )
     args = parser.parse_args()
 
     cells_a = cell_summary(load_batch(args.batch_a))
@@ -117,17 +123,25 @@ def main():
 
     name_a, name_b = Path(args.batch_a).name, Path(args.batch_b).name
     print(f"\nComparing '{name_a}' vs '{name_b}'")
-    print(f"{len(common)} common cells | "
-          f"{len(only_a)} only in A | {len(only_b)} only in B\n")
+    print(
+        f"{len(common)} common cells | "
+        f"{len(only_a)} only in A | {len(only_b)} only in B\n"
+    )
 
     if only_a:
-        print(f"WARNING: {len(only_a)} (wl_hash, r) cells only in A "
-              f"(e.g. {sorted({cells_a[k]['graph_name'] for k in only_a})[:5]})")
+        print(
+            f"WARNING: {len(only_a)} (wl_hash, r) cells only in A "
+            f"(e.g. {sorted({cells_a[k]['graph_name'] for k in only_a})[:5]})"
+        )
     if only_b:
-        print(f"WARNING: {len(only_b)} (wl_hash, r) cells only in B "
-              f"(e.g. {sorted({cells_b[k]['graph_name'] for k in only_b})[:5]})")
+        print(
+            f"WARNING: {len(only_b)} (wl_hash, r) cells only in B "
+            f"(e.g. {sorted({cells_b[k]['graph_name'] for k in only_b})[:5]})"
+        )
     if not common:
-        print("\nNo overlapping cells to compare. Did the two batches use the same zoo and r_values?")
+        print(
+            "\nNo overlapping cells to compare. Did the two batches use the same zoo and r_values?"
+        )
         return 1
 
     n_cells = len(common)
@@ -139,8 +153,10 @@ def main():
         _, r = key
 
         if a["n"] != b["n"]:
-            print(f"NOTE: repeat-count mismatch for {a['graph_name']} r={r}: "
-                  f"A={a['n']} B={b['n']} (n_repeats differed between batches)")
+            print(
+                f"NOTE: repeat-count mismatch for {a['graph_name']} r={r}: "
+                f"A={a['n']} B={b['n']} (n_repeats differed between batches)"
+            )
 
         _, p_rho = two_proportion_z(a["k"], a["n"], b["k"], b["n"])
 
@@ -149,46 +165,59 @@ def main():
         else:
             p_ks = float("nan")
 
-        rows.append({
-            "graph": a["graph_name"],
-            "r": r,
-            "rho_a": a["k"] / a["n"],
-            "rho_b": b["k"] / b["n"],
-            "p_rho": p_rho,
-            "p_ks": p_ks,
-            "worst": np.nanmin([p_rho, p_ks]),
-        })
+        rows.append(
+            {
+                "graph": a["graph_name"],
+                "r": r,
+                "rho_a": a["k"] / a["n"],
+                "rho_b": b["k"] / b["n"],
+                "p_rho": p_rho,
+                "p_ks": p_ks,
+                "worst": np.nanmin([p_rho, p_ks]),
+            }
+        )
 
     rows.sort(key=lambda d: d["worst"])  # worst offenders first
 
-    header = (f"{'graph':<22}{'r':>5}{'rho_a':>9}{'rho_b':>9}"
-              f"{'p(rho)':>10}{'p(KS)':>10}  verdict")
+    header = (
+        f"{'graph':<22}{'r':>5}{'rho_a':>9}{'rho_b':>9}"
+        f"{'p(rho)':>10}{'p(KS)':>10}  verdict"
+    )
     print("\n" + header)
     print("-" * len(header))
     n_flagged = 0
     for d in rows:
         flagged = (d["p_rho"] < bonferroni) or (
-            not np.isnan(d["p_ks"]) and d["p_ks"] < bonferroni)
+            not np.isnan(d["p_ks"]) and d["p_ks"] < bonferroni
+        )
         n_flagged += flagged
-        print(f"{d['graph']:<22}{d['r']:>5}{d['rho_a']:>9.4f}{d['rho_b']:>9.4f}"
-              f"{d['p_rho']:>10.3g}{d['p_ks']:>10.3g}  "
-              f"{'FLAG <<<' if flagged else 'ok'}")
+        print(
+            f"{d['graph']:<22}{d['r']:>5}{d['rho_a']:>9.4f}{d['rho_b']:>9.4f}"
+            f"{d['p_rho']:>10.3g}{d['p_ks']:>10.3g}  "
+            f"{'FLAG <<<' if flagged else 'ok'}"
+        )
     print("-" * len(header))
 
     # Uniformity check: under true equivalence the p-values are ~Uniform(0,1).
-    all_p = np.array([d["p_rho"] for d in rows]
-                     + [d["p_ks"] for d in rows if not np.isnan(d["p_ks"])])
+    all_p = np.array(
+        [d["p_rho"] for d in rows]
+        + [d["p_ks"] for d in rows if not np.isnan(d["p_ks"])]
+    )
     unif_p = stats.kstest(all_p, "uniform").pvalue
 
     print(f"\nCells compared:        {n_cells}")
     print(f"Bonferroni threshold:  alpha/{n_cells} = {bonferroni:.2e}")
     print(f"Cells flagged:         {n_flagged}")
-    print(f"p-value uniformity:    KS vs Uniform(0,1) p = {unif_p:.3f} "
-          f"({'ok' if unif_p > 0.05 else 'SKEWED <<<'})")
+    print(
+        f"p-value uniformity:    KS vs Uniform(0,1) p = {unif_p:.3f} "
+        f"({'ok' if unif_p > 0.05 else 'SKEWED <<<'})"
+    )
 
     equivalent = (n_flagged == 0) and (unif_p > 0.05)
-    print("\nRESULT:", "STATISTICALLY EQUIVALENT" if equivalent
-          else "DISCREPANCY DETECTED")
+    print(
+        "\nRESULT:",
+        "STATISTICALLY EQUIVALENT" if equivalent else "DISCREPANCY DETECTED",
+    )
     return 0 if equivalent else 1
 
 
