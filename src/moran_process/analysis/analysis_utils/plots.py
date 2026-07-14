@@ -35,6 +35,7 @@ import seaborn as sns
 
 from .colors import DEFAULT_FIG_SIZE, GRAPH_PROPERTY_DESCRIPTION, _sort_categories
 from .provenance import _bi_get
+from .theory import *
 
 __all__ = [
     "try_load_cached",
@@ -46,20 +47,6 @@ __all__ = [
     "plot_two_property_effect",
     "plot_two_property_effect_hexbin",
 ]
-
-
-def basic_moran_fixation_prob(n, r):
-    r"""Analytic Moran fixation probability for a single mutant on a complete graph.
-
-        rho(N, r) = (1 - 1/r) / (1 - 1/r^N)
-
-    Vectorized over ``n``: pass either a scalar or an array of population sizes
-    (e.g. a ``np.linspace``) together with a scalar selection coefficient ``r``,
-    and the result broadcasts elementwise (the scalar ``1 - 1/r`` spreads over the
-    array ``np.pow(r, n)``). At ``r == 1`` the expression is 0/0 -> nan; that
-    neutral limit is exactly ``1/N``, which is drawn as a separate reference line.
-    """
-    return (1 - 1 / r) / (1 - 1 / np.pow(r, n))
 
 
 def _resolve_figure_path(figures_dir, func_name: str, **key_kwargs):
@@ -372,7 +359,7 @@ def _finish_two_property_figure(
             if r_value is not None:
                 ax.plot(
                     x_range,
-                    basic_moran_fixation_prob(x_range, r_value),
+                    analytic_moran_fc_fixation_prob(x_range, r_value),
                     color="tab:red",
                     linestyle="--",
                     linewidth=1.4,
@@ -1387,7 +1374,7 @@ def plot_outcome_vs_property(
                     r = r_values[0]
                     ax.plot(
                         x_range,
-                        basic_moran_fixation_prob(x_range, r),
+                        analytic_moran_fc_fixation_prob(x_range, r),
                         color="tab:blue",
                         linestyle="--",
                         linewidth=1.2,

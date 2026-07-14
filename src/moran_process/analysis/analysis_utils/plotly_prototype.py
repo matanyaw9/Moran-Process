@@ -40,7 +40,7 @@ import matplotlib.colors as mcolors
 import plotly.graph_objects as go
 
 from .colors import CATEGORY_COLOR_DICT, DEFAULT_FIG_SIZE, _sort_categories
-from .plots import _outcome_color_norm, basic_moran_fixation_prob
+from .plots import _outcome_color_norm, analytic_moran_fc_fixation_prob
 
 
 def _colorbar_ticks(norm):
@@ -183,7 +183,7 @@ def plot_two_property_effect_plotly(
                 fig.add_trace(
                     go.Scatter(
                         x=xr,
-                        y=basic_moran_fixation_prob(xr, r_value),
+                        y=analytic_moran_fc_fixation_prob(xr, r_value),
                         mode="lines",
                         name="Moran  ρ(N,r)",
                         line=dict(color="crimson", dash="dash", width=1.6),
@@ -441,7 +441,7 @@ def plot_outcome_vs_property_plotly(
                     fig.add_trace(
                         go.Scatter(
                             x=xr,
-                            y=basic_moran_fixation_prob(xr, r_values[0]),
+                            y=analytic_moran_fc_fixation_prob(xr, r_values[0]),
                             mode="lines",
                             name="Moran  ρ(N,r)",
                             line=dict(color="royalblue", dash="dash", width=1.4),
