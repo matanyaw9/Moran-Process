@@ -225,7 +225,7 @@ class ProcessLab:
         logs_dir = os.path.join(batch_dir, "logs")
         os.makedirs(logs_dir, exist_ok=True)
 
-        register_graphs_job(zoo_path, batch_name, batch_dir)
+        register_job_id = register_graphs_job(zoo_path, batch_name, batch_dir)
 
         log.info("--- Preparing Batch %s ---", batch_name)
 
@@ -336,6 +336,17 @@ class ProcessLab:
             job_array_name=f"batch_{batch_name}",
             lsf_job_id=lsf_job_id,
             bsub_command=bsub_command,
+        )
+
+        # Chain the post-processing job: it PENDs until the array has ended and
+        # register_graphs is done, then builds raw_results.parquet + graph_statistics.csv
+        # on a compute node. This is what makes experiment_analysis.ipynb open instantly.
+        submit_aggregation_job(
+            batch_dir=batch_dir,
+            batch_name=batch_name,
+            array_job_id=lsf_job_id,
+            register_job_id=register_job_id,
+            queue=queue,
         )
 
     # @staticmethod
@@ -487,6 +498,113 @@ class ProcessLab:
         return manifest_df
 
 
+def submit_aggregation_job(
+    batch_dir,
+    batch_name,
+    array_job_id=None,
+    register_job_id=None,
+    queue="short",
+    memory="16GB",
+    order_stats=False,
+):
+    """Submit the dependent post-processing job for a finished batch.
+
+    When called during batch submission the numeric job ids are known, so an LSF
+    ``-w`` dependency holds this job in PEND until the batch is done -- no polling,
+    no login-node compute. The condition is:
+
+        ended(<array>) [&& done(<register>)]
+
+    ``ended`` (not ``done``) on the array means a single crashed worker will not
+    strand this job in PEND forever; the aggregator surfaces any missing job
+    indices instead. The register dependency guarantees graph_props.csv exists
+    before the per-(graph, r) rollup runs. We key on numeric job ids (parsed from
+    bsub) rather than names, so reusing a batch name across runs can't collide.
+
+    Called standalone with no ids (``array_job_id`` and ``register_job_id`` both
+    None) -- e.g. re-aggregating a batch whose array already finished -- no ``-w``
+    flag is added and the job runs immediately. We deliberately do not fall back
+    to a name-based ``ended(batch_<name>)`` dependency: once the array has left
+    LSF's records that condition is rejected with "No matching job found".
+
+    The job reads the per-job shards as a glob and writes only graph_statistics.csv; it
+    never concatenates a raw_results.parquet (see aggregate_batch's module docstring for
+    why the fused file is both unnecessary and unreadable past 2**32-1 rows).
+
+    memory defaults to 16GB. With order stats off (the default) the polars group_by is a
+    pure streaming reduction and needs far less, but flipping ``order_stats=True`` brings
+    back the median/quantile materialization -- the heaviest, most memory-hungry step -- so
+    the default leaves headroom for it. Bump it for very large batches if the job is killed.
+    """
+    logs_dir = os.path.join(batch_dir, "logs")
+    os.makedirs(logs_dir, exist_ok=True)
+
+    python_exec = sys.executable
+    memory_mb = _parse_memory_mb(memory)
+
+    # Only wait on jobs we can actually name by numeric id. If neither id is
+    # given (e.g. re-aggregating a batch whose array already ended), we add no
+    # -w flag at all so the job runs immediately -- a name-based ended(batch_*)
+    # dependency would just be rejected with "No matching job found" once the
+    # array has left LSF's records.
+    conditions = []
+    if array_job_id:
+        conditions.append(f"ended({array_job_id})")
+    if register_job_id:
+        conditions.append(f"done({register_job_id})")
+    dependency = " && ".join(conditions)
+
+    cmd_job = [
+        "bsub",
+        "-q",
+        queue,
+        "-J",
+        f"batch_{batch_name}_aggregate",
+        *(["-w", dependency] if dependency else []),
+        "-o",
+        os.path.join(logs_dir, "job_%J_aggregate.out"),
+        "-e",
+        os.path.join(logs_dir, "job_%J_aggregate.err"),
+        "-R",
+        f"rusage[mem={memory_mb}]",
+        "-env",
+        "PYTHONPATH=src",
+    ]
+
+    cmd_process = [
+        python_exec,
+        "-u",
+        "-m",
+        "moran_process.pipeline.aggregate_batch",
+        "--batch-dir",
+        str(batch_dir),
+    ]
+    if order_stats:
+        cmd_process.append("--order-stats")
+
+    cmd = cmd_job + cmd_process
+    log.info(
+        "Submitting aggregation job (depends on: %s): %s",
+        dependency or "nothing (runs immediately)",
+        " ".join(cmd),
+    )
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    agg_job_id = _parse_lsf_job_id(result.stdout)
+    if result.returncode == 0:
+        log.info(
+            "Aggregation job submitted. LSF job id: %s (runs when: %s)",
+            agg_job_id or "unknown",
+            dependency or "immediately",
+        )
+    else:
+        log.error(
+            "Aggregation bsub failed with return code %d: %s",
+            result.returncode,
+            (result.stderr or "").strip(),
+        )
+    return agg_job_id
+
+
 def register_graphs_job(
     graph_zoo_path, batch_name, batch_dir, queue="short", memory="8GB"
 ):
@@ -529,4 +647,14 @@ def register_graphs_job(
     # cmd = cmd_process + ['--job-index', '1']
 
     log.info("Submitting register_graphs: %s", " ".join(cmd))
-    subprocess.run(cmd)
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    register_job_id = _parse_lsf_job_id(result.stdout)
+    if result.returncode == 0:
+        log.info("register_graphs submitted. LSF job id: %s", register_job_id or "unknown")
+    else:
+        log.error(
+            "register_graphs bsub failed with return code %d: %s",
+            result.returncode,
+            (result.stderr or "").strip(),
+        )
+    return register_job_id

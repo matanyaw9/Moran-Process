@@ -675,10 +675,9 @@ def _load_fixation_steps_by_category(
     """
     import polars as pl
 
-    _rp = Path(results_path)
-    _scanner = (
-        pl.scan_parquet(str(_rp)) if _rp.suffix == ".parquet" else pl.scan_csv(str(_rp))
-    )
+    from .io import scan_results
+
+    _scanner = scan_results(results_path)
     _has_r = "r" in _scanner.collect_schema().names()
 
     lf = _scanner.select(["wl_hash", "steps", "fixation"] + (["r"] if _has_r else []))
@@ -780,7 +779,9 @@ def plot_steps_violin(
     points before the KDE (a 50k sample is visually identical to the full distribution).
 
     Args:
-        results_path: path to the raw_results.parquet or raw_results.csv (read lazily)
+        results_path: raw results, read lazily -- a raw_results.parquet/.csv or a glob of
+            per-job shards (see resolve_results_source; the glob is preferred and is the
+            only form that works for batches over 2**32-1 rows)
         df_graphs: DataFrame with at least 'wl_hash' and 'category' columns
         color_dict: category -> hex color mapping for violin fills
         categories: x-axis order; defaults to sorted unique values in df_graphs['category']

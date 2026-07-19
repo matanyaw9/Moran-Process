@@ -40,7 +40,8 @@ import matplotlib.colors as mcolors
 import plotly.graph_objects as go
 
 from .colors import CATEGORY_COLOR_DICT, DEFAULT_FIG_SIZE, _sort_categories
-from .plots import _outcome_color_norm, analytic_moran_fc_fixation_prob
+from .plots import _outcome_color_norm
+from .theory import analytic_moran_fc_fixation_prob
 
 
 def _colorbar_ticks(norm):
