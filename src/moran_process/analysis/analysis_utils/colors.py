@@ -40,6 +40,24 @@ CATEGORY_COLOR_DICT = {
     "minimize XGBOOST Fixation Time": "#FDBB84",  # Peach
 }
 
+# The GA now targets RESIDUALS, so its categories carry a target suffix -- e.g.
+# "maximize XGBOOST Fixation Probability (delta)". Without these keys they would miss the
+# hand-picked colors above and fall through to auto-generated husl. Rather than restating
+# 8 more hex codes, each suffixed name inherits its unsuffixed base color, so a GA target
+# keeps one color whether or not it was fitted on residuals.
+_GA_TARGET_SUFFIXES = {
+    "Fixation Probability": " (delta)",
+    "Fixation Time": " (log-ratio)",
+}
+CATEGORY_COLOR_DICT.update(
+    {
+        f"{base}{suffix}": color
+        for base, color in list(CATEGORY_COLOR_DICT.items())
+        for metric, suffix in _GA_TARGET_SUFFIXES.items()
+        if base.endswith(metric)
+    }
+)
+
 # Use a defaultdict to return 'lightgray' for unknown categories
 # Paste your dictionary here (or ensure it's in the global scope)
 GRAPH_PROPERTY_DESCRIPTION = {

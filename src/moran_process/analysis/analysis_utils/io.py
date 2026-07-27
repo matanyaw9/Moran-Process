@@ -6,6 +6,7 @@ Heavy readers (polars, pyarrow) are imported lazily inside the functions that
 need them, so importing this module stays cheap.
 """
 
+import json
 import shutil
 from pathlib import Path
 
@@ -27,6 +28,9 @@ __all__ = [
     "aggregate_results_no_load",
     "add_analytic_reference_columns",
     "build_graph_statistics",
+    "load_fixation_steps_by_category",
+    "build_fixation_steps_cache",
+    "fixation_steps_cache_path",
 ]
 
 
@@ -232,7 +236,12 @@ def add_analytic_reference_columns(df, n_col="n_nodes", r_col="r"):
     return out
 
 
-GROUP_KEYS = ["wl_hash", "r", "graph_name"]
+# wl_hash is the graph identity (graph_name is just a per-graph label carried in
+# graph_props). Grouping by wl_hash alone means isomorphic graphs that were simulated
+# under different names -- e.g. a GA rediscovering the same topology across generations --
+# pool their runs into one row instead of splitting, and the canonical graph_name is
+# reattached from graph_props at merge time.
+GROUP_KEYS = ["wl_hash", "r"]
 
 # Partial sums carried from each shard into the reduce step. Every one is additive, which
 # is what makes the map-reduce exact (see _aggregate_chunked).
@@ -437,10 +446,20 @@ def build_graph_statistics(
         analysis_df = pd.merge(
             agg_results_df,
             df_graphs,
-            on=["wl_hash", "graph_name"],
+            on="wl_hash",
             how="left",
             suffixes=("", "_db"),
         )
+        # graph_props is deduped to one row per wl_hash, so an unmatched hash here means a
+        # result graph was never registered -- its n_nodes stays NaN and later crashes the
+        # analytic baseline. Surface it plainly instead of failing 200 lines downstream.
+        n_unmatched = analysis_df["n_nodes"].isna().sum()
+        if n_unmatched:
+            missing = analysis_df.loc[analysis_df["n_nodes"].isna(), "wl_hash"].unique()
+            print(
+                f"WARNING: {n_unmatched} result row(s) have no graph_props match "
+                f"({len(missing)} wl_hash(es), e.g. {missing[:3].tolist()})."
+            )
         analysis_df["z_order"] = (analysis_df["category"] != "Random").astype(int)
         analysis_df = analysis_df.sort_values("z_order").drop(columns="z_order")
         analysis_df.to_csv(graph_statistics_path, index=False)
@@ -469,3 +488,285 @@ def build_graph_statistics(
 
     print(f"Graph statistics columns: {list(analysis_df.columns)}")
     return analysis_df
+
+
+# --------------------------------------------------------------------------------------
+# Fixation-steps sample: the one figure input that needs the RAW rows
+# --------------------------------------------------------------------------------------
+# graph_statistics.csv answers everything the analysis asks except the *shape* of the
+# steps-to-fixation distribution, because a KDE and a rank test both need individual runs,
+# not moments. So the violin and the p-value matrix are the only consumers left scanning
+# the full 7.2e9-row batch. What they actually consume, though, is tiny: fixation rows
+# only, subsampled to a cap per category. Caching that sample turns a multi-minute scan
+# into a file read while staying faithful to the picture, and it is deliberately the
+# *data* that is cached rather than the rendered figure, so the notebook can still
+# restyle, reorder and recolor interactively.
+
+CACHE_DIR_NAME = "cache"
+FIXATION_STEPS_CACHE_STEM = "fixation_steps"
+
+
+def fixation_steps_cache_path(batch_dir, r, max_points_per_category=50_000):
+    """Path of the cached fixation-steps sample for one (r, subsample cap).
+
+    Both the r value and the cap are in the filename. The cap has to be part of the key
+    because it changes the contents (a sample capped at 50k is not the head of one capped
+    at 200k), and putting it in the *name* rather than only in the sidecar means caches for
+    different caps coexist: one exploratory call with a small cap can no longer clobber the
+    expensive default-cap cache and silently send the next figure back to a full scan.
+
+    The '.' in an r value is replaced ('1.1' -> '1p1') to keep the stem free of the
+    extension separator, so the parquet and its .json sidecar are unambiguous.
+    """
+    r_tag = str(r).replace(".", "p")
+    n_tag = "all" if max_points_per_category is None else str(max_points_per_category)
+    return (
+        Path(batch_dir)
+        / CACHE_DIR_NAME
+        / f"{FIXATION_STEPS_CACHE_STEM}_r{r_tag}_n{n_tag}.parquet"
+    )
+
+
+def _fixation_steps_cache_is_valid(batch_dir, r, max_points_per_category):
+    """True if a cache for this (r, cap) exists, without paying to read the parquet.
+
+    Both files must be there: the parquet alone is useless, since the per-category counts
+    the violin annotates with live only in the sidecar.
+    """
+    path = fixation_steps_cache_path(batch_dir, r, max_points_per_category)
+    return path.exists() and path.with_suffix(".json").exists()
+
+
+def _read_fixation_steps_cache(batch_dir, r, max_points_per_category):
+    """Return the cached loader tuple for this (r, cap), or None on a miss.
+
+    A miss is not an error: the caller silently falls back to the full scan.
+    """
+    if not _fixation_steps_cache_is_valid(batch_dir, r, max_points_per_category):
+        return None
+
+    path = fixation_steps_cache_path(batch_dir, r, max_points_per_category)
+    with open(path.with_suffix(".json")) as f:
+        meta = json.load(f)
+
+    print(f"Using cached fixation-steps sample: {path}")
+    return (
+        pd.read_parquet(path),
+        meta["fixation_counts"],
+        meta["total_counts"],
+        meta["r"],
+        meta["r_suffix"],
+        meta["subsampled"],
+    )
+
+
+def _write_fixation_steps_cache(batch_dir, loaded, max_points_per_category):
+    """Persist a loader result. The counts live in a JSON sidecar, not in the parquet.
+
+    fixation_counts/total_counts are per-category scalars counted BEFORE subsampling (the
+    violin's rho annotation depends on that), so they cannot be recovered from the sampled
+    rows and cannot be columns of them either.
+    """
+    merged_raw, fixation_counts, total_counts, r, r_suffix, subsampled = loaded
+    path = fixation_steps_cache_path(batch_dir, r, max_points_per_category)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    merged_raw.to_parquet(path, index=False)
+    with open(path.with_suffix(".json"), "w") as f:
+        json.dump(
+            {
+                "r": r,
+                "r_suffix": r_suffix,
+                "subsampled": subsampled,
+                "max_points_per_category": max_points_per_category,
+                # JSON keys must be strings; None is a real category here (a graph with no
+                # graph_props match), so it is preserved as the string "None" rather than
+                # dropped, which would silently hide the unmatched rows.
+                "fixation_counts": {str(k): int(v) for k, v in fixation_counts.items()},
+                "total_counts": {str(k): int(v) for k, v in total_counts.items()},
+            },
+            f,
+            indent=2,
+        )
+    print(f"Cached fixation-steps sample ({len(merged_raw):,} rows): {path}")
+    return path
+
+
+def load_fixation_steps_by_category(
+    results_path,
+    df_graphs,
+    r=None,
+    max_points_per_category=50_000,
+    cache_dir=None,
+):
+    """Load fixation 'steps' joined to graph 'category' for a single r value.
+
+    Shared loader for ``plot_steps_violin`` and ``plot_steps_pvalue_matrix`` so the
+    two figures are always built from exactly the same rows (same r resolution, same
+    fixation filter, same subsample). Returns:
+
+    - a tidy pandas DataFrame with columns ['category', 'steps'] (subsampled);
+    - ``fixation_counts``: true per-category fixation counts, read *before*
+      subsampling so callers can annotate how much data backs each category;
+    - ``total_counts``: per-category total run counts (fixation + non-fixation),
+      counted before the fixation filter, so callers can report rho = fix / total;
+    - the resolved ``r`` and an ``r_suffix`` label for titles;
+    - ``subsampled``: whether the cap actually trimmed any category.
+
+    See ``plot_steps_violin`` for why only fixation rows are materialised and why
+    subsampling to ``max_points_per_category`` is faithful to the full distribution.
+
+    Args:
+        cache_dir: a batch directory. If given and it holds a cached sample for this
+            (r, max_points_per_category), the cache is read and results_path is never
+            scanned; on a miss the sample is computed and then written there. Requires an
+            explicit ``r``, since resolving r=None needs the very scan the cache avoids.
+            Build the cache ahead of time with ``pipeline.cache_violin_data``.
+    """
+    import polars as pl
+
+    if cache_dir is not None and r is not None:
+        cached = _read_fixation_steps_cache(cache_dir, r, max_points_per_category)
+        if cached is not None:
+            return cached
+
+    _scanner = scan_results(results_path)
+    _has_r = "r" in _scanner.collect_schema().names()
+
+    lf = _scanner.select(["wl_hash", "steps", "fixation"] + (["r"] if _has_r else []))
+
+    # Pooling several r values would silently overlay distributions, so resolve to a
+    # single r before collecting.
+    r_suffix = ""
+    if _has_r:
+        r_available = sorted(
+            lf.select(pl.col("r")).unique().collect().to_series().to_list()
+        )
+        if r is None:
+            if len(r_available) == 1:
+                r = r_available[0]
+            else:
+                raise ValueError(
+                    f"results contain multiple r values {r_available}; pass r=<value> "
+                    f"(one r at a time)"
+                )
+        elif r not in r_available:
+            raise ValueError(f"r={r} not found in results; available: {r_available}")
+        lf = lf.filter(pl.col("r") == r)
+        r_suffix = f"  (r={r})"
+
+    # Attach category to every run (lazy). Totals per category must be counted before
+    # the fixation filter so we can report rho = fixations / total runs, hence the join
+    # happens here rather than after filtering.
+    lf = lf.join(
+        pl.from_pandas(df_graphs[["wl_hash", "category"]]).lazy(),
+        on="wl_hash",
+        how="left",
+    )
+
+    # Total runs per category (the rho denominator), counted before non-fixation rows
+    # are dropped. Streamed, so the full frame is never materialised.
+    _tot = (
+        lf.group_by("category").agg(pl.len().alias("total")).collect(engine="streaming")
+    )
+    total_counts = dict(
+        zip(_tot.get_column("category").to_list(), _tot.get_column("total").to_list())
+    )
+
+    # Only fixation events are ever drawn/tested, so materialise just those.
+    merged_raw = lf.filter(pl.col("fixation")).collect()
+
+    _vc = merged_raw["category"].value_counts()
+    fixation_counts = dict(
+        zip(_vc.get_column("category").to_list(), _vc.get_column("count").to_list())
+    )
+
+    # Subsample each category down to the cap with a within-category shuffle (uniform
+    # sample), keeping every violin's KDE and every pairwise test cheap and faithful.
+    subsampled = False
+    if max_points_per_category is not None:
+        largest_category = max(fixation_counts.values(), default=None)
+        subsampled = (
+            largest_category is not None and largest_category > max_points_per_category
+        )
+        merged_raw = (
+            merged_raw.with_columns(
+                pl.int_range(pl.len()).shuffle(seed=0).over("category").alias("_rn")
+            )
+            .filter(pl.col("_rn") < max_points_per_category)
+            .drop("_rn")
+        )
+
+    loaded = (
+        merged_raw.to_pandas(),
+        fixation_counts,
+        total_counts,
+        r,
+        r_suffix,
+        subsampled,
+    )
+
+    if cache_dir is not None:
+        _write_fixation_steps_cache(cache_dir, loaded, max_points_per_category)
+
+    return loaded
+
+
+def build_fixation_steps_cache(
+    batch_dir,
+    r_values=None,
+    max_points_per_category=50_000,
+    force=False,
+):
+    """Precompute the cached fixation-steps sample for every r in a finished batch.
+
+    One scan of the raw shards per r value. Meant to run once, on a compute node, as the
+    job chained after aggregation, so every later violin / p-value figure is a file read.
+
+    Args:
+        batch_dir: a finished batch (needs graph_props.csv and tmp/results/).
+        r_values: which r values to cache. Defaults to every r present in
+            graph_statistics.csv, which is the authoritative record of what was simulated.
+        max_points_per_category: subsample cap; part of the cache key.
+        force: rebuild even if a matching cache already exists.
+
+    Returns:
+        list of written cache paths.
+    """
+    batch_path = Path(batch_dir)
+
+    results_source = resolve_results_source(batch_path)
+    if results_source is None:
+        raise FileNotFoundError(
+            f"No raw results found under {batch_path / 'tmp' / 'results'}; the violin "
+            f"sample can only be built from raw rows."
+        )
+
+    df_graphs = pd.read_csv(batch_path / "graph_props.csv")
+
+    if r_values is None:
+        stats_path = batch_path / "graph_statistics.csv"
+        if not stats_path.exists():
+            raise FileNotFoundError(
+                f"{stats_path} missing; pass r_values explicitly or run aggregate_batch first."
+            )
+        r_values = sorted(pd.read_csv(stats_path, usecols=["r"])["r"].unique().tolist())
+
+    written = []
+    for r in r_values:
+        path = fixation_steps_cache_path(batch_path, r, max_points_per_category)
+        if not force and _fixation_steps_cache_is_valid(
+            batch_path, r, max_points_per_category
+        ):
+            print(f"r={r}: cache already present, skipping.")
+            written.append(path)
+            continue
+        print(f"r={r}: scanning raw results...")
+        load_fixation_steps_by_category(
+            results_source,
+            df_graphs,
+            r=r,
+            max_points_per_category=max_points_per_category,
+            cache_dir=batch_path,
+        )
+        written.append(path)
+    return written

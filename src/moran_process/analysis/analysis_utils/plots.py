@@ -34,6 +34,9 @@ from matplotlib.ticker import FuncFormatter, MaxNLocator
 import seaborn as sns
 
 from .colors import DEFAULT_FIG_SIZE, GRAPH_PROPERTY_DESCRIPTION, _sort_categories
+# The fixation-steps loader lives in io.py (pure polars/pandas) so the LSF cache job
+# can build the violin sample without importing matplotlib/seaborn.
+from .io import load_fixation_steps_by_category as _load_fixation_steps_by_category
 from .provenance import _bi_get
 from .theory import *
 
@@ -650,110 +653,6 @@ def plot_batch_info_card(
         plt.show()
 
 
-def _load_fixation_steps_by_category(
-    results_path,
-    df_graphs,
-    r=None,
-    max_points_per_category=50_000,
-):
-    """Load fixation 'steps' joined to graph 'category' for a single r value.
-
-    Shared loader for ``plot_steps_violin`` and ``plot_steps_pvalue_matrix`` so the
-    two figures are always built from exactly the same rows (same r resolution, same
-    fixation filter, same subsample). Returns:
-
-    - a tidy pandas DataFrame with columns ['category', 'steps'] (subsampled);
-    - ``fixation_counts``: true per-category fixation counts, read *before*
-      subsampling so callers can annotate how much data backs each category;
-    - ``total_counts``: per-category total run counts (fixation + non-fixation),
-      counted before the fixation filter, so callers can report rho = fix / total;
-    - the resolved ``r`` and an ``r_suffix`` label for titles;
-    - ``subsampled``: whether the cap actually trimmed any category.
-
-    See ``plot_steps_violin`` for why only fixation rows are materialised and why
-    subsampling to ``max_points_per_category`` is faithful to the full distribution.
-    """
-    import polars as pl
-
-    from .io import scan_results
-
-    _scanner = scan_results(results_path)
-    _has_r = "r" in _scanner.collect_schema().names()
-
-    lf = _scanner.select(["wl_hash", "steps", "fixation"] + (["r"] if _has_r else []))
-
-    # Pooling several r values would silently overlay distributions, so resolve to a
-    # single r before collecting.
-    r_suffix = ""
-    if _has_r:
-        r_available = sorted(
-            lf.select(pl.col("r")).unique().collect().to_series().to_list()
-        )
-        if r is None:
-            if len(r_available) == 1:
-                r = r_available[0]
-            else:
-                raise ValueError(
-                    f"results contain multiple r values {r_available}; pass r=<value> "
-                    f"(one r at a time)"
-                )
-        elif r not in r_available:
-            raise ValueError(f"r={r} not found in results; available: {r_available}")
-        lf = lf.filter(pl.col("r") == r)
-        r_suffix = f"  (r={r})"
-
-    # Attach category to every run (lazy). Totals per category must be counted before
-    # the fixation filter so we can report rho = fixations / total runs, hence the join
-    # happens here rather than after filtering.
-    lf = lf.join(
-        pl.from_pandas(df_graphs[["wl_hash", "category"]]).lazy(),
-        on="wl_hash",
-        how="left",
-    )
-
-    # Total runs per category (the rho denominator), counted before non-fixation rows
-    # are dropped. Streamed, so the full frame is never materialised.
-    _tot = (
-        lf.group_by("category").agg(pl.len().alias("total")).collect(engine="streaming")
-    )
-    total_counts = dict(
-        zip(_tot.get_column("category").to_list(), _tot.get_column("total").to_list())
-    )
-
-    # Only fixation events are ever drawn/tested, so materialise just those.
-    merged_raw = lf.filter(pl.col("fixation")).collect()
-
-    _vc = merged_raw["category"].value_counts()
-    fixation_counts = dict(
-        zip(_vc.get_column("category").to_list(), _vc.get_column("count").to_list())
-    )
-
-    # Subsample each category down to the cap with a within-category shuffle (uniform
-    # sample), keeping every violin's KDE and every pairwise test cheap and faithful.
-    subsampled = False
-    if max_points_per_category is not None:
-        largest_category = max(fixation_counts.values(), default=None)
-        subsampled = (
-            largest_category is not None and largest_category > max_points_per_category
-        )
-        merged_raw = (
-            merged_raw.with_columns(
-                pl.int_range(pl.len()).shuffle(seed=0).over("category").alias("_rn")
-            )
-            .filter(pl.col("_rn") < max_points_per_category)
-            .drop("_rn")
-        )
-
-    return (
-        merged_raw.to_pandas(),
-        fixation_counts,
-        total_counts,
-        r,
-        r_suffix,
-        subsampled,
-    )
-
-
 def plot_steps_violin(
     results_path,
     df_graphs,
@@ -761,6 +660,7 @@ def plot_steps_violin(
     categories=None,
     r=None,
     max_points_per_category=50_000,
+    cache_dir=None,
     *,
     figures_dir=None,
     force_recompute=False,
@@ -791,6 +691,10 @@ def plot_steps_violin(
         max_points_per_category: cap on the number of fixation events fed to each
             category's KDE. None disables subsampling and plots every point (slow for
             large batches). Default 50_000.
+        cache_dir: a batch directory holding a precomputed fixation-steps sample (see
+            io.build_fixation_steps_cache). On a hit the raw shards are never scanned,
+            which is the difference between a multi-minute figure and an instant one.
+            Requires an explicit ``r``. On a miss the sample is computed and cached there.
 
     See the module docstring for the shared output tail (figures_dir,
     force_recompute, fig_title, batch_name, show, save).
@@ -813,6 +717,7 @@ def plot_steps_violin(
             df_graphs,
             r=r,
             max_points_per_category=max_points_per_category,
+            cache_dir=cache_dir,
         )
     )
 
@@ -903,6 +808,7 @@ def plot_steps_pvalue_matrix(
     categories=None,
     r=None,
     max_points_per_category=50_000,
+    cache_dir=None,
     *,
     figures_dir=None,
     force_recompute=False,
@@ -955,6 +861,7 @@ def plot_steps_pvalue_matrix(
             df_graphs,
             r=r,
             max_points_per_category=max_points_per_category,
+            cache_dir=cache_dir,
         )
     )
 

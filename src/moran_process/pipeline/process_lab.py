@@ -341,11 +341,22 @@ class ProcessLab:
         # Chain the post-processing job: it PENDs until the array has ended and
         # register_graphs is done, then builds raw_results.parquet + graph_statistics.csv
         # on a compute node. This is what makes experiment_analysis.ipynb open instantly.
-        submit_aggregation_job(
+        aggregate_job_id = submit_aggregation_job(
             batch_dir=batch_dir,
             batch_name=batch_name,
             array_job_id=lsf_job_id,
             register_job_id=register_job_id,
+            queue=queue,
+        )
+
+        # And chain the two consumers of that aggregation: the QC report (did the batch
+        # come out clean?) and the violin-sample cache (the only figure input that still
+        # needs raw rows). Both PEND until aggregation succeeds, so by the time you open
+        # experiment_analysis.ipynb the batch is both verified and fast.
+        submit_post_batch_jobs(
+            batch_dir=batch_dir,
+            batch_name=batch_name,
+            aggregate_job_id=aggregate_job_id,
             queue=queue,
         )
 
@@ -536,73 +547,188 @@ def submit_aggregation_job(
     back the median/quantile materialization -- the heaviest, most memory-hungry step -- so
     the default leaves headroom for it. Bump it for very large batches if the job is killed.
     """
-    logs_dir = os.path.join(batch_dir, "logs")
-    os.makedirs(logs_dir, exist_ok=True)
-
-    python_exec = sys.executable
-    memory_mb = _parse_memory_mb(memory)
-
     # Only wait on jobs we can actually name by numeric id. If neither id is
     # given (e.g. re-aggregating a batch whose array already ended), we add no
     # -w flag at all so the job runs immediately -- a name-based ended(batch_*)
     # dependency would just be rejected with "No matching job found" once the
     # array has left LSF's records.
-    conditions = []
-    if array_job_id:
-        conditions.append(f"ended({array_job_id})")
-    if register_job_id:
-        conditions.append(f"done({register_job_id})")
-    dependency = " && ".join(conditions)
+    return _submit_dependent_job(
+        batch_dir=batch_dir,
+        step="aggregate",
+        batch_name=batch_name,
+        module="moran_process.pipeline.aggregate_batch",
+        module_args=["--order-stats"] if order_stats else [],
+        dependencies=[
+            f"ended({array_job_id})" if array_job_id else None,
+            f"done({register_job_id})" if register_job_id else None,
+        ],
+        queue=queue,
+        memory=memory,
+    )
 
-    cmd_job = [
+
+def _submit_dependent_job(
+    batch_dir,
+    step,
+    batch_name,
+    module,
+    module_args=(),
+    dependencies=(),
+    queue="short",
+    memory="16GB",
+):
+    """bsub ``python -m <module> --batch-dir <batch_dir>``, held until ``dependencies``.
+
+    Every post-processing step (aggregate, then the violin cache and the QC report that
+    chain off it) is the same submission with a different module and a different wait
+    condition, so the bsub construction lives here once. Keeping it in one place is what
+    guarantees they all get the same logs dir, the same PYTHONPATH, and the same
+    ``sys.executable`` -- the last one matters because the venv python is what has polars.
+
+    Args:
+        step: short tag used for the job name (``batch_<name>_<step>``) and the log
+            filenames, so a batch's logs directory stays self-describing.
+        dependencies: LSF ``-w`` conditions, ANDed. ``None``/empty entries are dropped, and
+            if nothing survives no ``-w`` flag is passed at all and the job runs
+            immediately. That is the standalone case (re-running a step on a batch whose
+            array has already left LSF's records, where a stale condition would be
+            rejected outright rather than treated as satisfied).
+
+    Returns:
+        The LSF job id as a string, or None if bsub failed or its output could not be
+        parsed. Callers chain on this, so a None id degrades to "runs immediately"
+        rather than stranding the next job in PEND forever.
+    """
+    logs_dir = os.path.join(batch_dir, "logs")
+    os.makedirs(logs_dir, exist_ok=True)
+
+    dependency = " && ".join(c for c in dependencies if c)
+
+    cmd = [
         "bsub",
         "-q",
         queue,
         "-J",
-        f"batch_{batch_name}_aggregate",
+        f"batch_{batch_name}_{step}",
         *(["-w", dependency] if dependency else []),
         "-o",
-        os.path.join(logs_dir, "job_%J_aggregate.out"),
+        os.path.join(logs_dir, f"job_%J_{step}.out"),
         "-e",
-        os.path.join(logs_dir, "job_%J_aggregate.err"),
+        os.path.join(logs_dir, f"job_%J_{step}.err"),
         "-R",
-        f"rusage[mem={memory_mb}]",
+        f"rusage[mem={_parse_memory_mb(memory)}]",
         "-env",
         "PYTHONPATH=src",
-    ]
-
-    cmd_process = [
-        python_exec,
+        sys.executable,
         "-u",
         "-m",
-        "moran_process.pipeline.aggregate_batch",
+        module,
         "--batch-dir",
         str(batch_dir),
+        *module_args,
     ]
-    if order_stats:
-        cmd_process.append("--order-stats")
 
-    cmd = cmd_job + cmd_process
     log.info(
-        "Submitting aggregation job (depends on: %s): %s",
+        "Submitting %s job (depends on: %s): %s",
+        step,
         dependency or "nothing (runs immediately)",
         " ".join(cmd),
     )
     result = subprocess.run(cmd, capture_output=True, text=True)
-    agg_job_id = _parse_lsf_job_id(result.stdout)
+    job_id = _parse_lsf_job_id(result.stdout)
     if result.returncode == 0:
         log.info(
-            "Aggregation job submitted. LSF job id: %s (runs when: %s)",
-            agg_job_id or "unknown",
+            "%s job submitted. LSF job id: %s (runs when: %s)",
+            step,
+            job_id or "unknown",
             dependency or "immediately",
         )
     else:
         log.error(
-            "Aggregation bsub failed with return code %d: %s",
+            "%s bsub failed with return code %d: %s",
+            step,
             result.returncode,
             (result.stderr or "").strip(),
         )
-    return agg_job_id
+    return job_id
+
+
+def submit_violin_cache_job(
+    batch_dir,
+    batch_name,
+    aggregate_job_id=None,
+    queue="short",
+    memory="32GB",
+    max_points_per_category=50_000,
+):
+    """Chain the violin-sample cache after aggregation.
+
+    Depends on ``done`` (not ``ended``) of the aggregation job, because it reads
+    graph_statistics.csv to learn which r values were simulated. If aggregation failed
+    there is nothing to cache, and PENDing forever is the honest outcome.
+
+    Memory defaults higher than aggregation's: this materialises every fixation row for
+    one r before subsampling, and unlike the moment rollup that step does not decompose
+    into per-shard partials, so it is a genuine collect. It is still one r at a time and
+    fixation rows only, so 32GB is comfortable for the 100K-reps batch.
+    """
+    return _submit_dependent_job(
+        batch_dir=batch_dir,
+        step="violin_cache",
+        batch_name=batch_name,
+        module="moran_process.pipeline.cache_violin_data",
+        module_args=["--max-points-per-category", str(max_points_per_category)],
+        dependencies=[f"done({aggregate_job_id})" if aggregate_job_id else None],
+        queue=queue,
+        memory=memory,
+    )
+
+
+def submit_report_job(
+    batch_dir,
+    batch_name,
+    aggregate_job_id=None,
+    queue="short",
+    memory="8GB",
+):
+    """Chain the QC report after aggregation.
+
+    Reads only the CSVs, batch_info.json and the parquet footers, so it is seconds of work
+    and modest memory whatever the batch size. Depends on ``done`` of aggregation because
+    graph_statistics.csv is its main input.
+    """
+    return _submit_dependent_job(
+        batch_dir=batch_dir,
+        step="report",
+        batch_name=batch_name,
+        module="moran_process.pipeline.batch_report",
+        dependencies=[f"done({aggregate_job_id})" if aggregate_job_id else None],
+        queue=queue,
+        memory=memory,
+    )
+
+
+def submit_post_batch_jobs(
+    batch_dir,
+    batch_name,
+    aggregate_job_id=None,
+    queue="short",
+):
+    """Submit both post-aggregation jobs (QC report, violin cache) for a batch.
+
+    They are independent of each other, so both wait on the aggregation alone and LSF is
+    free to run them concurrently. Called by submit_jobs for a simulated batch and by
+    combine_batches for a synthesised one; in the latter case there is no aggregation job
+    to wait for, so both run immediately.
+    """
+    return {
+        "report": submit_report_job(
+            batch_dir, batch_name, aggregate_job_id=aggregate_job_id, queue=queue
+        ),
+        "violin_cache": submit_violin_cache_job(
+            batch_dir, batch_name, aggregate_job_id=aggregate_job_id, queue=queue
+        ),
+    }
 
 
 def register_graphs_job(
