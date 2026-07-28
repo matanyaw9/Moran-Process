@@ -103,9 +103,20 @@ moran-process/
     │   ├── process_lab.py             # ProcessLab: local study + HPC submission
     │   ├── worker_lsf.py              # LSF array worker
     │   ├── main.py                    # respiratory + random batch builder/submitter
+    │   ├── post_batch.py              # post-simulation entry point: status + ensure
+    │   ├── aggregate_batch.py         # job 1: shards -> graph_statistics.csv
+    │   ├── batch_verify.py            # job 2: completeness + failure verdict
+    │   ├── cache_violin_data.py       # job 3: bounded fixation-step sample per r
+    │   ├── job_speed.py               # job 4: per-job steps/duration sums
+    │   ├── combine_batches.py         # union two batches into one combined batch
     │   └── extreme_graphs.py          # mutation/GA search for extreme graphs
     └── analysis/
-        ├── analysis_utils.py          # plotting, aggregation, batch_info helpers
+        ├── analysis_utils/            # package, not a module
+        │   ├── io.py                  # builders + readers, aggregation, batch_info
+        │   ├── plots.py               # all plot_* functions, figure cache
+        │   ├── colors.py              # CATEGORY_COLOR_DICT and friends
+        │   ├── theory.py              # analytic fixation-probability reference
+        │   └── provenance.py          # batch_info.json read/write
         └── batch_speed_report.py      # engine/worker speed-comparison report
 ```
 
@@ -229,12 +240,14 @@ The intended workflow (see also `task_list.md` and `WORKFLOW.md`):
    `<batch_dir>/tmp/graph_zoo.joblib`, then submits.
 3. LSF runs: a `register_graphs` job writes `graph_props.csv`; the worker array writes
    `tmp/results/raw_results_job_*.parquet`.
-4. Aggregate raw results: `analysis_utils.aggregate_results_no_load(batch_dir)` streams
-   all `raw_results_job_*` files into `<batch_dir>/raw_results.parquet` (or `.csv`) without
-   loading them into memory. This replaced the old manual glob+concat.
-5. Analyze: `notebooks/experiment_analysis.ipynb` reads `raw_results.parquet` plus
-   `graph_props.csv`, aggregates per graph (fixation probability, mean/std steps, etc.),
-   merges in structural properties, and writes `<batch_dir>/graph_statistics.csv`.
+4. Post-simulation jobs run automatically, chained onto the array by `submit_jobs`: an
+   `aggregate` job writes `graph_statistics.csv` from the shards plus `graph_props.csv`,
+   then `verify` and `violin cache` run concurrently off it, while `job speed` runs off the
+   array directly. See section 6 and `HPC_WORKFLOW.md` step 3. For an already-finished
+   batch, `python -m moran_process.pipeline.post_batch --batch-dir <batch> --submit`.
+5. Analyze: `notebooks/experiment_analysis.ipynb` reads only finished files. It does not
+   aggregate anything; `graph_statistics.csv`, `job_speed.csv`, and the violin cache all
+   arrive from step 4. Its first cell prints the post-batch readiness table.
 6. ML: `notebooks/ml_predictors.ipynb` reads `graph_statistics.csv` and trains models.
 7. Extreme graphs: `pipeline/extreme_graphs.py` and `notebooks/extreme_graphs.ipynb`
    use `mutate_graph` to evolve graphs toward extreme predicted fixation time/probability.
@@ -246,8 +259,11 @@ simulation_data/<batch_name>/
 ├── batch_info.json          # written by create_batch_info; nested sections: provenance
 │                            #   (git/host/command), zoo, simulation, hpc
 ├── graph_props.csv          # structural properties, one row per unique graph
-├── raw_results.parquet      # aggregated raw simulation rows (one per run)
-├── graph_statistics.csv     # per-graph aggregated stats merged with properties (analysis output)
+├── graph_statistics.csv     # per (wl_hash, r) rollup merged with properties (aggregate job)
+├── job_speed.csv            # job_id,steps,duration per array index (job speed job)
+├── report/                  # verification.json (source of truth) + verification.txt (view)
+├── cache/                   # fixation_steps_r{r}_n{cap}.parquet + JSON sidecar (violin job)
+├── figures/                 # cached PNGs, shared by the notebooks and streamlit
 ├── logs/                    # bsub stdout/stderr: job_%J_%I.out/.err
 └── tmp/
     ├── graph_zoo.joblib     # serialized list of PopulationGraph
@@ -257,6 +273,11 @@ simulation_data/<batch_name>/
 ```
 Note: this differs from the older docs, which described `simulation_data/tmp/batch_<name>/`.
 The real structure puts `tmp/` inside each batch dir.
+
+A fused `raw_results.parquet` may exist in older batches but is no longer produced or read.
+Polars indexes rows with a u32 and cannot read a single Parquet file over 2**32-1 rows, and
+the 100K-reps batch is 7.2e9, so everything scans `tmp/results/*.parquet` as a glob instead.
+`aggregate_results_no_load` still exists for the cases where one file is genuinely wanted.
 
 ---
 
@@ -280,9 +301,16 @@ bpeek -f <id>    # follow stdout
 bkill <id>       # kill one; bkill 0 kills all
 ```
 
-Queues (approximate walltimes): `short` (~30 min), `new-short` (~12 h), `medium` (48 h),
-`long` (7+ days), `idle` (unlimited, preemptible), `gsla-cpu` (the lab queue used
-interactively). Check with `bqueues`.
+Queues: `short` (RUNLIMIT 1440 min despite the name, and the widest at ~22000 slots, which
+is why both the simulation array and the post-simulation jobs use it), `new-short` (~12 h),
+`medium` (48 h), `long` (7+ days), `idle` (unlimited, preemptible), `gsla-cpu` (the lab
+queue used interactively). Verify with `bqueues -l <name>`, not from memory.
+
+Post-simulation jobs (see section 5 step 4 and `HPC_WORKFLOW.md` step 3):
+```bash
+uv run python -m moran_process.pipeline.post_batch --batch-dir <batch>            # status
+uv run python -m moran_process.pipeline.post_batch --batch-dir <batch> --submit
+```
 
 Manual single-worker test (no bsub):
 ```bash
@@ -308,18 +336,27 @@ Do not connect VS Code itself to the compute node; the session dies when the job
 
 ## 7. Analysis and ML
 
-### analysis_utils.py (the shared toolbox)
-- Constants: `CATEGORY_COLOR_DICT` (per-category colors, including Accelerator/Decelerator),
-  `GRAPH_PROPERTY_COLUMNS`, `GRAPH_PROPERTY_DESCRIPTION` (human-readable text per property).
-- Aggregation: `aggregate_results_no_load(batch_dir, delete_temp=False, output_file=None)`.
-- Batch metadata: `create_batch_info(...)` and `load_batch_info(batch_dir)` read/write
-  `batch_info.json`.
+### analysis_utils (the shared toolbox, a package under `analysis/analysis_utils/`)
+- Constants (`colors.py`): `CATEGORY_COLOR_DICT` (per-category colors, including
+  Accelerator/Decelerator), `GRAPH_PROPERTY_COLUMNS`, `GRAPH_PROPERTY_DESCRIPTION`.
+- **Builders, called only by post-simulation jobs** (`io.py`):
+  `build_graph_statistics(...)` and `compute_fixation_steps_by_category(...)`.
+- **Readers, called by notebooks / streamlit / ML** (`io.py`):
+  `load_graph_statistics(batch_dir, category_filter=None, r_filter=None)` and
+  `load_fixation_steps_by_category(batch_dir, r=None, max_points_per_category=50_000)`.
+  These raise if the artefact is missing, naming the file and the CLI that builds it. They
+  deliberately do **not** fall back to building; see `CLAUDE.md` for why.
+- Aggregation: `aggregate_results_no_load(batch_dir, delete_temp=False, output_file=None)`,
+  now off the normal path.
+- Batch metadata (`provenance.py`): `create_batch_info(...)` and `load_batch_info(batch_dir)`
+  read/write `batch_info.json`.
 - Plotting functions share a figure-cache pattern: each one takes `figures_dir`,
   `force_recompute`, and `batch_name`. If a cached PNG exists and `force_recompute=False`,
   it displays the PNG instead of recomputing; otherwise it renders, saves the PNG, and
   stamps the source batch name. Key plotters:
-  - `plot_steps_violin(...)` uses a polars lazy scan to pull only needed columns from a
-    large `raw_results.parquet`.
+  - `plot_steps_violin(batch_dir, df_graphs, ...)` and `plot_steps_pvalue_matrix(...)` read
+    the cached fixation-step sample built by the violin job. They take `batch_dir`, not
+    `results_path` plus `cache_dir`, and raise on a cache miss naming what *is* cached.
   - `plot_outcome_vs_property(...)` is the current recommended scatter-vs-property plot
     (auto violins for discrete x, vectorized jitter, correct 1/N neutral line). It
     supersedes the older `plot_hybrid_density(...)` and `plot_property_effect(...)`.
@@ -361,18 +398,20 @@ xgboost, shap, jupyterlab, ipykernel, nbstripout. Dev: pytest. Pillow pinned <11
 Done: all three respiratory topologies; WL-hash dedup; LSF batch pipeline; random-graph
 null model; streaming aggregation; per-graph statistics; LR + XGBoost + SHAP; figure
 caching; batch_info metadata; evolutionary search for extreme graphs; a scaling study
-(see `notebooks/scaling_experiment_analysis.ipynb`, batch `2026-05-20_scaling_study_3`).
+(see `notebooks/scaling_experiment_analysis.ipynb`, batch `2026-05-20_scaling_study_3`);
+the C++ simulation engine; batch combination; the four post-simulation jobs (aggregate,
+verify, violin cache, job speed) with automatic chaining, so `experiment_analysis.ipynb`
+runs on any batch with no compute in the kernel.
 
 Open (from `task_list.md` and PROJECT_OVERVIEW.md):
 - Record steps to extinction separately, not only steps to fixation.
-- Speed up the simulation (C++ / Cython / Numba on the Moran step, or multiprocessing).
 - Multi-color / multi-type Moran (more than two states); likely needs a `Process` ABC.
 - GNN approach to predict fixation properties from structure (fixed vs variable N).
 - Justify N=31 with a size sweep showing qualitative consistency.
 - Add the analytical fixation-probability reference line to plots.
-- Engineering: move all plotting behind functions (largely done in analysis_utils), add a
-  proper CLI (Typer/Click), add a `ProcessLab.aggregate_batch()` method, fix per-batch log
-  naming, address violin-plot FutureWarning.
+- Engineering: add a proper CLI (Typer/Click) over the per-module argparse entry points,
+  fix per-batch log naming, address violin-plot FutureWarning. Write real tests: the
+  existing `tests/` are AI-generated, outdated, and untrusted.
 - Reading list: Uri Alon (network motifs); Kishony 2011 (parallel bacterial evolution).
 
 ---

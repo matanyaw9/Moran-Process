@@ -143,12 +143,37 @@ simulation_data/<batch_name>/
 
 Then submits: `bsub -q short -J "batch_<name>[1-1000]" ... python -u -m moran_process.pipeline.worker_lsf --zoo-shard-dir <tmp>/zoo_shards --manifest-path <tmp>/task_manifest.csv --batch-dir <tmp> --engine cpp`
 
-### Aggregating Results After Jobs Complete
-Per-job results are Parquet files in `<batch>/tmp/results/`. Stream them into one file with the built-in helper (copies files without loading into memory):
+### Post-Simulation Jobs
+`submit_jobs` chains four dependent jobs after the array. See `HPC_WORKFLOW.md` step 3 for the DAG and the LSF conditions, and `CLAUDE.md` for the design rationale.
+
 ```python
-from moran_process.analysis.analysis_utils import aggregate_results_no_load
-aggregate_results_no_load("simulation_data/<batch>")  # writes <batch>/raw_results.parquet
+from moran_process.pipeline.process_lab import ProcessLab
+ProcessLab.submit_post_batch_jobs(
+    batch_dir, batch_name,
+    aggregate_job_id=None,    # chain the consumers onto this rollup; None = run now
+    array_job_id=None,        # gate aggregate and job_speed on this array; None = run now
+    queue="short", include_job_speed=True, force=False,
+)
 ```
+
+One rule unifies every launch mode: **if a job id is passed the job PENDs on it; if `None` is passed no `-w` flag is added and the job runs immediately.** That is what lets the same four submitters serve a fresh batch, a finished batch, and a combined batch without branching.
+
+| module | mem | in | out |
+|---|---|---|---|
+| `pipeline/aggregate_batch.py` | 16GB | shards, `graph_props.csv` | `graph_statistics.csv` |
+| `pipeline/batch_verify.py` | 8GB | props, stats, `batch_info.json`, shard footers | `report/verification.{json,txt}` |
+| `pipeline/cache_violin_data.py` | 8GB | shards | `cache/fixation_steps_r{r}_n{cap}.parquet` + JSON sidecar |
+| `pipeline/job_speed.py` | 8GB | shards | `job_speed.csv` (`job_id,steps,duration`) |
+
+`pipeline/post_batch.py` is the entry point:
+- `classify_batch(batch_dir)` -> `CURRENT` / `COMBINED` / `LEGACY`.
+- `post_batch_status(batch_dir, r_values=None)` -> per-step `DONE` / `MISSING` / `INHERITED` / `NOT_APPLICABLE`. Inspection only.
+- `print_post_batch_status(status)` renders the table the notebook shows.
+- `ensure_post_batch(batch_dir, force=False)` submits. The only thing that starts work.
+
+Note `ensure_post_batch` treats "the aggregation is being rebuilt" as a reason to rerun its consumers even when their outputs exist, since those outputs are now stale by construction.
+
+`aggregate_results_no_load(batch_dir)` still fuses per-job shards into one `raw_results.parquet`, but it is off the normal path: a fused file over 2**32-1 rows exceeds polars' u32 row index. Consumers glob `tmp/results/*.parquet`.
 
 ---
 
@@ -181,12 +206,23 @@ Current config: `n_nodes=range(29,34)`, `edge_range=5`, `n_random_graphs_per_com
 
 | Notebook | Purpose |
 |---|---|
-| `experiment_analysis.ipynb` | Main analysis: aggregate batch results, distributions, per-property plots against fixation probability and time |
+| `experiment_analysis.ipynb` | Main analysis: distributions, per-property plots against fixation probability and time. Reads only finished files |
 | `ml_predictors.ipynb` | ML training and evaluation: LR + XGBoost across all targets in one run, SHAP, cross-model summary |
 | `extreme_graphs.ipynb` | Analysis of graphs generated to maximise/minimise model predictions |
 | `design_zoo.ipynb` | Graph zoo design and inspection |
 
-**Workflow:** run `experiment_analysis.ipynb` first to produce `graph_statistics.csv`, then `ml_predictors.ipynb` to train and save models.
+**Workflow:** the post-simulation jobs produce `graph_statistics.csv`; `experiment_analysis.ipynb` and then `ml_predictors.ipynb` both read it. The notebook no longer builds it. Its first cell after the config prints the post-batch status table and, if anything is missing, the exact `ensure_post_batch(...)` call.
+
+**Builder/reader split.** Every expensive artefact has a builder that only jobs call and a reader that only notebooks, streamlit, and ML call:
+
+| artefact | builder (jobs only) | reader (consumers) |
+|---|---|---|
+| `graph_statistics.csv` | `io.build_graph_statistics` | `io.load_graph_statistics` |
+| violin sample | `io.compute_fixation_steps_by_category` | `io.load_fixation_steps_by_category` |
+
+The readers raise rather than falling back to building, naming the missing file and the CLI that produces it. Both were previously single "compute if missing, else load" functions, which meant the same call was either a 20ms file read or an unannounced hour of compute inside a Jupyter kernel depending on invisible state. `plot_steps_violin` and `plot_steps_pvalue_matrix` take `batch_dir` accordingly, not `results_path` plus `cache_dir`.
+
+Stale notebooks (`notebooks/tmp_*`, `scaling_experiment_analysis.ipynb`) were left alone: they already called the plots with a `results_csv_path=` parameter that had not existed for some time, so they were broken before this change.
 
 ---
 

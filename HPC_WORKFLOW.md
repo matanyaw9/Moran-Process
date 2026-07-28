@@ -91,16 +91,61 @@ bjobs -l <job_id>          # detailed info (why pending?)
 bpeek -f <job_id>          # follow stdout of a running job
 ```
 
-### Step 3 — Collect Results
-After all jobs finish, `simulation_data/<BATCH_NAME>/tmp/results/` will contain `raw_results_job_1.parquet` through `raw_results_job_N.parquet`. Stream them into one file with the built-in helper (copies files without loading them into memory):
-```python
-from moran_process.analysis.analysis_utils import aggregate_results_no_load
-aggregate_results_no_load("simulation_data/<BATCH_NAME>")  # writes <BATCH_NAME>/raw_results.parquet
-# pass delete_temp=True to also remove tmp/ afterward
+### Step 3 — Post-simulation jobs
+
+Four independent jobs turn the raw shards into analysis-ready files. `submit_jobs` already chains them onto a fresh batch, so for a normal submission there is nothing to do here: check back later and the batch is ready.
+
+```
+             register_graphs --+
+                               +--> aggregate --+--> verify
+  simulation array (1..N) -----+                +--> violin cache
+                               +--> job speed
 ```
 
+They are four separate `bsub` jobs, not one job with four stages and not an array. Their resource footprints differ (16GB for the rollup, 8GB for the rest), so one job would reserve the maximum for the whole runtime; separate jobs let the independent ones overlap; a crash in one leaves the others' outputs intact; and each stays independently re-runnable without skip-flags. The edges are data dependencies only. `verify` and `violin cache` both read what `aggregate` writes but neither reads the other, which is what lets LSF run them concurrently. `job speed` needs nothing from the aggregation, so it hangs off the array directly and its wall-clock cost is effectively zero.
+
+Dependencies are keyed on **numeric LSF job ids**, not job names, so reusing a batch name cannot collide and a stale name-based condition cannot be rejected after the array has left LSF's records:
+
+```
+aggregate       -w "ended(<array>) && done(<register>)"
+verify          -w "done(<aggregate>)"
+violin_cache    -w "done(<aggregate>)"
+job_speed       -w "ended(<array>)"
+```
+
+`ended` on the array, not `done`: a single crashed worker must not strand the aggregation in PEND forever. Verify then surfaces the missing shard. `done` on aggregate for its two consumers: if the rollup failed there is nothing to verify or cache, and PENDing is the honest outcome. There is no polling anywhere; LSF holds each job in PEND until its condition is met.
+
+**Checking, and running them by hand.** For a batch whose simulations already finished, or one submitted before this existed:
+
+```bash
+# inspect only, submits nothing, safe on the login node
+uv run python -m moran_process.pipeline.post_batch --batch-dir simulation_data/<BATCH_NAME>
+
+# submit whatever is missing (nothing to wait for, so everything starts at once)
+uv run python -m moran_process.pipeline.post_batch --batch-dir simulation_data/<BATCH_NAME> --submit
+
+# rebuild everything, rechaining the consumers onto the fresh aggregation
+uv run python -m moran_process.pipeline.post_batch --batch-dir simulation_data/<BATCH_NAME> --submit --force
+```
+
+Each job also has its own CLI if you want to rerun exactly one:
+```bash
+uv run python -m moran_process.pipeline.aggregate_batch   --batch-dir <batch> [--order-stats]
+uv run python -m moran_process.pipeline.batch_verify      --batch-dir <batch> [--skip-row-counts]
+uv run python -m moran_process.pipeline.cache_violin_data --batch-dir <batch> [--r-values 1.0 1.1 ...] [--force]
+uv run python -m moran_process.pipeline.job_speed         --batch-dir <batch>
+```
+
+`batch_verify` is seconds and modest memory at any batch size (it reads Parquet footers, not data), so it is safe on the login node. The other three are not.
+
+**Combined batches.** `combine_batches` unions the parents' CSVs and symlinks their raw shards. Two steps do not apply and are reported as such rather than silently skipped: aggregate is `INHERITED` (concatenating the parents' `graph_statistics.csv` is exact, so there is nothing to recompute) and job speed is `N/A` (the linked shards still carry each parent's own 1..N `job_id` numbering, so summing by `job_id` would add unrelated workers together). Verify and the violin cache run normally.
+
+The shards under a combined batch's `tmp/results/` are **absolute symlinks** into the parents. The parents must stay in place; do not move or delete them.
+
+`aggregate_results_no_load(batch_dir)` still exists and fuses all shards into a single `raw_results.parquet`, but it is no longer part of the normal path: polars indexes rows with a u32 and cannot read a single Parquet file over 2**32-1 rows, and the 100K-reps batch is 7.2e9. Everything scans `tmp/results/*.parquet` as a glob instead.
+
 ### Step 4 — Analyze
-Open notebooks in `analysis/` on the Windows PC (notebooks run locally using the OneDrive-synced data, or via Jupyter on WEXAC).
+Once Step 3 reports `ready`, open `notebooks/experiment_analysis.ipynb` via `ijup` on a compute node and Run All. Every figure input is a file read; no cell triggers job-sized compute. The readiness cell at the top prints the per-step status table and, if anything is missing, the exact `ensure_post_batch(...)` call to fix it.
 
 ---
 

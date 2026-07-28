@@ -92,16 +92,23 @@ moran-process/
     │   ├── process_lab.py               # local study + HPC submission
     │   ├── worker_lsf.py                # LSF array worker
     │   ├── main.py                      # respiratory + random batch builder
+    │   ├── post_batch.py                # post-simulation status + submission
+    │   ├── aggregate_batch.py           # post-sim job 1: shards -> graph_statistics.csv
+    │   ├── batch_verify.py              # post-sim job 2: completeness + failure verdict
+    │   ├── cache_violin_data.py         # post-sim job 3: bounded fixation-step sample
+    │   ├── job_speed.py                 # post-sim job 4: per-job steps/duration
+    │   ├── combine_batches.py           # union two batches into one
     │   └── extreme_graphs.py            # mutation/GA search for extreme graphs
     └── analysis/
-        ├── analysis_utils.py            # plotting, aggregation, batch_info helpers
+        ├── analysis_utils/              # package: io, plots, colors, theory, provenance
         └── batch_speed_report.py        # engine/worker speed-comparison report
 ```
 
 A single batch lives at `simulation_data/<batch_name>/` and contains `graph_props.csv`,
-`raw_results.parquet`, `graph_statistics.csv`, `batch_info.json`, `logs/`, and a `tmp/`
-holding `graph_zoo.joblib`, `task_manifest.csv`, `zoo_shards/zoo_worker_*.pkl`, and
-`results/raw_results_job_*.parquet`.
+`graph_statistics.csv`, `job_speed.csv`, `batch_info.json`, `report/`, `cache/`,
+`figures/`, `logs/`, and a `tmp/` holding `graph_zoo.joblib`, `task_manifest.csv`,
+`zoo_shards/zoo_worker_*.pkl`, and `results/raw_results_job_*.parquet`. Everything above
+`tmp/` is produced by the post-simulation jobs and is what the analysis notebooks read.
 
 ---
 
@@ -123,11 +130,18 @@ holding `graph_zoo.joblib`, `task_manifest.csv`, `zoo_shards/zoo_worker_*.pkl`, 
 - Parquet output with streaming results (constant-memory workers; ~5x smaller files vs CSV)
 - `SimulationProcess` ABC with `MoranProcess` and `MultiColorMoranProcess` subclasses
 - Incremental mutant-count tracking; unified per-instance RNG with optional batch seed for reproducibility
-- Polars streaming aggregation in `analysis_utils.build_graph_statistics`
+- Polars streaming aggregation in `analysis_utils.io.build_graph_statistics`
+- C++ simulation engine (`CppMoranProcess`), statistically validated against the Python
+  reference; roughly 300x to 1800x faster
+- Batch combination (`combine_batches.py`): union two batches into one analysable batch
+- Post-simulation jobs: aggregate, verify, violin cache, and job speed, chained
+  automatically after the array so `experiment_analysis.ipynb` runs on any batch with no
+  compute in the kernel and none on the login node
 
 ### In Progress / Next Steps
 - [ ] Record steps to extinction separately, not only steps to fixation
-- [ ] Make the simulation faster (C++/Cython/Numba on the inner loop; pipeline RAM already fixed)
+- [x] Make the simulation faster -- C++ engine via pybind11, default since June 2026
+- [ ] Write real tests; the existing `tests/` are AI-generated, outdated, and untrusted
 - [x] Multi-color/multi-type simulation -- `MultiColorMoranProcess` subclasses `SimulationProcess` ABC
 - [ ] Explore a GNN approach (fixed-size vs variable-size graphs)
 - [ ] Justify N=31 with a size sweep showing qualitative consistency
@@ -143,3 +157,5 @@ holding `graph_zoo.joblib`, `task_manifest.csv`, `zoo_shards/zoo_worker_*.pkl`, 
 3. **HPC Parallelism:** Jobs are submitted as LSF job arrays. A `task_manifest.csv` enumerates the work and assigns each row a `worker_id`; each worker processes the rows whose `worker_id` matches its `LSB_JOBINDEX`.
 4. **Serialization:** The graph zoo is serialized with joblib to `<batch>/tmp/graph_zoo.joblib`; workers load it and run their assigned rows.
 5. **Metric cutoffs:** Expensive metrics (diameter, ASPL, betweenness, closeness) are only computed below N thresholds (roughly 100 to 500) to avoid freezing.
+6. **Builder/reader split:** Every expensive artefact has a builder that only compute jobs call and a reader that only notebooks call, and the reader raises rather than silently building. The two used to be single "compute if missing, else load" functions, which meant one call site was either a 20ms file read or an unannounced hour of compute inside a Jupyter kernel depending on invisible state. All heavy lifting belongs in the post-simulation jobs, on compute nodes.
+7. **Shards are never fused:** Consumers scan `tmp/results/*.parquet` as a glob. Polars indexes rows with a u32 and cannot read a single Parquet file over 2**32-1 rows, and the 100K-reps batch is 7.2e9. Every statistic the rollup writes is an additive per-shard partial, so it is a bounded-memory reduction; order statistics do not decompose and are opt-in.

@@ -365,3 +365,103 @@ My recommendation: **do Numba first**. If after sections 1-6 you measure the
 inner loop and it's still the bottleneck for the production workload you care
 about, *then* rewrite the kernel in C++. The Numba version is also a useful
 ground-truth reference for any C++ port.
+
+---
+
+## 11. Done - Memory + I/O: the violin cache (post-simulation job)
+
+Two independent defects in the same code path, found while building the
+post-simulation jobs. Both are worth recording because both were invisible in
+small batches and only appeared at 7.2e9 rows.
+
+### 11a. Unbounded `collect()` -> reservoir sampling
+
+**Symptom.** On the combined batch `2026_07_21-combined-respiratory-random-extreme`
+(7.2546e9 rows), the violin cache job was killed by LSF at exactly 32768 MB
+(exit 137, TERM_MEMLIMIT) at the *first* r value, having written nothing. That
+batch had never once produced a cache.
+
+**Root cause.** `io.load_fixation_steps_by_category` did, on a cache miss:
+
+```python
+merged_raw = lf.filter(pl.col("fixation")).collect()
+```
+
+That materialises every fixation row for one r across all shards and only
+subsamples afterward. An unbounded `collect()`; no memory request fixes it. The
+moments rollup had already been made bounded because its statistics are additive
+per shard, but the violin sample collected the whole thing first and shrank it
+last.
+
+**Fix.** `io.compute_fixation_steps_by_category` samples shard by shard. Per
+shard: filter to this r, join category, collect that one shard, fold the two
+additive per-category counts (`total_counts` pre-fixation-filter,
+`fixation_counts`), then assign every fixation row an iid `uniform(0,1)` key and
+keep only the `cap` smallest keys per category.
+
+Keeping the k smallest of n iid uniforms **is** a uniform random subset of size
+k, and that property does not care how the rows were split across files or in
+what order they arrived. So folding shard by shard gives the same distribution
+as shuffling all 7.2e9 rows and taking the first k, and allocation lands
+proportional to each shard's contribution automatically, with no counting pass
+and no second read. Peak memory is one shard plus the reservoir (about 17
+categories x 50k rows), regardless of batch size.
+
+**Validated** against the old algorithm on `2026_06_18-respiratory-vs-random` at
+r=1.1, cap=50k: `total_counts` and `fixation_counts` identical (2,268,368
+fixations), every per-category sample size exactly `min(count, cap)`,
+per-category two-sample KS p in [0.758, 1.000], peak RSS 458MB. Also checked at
+cap=300 on the toy batch, where every category is genuinely subsampled.
+
+Memory request: 32GB -> 8GB, still roughly 20x the measured peak.
+
+### 11b. One pass, not one pass per r
+
+**Symptom.** Every shard holds rows for *every* r value, but
+`build_fixation_steps_cache` looped r on the outside and the sampler looped
+shards on the inside. That opened all 2000 files once per r value: six passes
+over 39GB to extract data that arrives together.
+
+**Why it hid.** `worker_lsf.py` writes one row-group per `(graph, r)` task, so
+`r` is constant within a row group and Parquet predicate pushdown skips whole
+row groups. Pruning cuts the rows you *decode*, so each pass looked cheap. But
+the dominant cost on shared storage is fetching the file at all. Measured cold,
+one shard:
+
+| read | cold time |
+|---|---|
+| one r value (1.2M rows) | 1.10 - 1.64 s |
+| all six r values (7.2M rows) | 1.46 s |
+
+Reading six times the data costs the same as reading one sixth of it.
+
+**Fix.** The shard loop moved to the outside.
+`compute_fixation_steps_by_category` takes a **list** of r values, keeps one
+reservoir per r, and fans each shard read out to all of them. Reservoir memory
+goes from about 850k rows to about 5.1M (about 200MB), still far inside 8GB.
+
+The saving is proportional to the number of r values. On a single-r batch the
+two are identical, and on the 2-r toy batch the fan-out overhead makes it
+marginally slower (10.5s vs 8.9s warm). It matters on real batches with six r
+values and 34MB shards.
+
+**Validated** by rebuilding the toy batch's cache and diffing against the
+previous implementation: `fixation_counts`, `total_counts`, `subsampled` and
+every per-category sample size identical for both r values.
+
+**A note on how to check a sampler.** Uniformity was first checked by comparing
+new samples against one fixed old sample, which produced suspiciously low
+p-values (4 of 5 below 0.1) and looked like a real bias. It was an artifact: the
+reference sample itself sits slightly off-centre (p=0.1376 against the
+population), so every comparison against it inherited that offset. Comparing a
+sample to another sample tests *both* at once. Compared against the population
+instead, the new sampler gave KS p of 0.978, 0.291, 0.866, 0.980, 0.991 across
+seeds 0-4, matching a numpy-uniform baseline of 0.817, 0.367, 0.948, 0.219,
+0.514. Compare to the population, not to another sample.
+
+### Acceptance
+
+| batch | rows | peak memory | requested | runtime |
+|---|---|---|---|---|
+| `2026_07_21-combined-...` (previously OOM at 32GB) | 7.25e9 | 1,488 MB | 8,192 MB | 34 min |
+| `2026_07_28-respiratory-vs-random-10K-reps-3` | 4.8e8 | 418 MB | 8,192 MB | 3.4 min |
