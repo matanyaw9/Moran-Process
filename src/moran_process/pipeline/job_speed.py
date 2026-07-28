@@ -20,9 +20,8 @@ Deliberately does NOT depend on the aggregation: it reads the raw shards and nee
 from graph_statistics.csv, so ProcessLab hangs it off ``ended(array)`` and LSF runs it
 concurrently with aggregate_batch (see process_lab.submit_job_speed_job).
 
-Not meaningful for a combined batch: its shards are symlinks into the parents and still
-carry each parent's own job_id numbering (1..N per parent), so summing by job_id would add
-up unrelated workers. combine_batches passes include_job_speed=False for that reason.
+Scoped to one batch by construction: job_id is an LSF array index numbered 1..N within a
+single submission, so it is only meaningful alongside the batch that produced it.
 
 Runs the same way however it is launched --
 

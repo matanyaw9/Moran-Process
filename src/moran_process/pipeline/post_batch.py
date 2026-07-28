@@ -29,13 +29,6 @@ Batch kinds
 CURRENT
     A normally simulated batch: batch_info.json plus per-job shards under
     tmp/results/raw_results_job_*. All four steps apply.
-COMBINED
-    Synthesised by ``combine_batches`` from two or more parents. Its graph_statistics.csv
-    is the exact concatenation of the parents' rollups, so aggregation is INHERITED and is
-    never re-derived, not even with --force: re-deriving it would mean re-reading both
-    parents to reproduce a file we already have exactly. Job speed does not apply either,
-    because the linked shards still carry each parent's own job_id numbering. verify and
-    the violin cache work normally.
 LEGACY
     An older batch whose layout predates the per-job parquet shards (result_job_*.csv, or
     a fused raw_results.csv only), and usually with no batch_info.json. Reported as
@@ -69,7 +62,6 @@ from moran_process.analysis.analysis_utils.io import (
 
 __all__ = [
     "CURRENT",
-    "COMBINED",
     "LEGACY",
     "classify_batch",
     "post_batch_status",
@@ -78,14 +70,11 @@ __all__ = [
 ]
 
 CURRENT = "CURRENT"
-COMBINED = "COMBINED"
 LEGACY = "LEGACY"
 
-# Step states. INHERITED is not a weaker DONE: it means the artefact is exact and was
-# never computed here, so "rebuild it" is not a thing you can ask for.
+# Step states.
 DONE = "DONE"
 MISSING = "MISSING"
-INHERITED = "INHERITED"
 NOT_APPLICABLE = "N/A"
 
 
@@ -101,14 +90,11 @@ def _read_batch_info(batch_path):
 def classify_batch(batch_dir):
     """Return (kind, reasons) for a batch directory.
 
-    ``reasons`` is empty for CURRENT and COMBINED, and lists what disqualified a LEGACY
-    batch so the message can say which prerequisite is missing rather than just "no".
+    ``reasons`` is empty for CURRENT, and lists what disqualified a LEGACY batch so the
+    message can say which prerequisite is missing rather than just "no".
     """
     batch_path = Path(batch_dir)
     info = _read_batch_info(batch_path)
-
-    if info is not None and info.get("combined_from"):
-        return COMBINED, []
 
     reasons = []
     if info is None:
@@ -187,12 +173,7 @@ def post_batch_status(batch_dir, r_values=None, max_points_per_category=50_000):
         return status
 
     stats_exists = (batch_path / "graph_statistics.csv").exists()
-    if kind == COMBINED:
-        # Inherited exactly from the parents, so there is nothing to build and nothing to
-        # force. If it is somehow absent, combine_batches itself did not finish.
-        status["steps"]["aggregate"] = INHERITED if stats_exists else MISSING
-    else:
-        status["steps"]["aggregate"] = DONE if stats_exists else MISSING
+    status["steps"]["aggregate"] = DONE if stats_exists else MISSING
 
     verification_path = batch_path / "report" / "verification.json"
     status["steps"]["verify"] = DONE if verification_path.exists() else MISSING
@@ -200,12 +181,9 @@ def post_batch_status(batch_dir, r_values=None, max_points_per_category=50_000):
         with open(verification_path) as f:
             status["verify_overall"] = json.load(f).get("overall")
 
-    if kind == COMBINED:
-        status["steps"]["job_speed"] = NOT_APPLICABLE
-    else:
-        status["steps"]["job_speed"] = (
-            DONE if (batch_path / "job_speed.csv").exists() else MISSING
-        )
+    status["steps"]["job_speed"] = (
+        DONE if (batch_path / "job_speed.csv").exists() else MISSING
+    )
 
     resolved_r = _resolve_r_values(batch_path, r_values)
     status["r_values"] = resolved_r
@@ -277,10 +255,7 @@ def ensure_post_batch(
     reading a half-written graph_statistics.csv.
 
     With ``force=True`` every applicable step is resubmitted and the consumers are chained
-    onto the fresh aggregation. Aggregation is still never resubmitted for a COMBINED
-    batch: its rollup is the parents' concatenated exactly, so there is no computation to
-    repeat. If you really want to re-derive it from the linked shards, call
-    ``submit_aggregation_job`` directly.
+    onto the fresh aggregation.
 
     To rerun a single step, call its ``submit_*_job`` helper or its CLI. This function is
     deliberately coarse, because the thing it exists to get right is the DAG.
@@ -326,7 +301,7 @@ def ensure_post_batch(
     # every job here is submitted with no array dependency and starts immediately. The
     # only ordering that still matters is aggregate -> {verify, violin cache}.
     aggregate_job_id = None
-    if steps["aggregate"] != INHERITED and (force or steps["aggregate"] == MISSING):
+    if force or steps["aggregate"] == MISSING:
         aggregate_job_id = submit_aggregation_job(
             batch_dir=str(batch_path), batch_name=batch_path.name, queue=queue
         )

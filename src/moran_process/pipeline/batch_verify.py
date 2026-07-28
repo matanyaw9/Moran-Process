@@ -13,7 +13,7 @@ rows and finishes in seconds regardless of batch size.
 
 Each check reports OK / WARN / FAIL. FAIL means the batch is incomplete or inconsistent and
 the analysis will be wrong; WARN means something is worth a look but is often intentional
-(a combined batch has no single n_repeats, for instance).
+(an older batch whose batch_info.json records no n_repeats, for instance).
 
 Runs the same way however it is launched --
 
@@ -265,7 +265,7 @@ def _check_repeats(checks, df_stats, info):
             WARN,
             "n_repeats",
             f"runs per (graph, r) range {lo:,}..{hi:,}; batch_info has no n_repeats "
-            f"(expected for a combined batch whose parents disagreed)",
+            f"(expected for an older batch that predates the field)",
             min=lo,
             max=hi,
         )
@@ -416,7 +416,7 @@ def run_verification(batch_dir, count_rows=True):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Verify a finished (or combined) simulation batch ran completely."
+        description="Verify a finished simulation batch ran completely."
     )
     parser.add_argument(
         "--batch-dir", required=True, help="Batch directory to check."

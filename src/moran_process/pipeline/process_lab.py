@@ -672,9 +672,10 @@ def submit_violin_cache_job(
 
     8GB is roughly 20x the measured peak. The sampler holds one shard plus the reservoir
     (about 17 categories x 50k rows), never the full fixation set, so its memory does not
-    grow with batch size. This used to ask for 32GB and still died at it (exit 137) on the
-    combined batch, because the old implementation collected every fixation row for one r
-    before subsampling; see io.compute_fixation_steps_by_category.
+    grow with batch size. This used to ask for 32GB and still died at it (exit 137) on a
+    7.2e9-row batch, because the old implementation collected every fixation row for one r
+    before subsampling; see io.compute_fixation_steps_by_category and OPTIMIZATION_NOTES
+    section 11a.
     """
     return _submit_dependent_job(
         batch_dir=batch_dir,
@@ -753,20 +754,13 @@ def submit_post_batch_jobs(
     aggregate_job_id=None,
     array_job_id=None,
     queue="short",
-    include_job_speed=True,
     force=False,
 ):
-    """Submit the post-aggregation jobs (verify, violin cache) and optionally job speed.
+    """Submit the post-aggregation jobs: verify, the violin cache, and job speed.
 
     verify and the violin cache are independent of each other, so both wait on the
     aggregation alone and LSF is free to run them concurrently. Job speed waits on the
     array instead, so it overlaps the aggregation entirely.
-
-    Called by submit_jobs for a simulated batch and by combine_batches for a synthesised
-    one. A combined batch has no aggregation job to wait for (its rollup is inherited from
-    the parents), so verify and the violin cache run immediately; it also passes
-    ``include_job_speed=False``, because its linked shards carry each parent's original
-    job_id 1..N and summing them would produce a fiction.
     """
     jobs = {
         "verify": submit_verify_job(
@@ -780,10 +774,9 @@ def submit_post_batch_jobs(
             force=force,
         ),
     }
-    if include_job_speed:
-        jobs["job_speed"] = submit_job_speed_job(
-            batch_dir, batch_name, array_job_id=array_job_id, queue=queue
-        )
+    jobs["job_speed"] = submit_job_speed_job(
+        batch_dir, batch_name, array_job_id=array_job_id, queue=queue
+    )
     return jobs
 
 
