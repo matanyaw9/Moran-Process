@@ -18,8 +18,8 @@ What it INTENTIONALLY drops for this prototype (no automatic plotly equivalent;
 each is a manual paper-space annotation, skipped per the eval scope):
   - the Pearson correlation box
   - the property-description glosses under the axes
-  - the PNG cache (try_load_cached / _resolve_figure_path): interactive figures
-    are HTML, not PNG, so the existing cache model does not apply. Writes .html.
+  - the PNG output path (_resolve_figure_path): interactive figures are HTML,
+    not PNG. Writes .html.
 
 Run it:
     uv run python -m moran_process.analysis.analysis_utils.plotly_prototype

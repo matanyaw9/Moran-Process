@@ -1,5 +1,5 @@
 """
-All figure-producing functions plus the small caching/stamping infrastructure
+All figure-producing functions plus the small path/stamping infrastructure
 they share.
 
 Depends on the leaf modules: ``colors`` (palette + property metadata + the
@@ -12,7 +12,6 @@ Every ``plot_*`` function ends with the same keyword-only output tail (after a
 bare ``*``, so these must be passed by name), in this order:
 
     figures_dir=None      directory to save the PNG into; None = display only
-    force_recompute=False  ignore any cached PNG and rebuild
     fig_title=None        override the auto-generated title
     batch_name=None       label stamped in the bottom-right corner
     show=True             display the figure (set False to build silently)
@@ -24,7 +23,9 @@ Per-function docstrings document only those specifics and refer back here for
 the shared tail.
 """
 
+import functools
 import textwrap
+import time
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -41,7 +42,6 @@ from .provenance import _bi_get
 from .theory import *
 
 __all__ = [
-    "try_load_cached",
     "plot_batch_info_card",
     "plot_steps_violin",
     "plot_steps_pvalue_matrix",
@@ -53,7 +53,7 @@ __all__ = [
 
 
 def _resolve_figure_path(figures_dir, func_name: str, **key_kwargs):
-    """Build a descriptive Path for a cached figure, creating the directory if needed."""
+    """Build a descriptive Path to save a figure to, creating the directory if needed."""
     if figures_dir is None:
         return None
     p = Path(figures_dir)
@@ -63,18 +63,28 @@ def _resolve_figure_path(figures_dir, func_name: str, **key_kwargs):
     return p / f"{func_name}__{slug}.png"
 
 
-def try_load_cached(path) -> bool:
-    """Display a saved PNG from disk and return True; return False if not found."""
-    if path is not None and Path(path).exists():
-        try:
-            from IPython.display import Image, display
+def _timed(func):
+    """Print how long a figure took to build.
 
-            display(Image(str(path), width=int(DEFAULT_FIG_SIZE[0] * 100)))
-            print(f"[cache] Loaded: {Path(path).name}")
-            return True
-        except ImportError:
-            pass
-    return False
+    This replaces the PNG cache these functions used to carry, which returned a saved
+    image instead of redrawing. That cache made sense when a miss meant scanning 42GB
+    inside the plot call; now every heavy input is a file read built by a job, so the
+    draw itself is all that is left and knowing its cost beats skipping it.
+
+    Skipping was also becoming unsafe: the cached filename is keyed on the function name
+    and a few kwargs, never on the data, so once ``batch_dir`` accepts a *list* the same
+    filename can mean different batch combinations.
+    """
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        started = time.perf_counter()
+        try:
+            return func(*args, **kwargs)
+        finally:
+            print(f"[figure] {func.__name__} built in {time.perf_counter() - started:.2f}s")
+
+    return wrapper
 
 
 def _stamp_batch(fig, batch_name: str) -> None:
@@ -434,16 +444,16 @@ def _finish_two_property_figure(
         _add_corr_box(ax, corr_text, anchor=legend if legend is not None else cbar_ax)
     if fig_path is not None and save:
         fig.savefig(fig_path, bbox_inches="tight", dpi=150)
-        print(f"[cache] Saved: {fig_path.name}")
+        print(f"[figure] Saved: {fig_path.name}")
     if show:
         plt.show()
 
 
+@_timed
 def plot_batch_info_card(
     batch_info,
     *,
     figures_dir=None,
-    force_recompute=False,
     show=True,
     save=True,
 ):
@@ -452,13 +462,10 @@ def plot_batch_info_card(
     Args:
         batch_info: dict returned by load_batch_info() or create_batch_info()
         figures_dir: directory where PNG is saved; None = display only, no save
-        force_recompute: skip cache and regenerate even if PNG already exists
         show: set False to build the figure without displaying it
         save: set False to skip writing the PNG even when figures_dir is given
     """
     fig_path = _resolve_figure_path(figures_dir, "batch_info_card")
-    if not force_recompute and try_load_cached(fig_path):
-        return
 
     # Read fields from the nested batch_info (with flat fallback for legacy files).
     name = batch_info.get("name", "Unknown Batch")
@@ -648,11 +655,12 @@ def plot_batch_info_card(
     fig.tight_layout()
     if fig_path is not None and save:
         fig.savefig(fig_path, bbox_inches="tight", dpi=200, facecolor="white")
-        print(f"[cache] Saved: {fig_path.name}")
+        print(f"[figure] Saved: {fig_path.name}")
     if show:
         plt.show()
 
 
+@_timed
 def plot_steps_violin(
     batch_dir,
     df_graphs,
@@ -662,7 +670,6 @@ def plot_steps_violin(
     max_points_per_category=50_000,
     *,
     figures_dir=None,
-    force_recompute=False,
     fig_title=None,
     batch_name=None,
     show=True,
@@ -692,7 +699,7 @@ def plot_steps_violin(
             Default 50_000.
 
     See the module docstring for the shared output tail (figures_dir,
-    force_recompute, fig_title, batch_name, show, save).
+    fig_title, batch_name, show, save).
     """
     if save and not figures_dir:
         raise ValueError("figures_dir must be provided if save=True")
@@ -700,8 +707,6 @@ def plot_steps_violin(
         color_dict = {}
 
     fig_path = _resolve_figure_path(figures_dir, "plot_steps_violin")
-    if not force_recompute and try_load_cached(fig_path):
-        return
 
     if categories is None:
         categories = _sort_categories(df_graphs["category"].dropna().unique().tolist())
@@ -779,7 +784,7 @@ def plot_steps_violin(
     fig.tight_layout()
     if fig_path is not None and save:
         fig.savefig(fig_path, bbox_inches="tight", dpi=150)
-        print(f"[cache] Saved: {fig_path.name}")
+        print(f"[figure] Saved: {fig_path.name}")
     if show:
         plt.show()
 
@@ -795,6 +800,7 @@ def _significance_stars(p):
     return "ns"
 
 
+@_timed
 def plot_steps_pvalue_matrix(
     batch_dir,
     df_graphs,
@@ -803,7 +809,6 @@ def plot_steps_pvalue_matrix(
     max_points_per_category=50_000,
     *,
     figures_dir=None,
-    force_recompute=False,
     fig_title=None,
     batch_name=None,
     show=True,
@@ -833,7 +838,7 @@ def plot_steps_pvalue_matrix(
 
     Args mirror ``plot_steps_violin`` (no ``color_dict``: cells are colored by
     effect size, not by category). See the module docstring for the shared
-    output tail (figures_dir, force_recompute, fig_title, batch_name, show, save).
+    output tail (figures_dir, fig_title, batch_name, show, save).
     """
     from scipy.stats import mannwhitneyu
 
@@ -841,8 +846,6 @@ def plot_steps_pvalue_matrix(
         raise ValueError("figures_dir must be provided if save=True")
 
     fig_path = _resolve_figure_path(figures_dir, "plot_steps_pvalue_matrix")
-    if not force_recompute and try_load_cached(fig_path):
-        return
 
     if categories is None:
         categories = _sort_categories(df_graphs["category"].dropna().unique().tolist())
@@ -927,11 +930,12 @@ def plot_steps_pvalue_matrix(
     fig.tight_layout()
     if fig_path is not None and save:
         fig.savefig(fig_path, bbox_inches="tight", dpi=150)
-        print(f"[cache] Saved: {fig_path.name}")
+        print(f"[figure] Saved: {fig_path.name}")
     if show:
         plt.show()
 
 
+@_timed
 def plot_steps_histogram(
     df,
     metric="mean_steps",
@@ -940,7 +944,6 @@ def plot_steps_histogram(
     bins=50,
     *,
     figures_dir=None,
-    force_recompute=False,
     fig_title=None,
     batch_name=None,
     show=True,
@@ -956,7 +959,7 @@ def plot_steps_histogram(
         bins: number of histogram bins
 
     See the module docstring for the shared output tail (figures_dir,
-    force_recompute, fig_title, batch_name, show, save).
+    fig_title, batch_name, show, save).
     """
     if save and not figures_dir:
         raise ValueError("figures_dir must be provided if save=True")
@@ -978,8 +981,6 @@ def plot_steps_histogram(
     fig_path = _resolve_figure_path(
         figures_dir, "plot_steps_histogram", metric=metric, category=cat_key
     )
-    if not force_recompute and try_load_cached(fig_path):
-        return
 
     plot_df = df if category is None else df.loc[df["category"] == category]
     data = plot_df[metric].dropna()
@@ -1008,11 +1009,12 @@ def plot_steps_histogram(
     fig.tight_layout()
     if fig_path is not None and save:
         fig.savefig(fig_path, bbox_inches="tight", dpi=150)
-        print(f"[cache] Saved: {fig_path.name}")
+        print(f"[figure] Saved: {fig_path.name}")
     if show:
         plt.show()
 
 
+@_timed
 def plot_outcome_vs_property(
     df,
     x_prop,
@@ -1024,7 +1026,6 @@ def plot_outcome_vs_property(
     size_property=None,
     *,
     figures_dir=None,
-    force_recompute=False,
     fig_title=None,
     batch_name=None,
     corr="spearman",
@@ -1050,7 +1051,7 @@ def plot_outcome_vs_property(
         size_property: column name to encode as marker size; None = uniform size
 
     See the module docstring for the shared output tail (figures_dir,
-    force_recompute, fig_title, batch_name, show, save).
+    fig_title, batch_name, show, save).
     """
     if save and not figures_dir:
         raise ValueError("figures_dir must be provided if save=True")
@@ -1065,8 +1066,6 @@ def plot_outcome_vs_property(
     fig_path = _resolve_figure_path(
         figures_dir, "plot_outcome_vs_property", **cache_key
     )
-    if not force_recompute and try_load_cached(fig_path):
-        return
 
     if filter_categories is not None:
         df = df[df["category"].isin(filter_categories)]
@@ -1375,11 +1374,12 @@ def plot_outcome_vs_property(
         _add_corr_box(ax, stats_text, anchor=legend)
     if fig_path is not None and save:
         fig.savefig(fig_path, bbox_inches="tight", dpi=150)
-        print(f"[cache] Saved: {fig_path.name}")
+        print(f"[figure] Saved: {fig_path.name}")
     if show:
         plt.show()
 
 
+@_timed
 def plot_two_property_effect(
     df,
     x_prop,
@@ -1391,7 +1391,6 @@ def plot_two_property_effect(
     descriptions_below=False,
     *,
     figures_dir=None,
-    force_recompute=False,
     fig_title=None,
     batch_name=None,
     corr="spearman",
@@ -1419,7 +1418,7 @@ def plot_two_property_effect(
             None suppresses the box entirely.
 
     See the module docstring for the shared output tail (figures_dir,
-    force_recompute, fig_title, batch_name, show, save).
+    fig_title, batch_name, show, save).
     """
     if save and not figures_dir:
         raise ValueError("figures_dir must be provided if save=True")
@@ -1432,8 +1431,6 @@ def plot_two_property_effect(
     fig_path = _resolve_figure_path(
         figures_dir, "plot_two_property_effect", x=x_prop, y=y_prop, outcome=outcome
     )
-    if not force_recompute and try_load_cached(fig_path):
-        return
 
     cols = [x_prop, y_prop, outcome, "category"]
     plot_df = df[cols].replace([np.inf, -np.inf], np.nan).dropna()
@@ -1486,6 +1483,7 @@ def plot_two_property_effect(
     )
 
 
+@_timed
 def plot_two_property_effect_hexbin(
     df,
     x_prop,
@@ -1499,7 +1497,6 @@ def plot_two_property_effect_hexbin(
     reduce_C_function=np.mean,
     *,
     figures_dir=None,
-    force_recompute=False,
     fig_title=None,
     batch_name=None,
     corr="spearman",
@@ -1531,7 +1528,7 @@ def plot_two_property_effect_hexbin(
             None suppresses the box entirely.
 
     See the module docstring for the shared output tail (figures_dir,
-    force_recompute, fig_title, batch_name, show, save).
+    fig_title, batch_name, show, save).
     """
     if save and not figures_dir:
         raise ValueError("figures_dir must be provided if save=True")
@@ -1548,8 +1545,6 @@ def plot_two_property_effect_hexbin(
         y=y_prop,
         outcome=outcome,
     )
-    if not force_recompute and try_load_cached(fig_path):
-        return
 
     cols = [x_prop, y_prop, outcome, "category"]
     plot_df = df[cols].replace([np.inf, -np.inf], np.nan).dropna()
