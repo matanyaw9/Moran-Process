@@ -13,6 +13,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from .provenance import load_batch_info
 from .theory import (
     analytic_moran_fc_fixation_prob,
     analytic_moran_fc_fixation_time,
@@ -44,6 +45,20 @@ RAW_RESULTS_STEM = "raw_results"
 
 # Per-job temp files the worker writes into tmp/results/, one per LSF array index.
 PER_JOB_RESULT_STEM = "raw_results_job"
+
+
+def _as_list(val):
+    """Wrap a scalar in a list; pass a list/tuple/set through unchanged.
+
+    The idiom this module uses for every parameter that accepts either one value or
+    several: category_filter, r_filter, and batch_dir itself.
+    """
+    return list(val) if isinstance(val, (list, tuple, set)) else [val]
+
+
+def _batch_paths(batch_dir):
+    """Normalise ``batch_dir`` (one directory, or a list of them) to a list of Paths."""
+    return [Path(d) for d in _as_list(batch_dir)]
 
 
 def resolve_results_path(batch_dir):
@@ -460,6 +475,35 @@ def build_graph_statistics(
     return analysis_df
 
 
+def _report_stats_stitch(frames, stitched):
+    """Report what stitching several batches produced: size, ragged columns, collisions.
+
+    Both findings are things a silent concat would hide until a figure looked wrong. A
+    column only one batch has reads as "all NaN" downstream, and a (wl_hash, r) present in
+    two batches draws the same graph twice.
+    """
+    print(
+        f"Stitched {len(frames)} batches -> {len(stitched):,} rows; "
+        f"column 'batch' identifies the source."
+    )
+
+    every_col = {col for frame in frames for col in frame.columns}
+    ragged = sorted(c for c in every_col if any(c not in f.columns for f in frames))
+    if ragged:
+        print(f"Ragged columns (NaN outside their source batch): {', '.join(ragged)}")
+
+    if not {"wl_hash", "r"} <= set(stitched.columns):
+        return
+    keys = stitched[["wl_hash", "r"]]
+    collided = keys[keys.duplicated(keep=False)].drop_duplicates()
+    if len(collided):
+        print(
+            f"WARNING: {len(collided):,} (wl_hash, r) key(s) appear in more than one "
+            f"batch. Rows are kept separately, distinguished by 'batch'. Facet or color "
+            f"by it, or the same graph is plotted twice."
+        )
+
+
 def load_graph_statistics(batch_dir, category_filter=None, r_filter=None):
     """READER. Load a batch's aggregated statistics; never builds them.
 
@@ -467,11 +511,34 @@ def load_graph_statistics(batch_dir, category_filter=None, r_filter=None):
     rather than quietly starting a 1000-shard scan inside whatever process asked --
     a notebook, streamlit, the ML step. If you see the error, run the aggregation job.
 
+    ``batch_dir`` may be one directory or a **list** of them, stitched at read time: the
+    frames are concatenated and a ``batch`` column records where each row came from. This
+    replaces the old on-disk "combined batch", which unioned the same CSVs into a third
+    directory and symlinked 2000 raw shards alongside them. None of that needed
+    materialising: every statistic here decomposes into additive per-shard partials keyed
+    by (wl_hash, r), so concatenating two rollups is exactly the rollup of their union.
+
+    Two batches may or may not overlap, and the two cases mean different things:
+
+    - **Disjoint** (the respiratory zoo plus the GA extreme graphs): the union is simply
+      more categories to plot side by side.
+    - **Identical** (the same zoo simulated twice at different n_repeats): every
+      (wl_hash, r) collides, and comparing them is the whole point.
+
+    Both are legitimate, so an overlap warns rather than raising, and ``batch`` is always
+    present so a collision is labelled rather than silent.
+
+    Columns present in only some batches (the respiratory-only construction parameters
+    ``branching``, ``depth``, ``n_rods``, ...) are kept and filled with NaN elsewhere.
+    That is the honest encoding, since a GA-evolved graph has no branching factor, and
+    they are reported at load time so an empty column is never a surprise mid-figure.
+
     Filtering is applied as a view on the way out, so the on-disk graph_statistics.csv
     always holds every category and r value; only the returned frame is narrowed.
 
     Args:
-        batch_dir: the batch directory holding graph_statistics.csv.
+        batch_dir: a batch directory holding graph_statistics.csv, or a list of them
+            to stitch into one frame.
         category_filter: keep only these categories. A single value or a list/tuple/set;
             None keeps all categories.
         r_filter: keep only these selection coefficients. A single value or a
@@ -479,31 +546,38 @@ def load_graph_statistics(batch_dir, category_filter=None, r_filter=None):
 
     Returns:
         analysis_df: aggregated DataFrame ready for plotting, with the analytic
-            complete-graph reference columns attached.
+            complete-graph reference columns attached and a ``batch`` column naming each
+            row's source batch.
     """
-    batch_path = Path(batch_dir)
-    stats_path = batch_path / "graph_statistics.csv"
-    if not stats_path.exists():
-        raise FileNotFoundError(
-            f"{stats_path} does not exist: this batch has not been aggregated yet.\n"
-            f"Build it with the aggregation job:\n"
-            f"    uv run python -m moran_process.pipeline.aggregate_batch "
-            f"--batch-dir {batch_path}\n"
-            f"or submit the whole post-batch chain:\n"
-            f"    uv run python -m moran_process.pipeline.post_batch "
-            f"--batch-dir {batch_path}"
-        )
+    frames = []
+    for batch_path in _batch_paths(batch_dir):
+        stats_path = batch_path / "graph_statistics.csv"
+        if not stats_path.exists():
+            raise FileNotFoundError(
+                f"{stats_path} does not exist: this batch has not been aggregated yet.\n"
+                f"Build it with the aggregation job:\n"
+                f"    uv run python -m moran_process.pipeline.aggregate_batch "
+                f"--batch-dir {batch_path}\n"
+                f"or submit the whole post-batch chain:\n"
+                f"    uv run python -m moran_process.pipeline.post_batch "
+                f"--batch-dir {batch_path}"
+            )
 
-    analysis_df = pd.read_csv(stats_path)
+        frame = pd.read_csv(stats_path)
 
-    # Derived from n_nodes and r alone, so they are recomputed on read rather than being
-    # persisted. That keeps the on-disk graph_statistics.csv schema unchanged, so
-    # existing batches need no migration.
-    analysis_df = add_analytic_reference_columns(analysis_df)
-    print(f"Loaded {len(analysis_df):,} rows from {stats_path}")
+        # Derived from n_nodes and r alone, so they are recomputed on read rather than
+        # being persisted. That keeps the on-disk graph_statistics.csv schema unchanged,
+        # so existing batches need no migration.
+        frame = add_analytic_reference_columns(frame)
+        frame.insert(0, "batch", batch_path.name)
+        print(f"Loaded {len(frame):,} rows from {stats_path}")
+        frames.append(frame)
 
-    def _as_list(val):
-        return list(val) if isinstance(val, (list, tuple, set)) else [val]
+    if len(frames) == 1:
+        analysis_df = frames[0]
+    else:
+        analysis_df = pd.concat(frames, ignore_index=True, sort=False)
+        _report_stats_stitch(frames, analysis_df)
 
     if category_filter is not None:
         cats = _as_list(category_filter)
@@ -824,13 +898,104 @@ def compute_fixation_steps_by_category(
     return results
 
 
+def _resolve_stitch_r(batch_paths, r, max_points_per_category):
+    """Pick which r to load when the caller passed ``r=None``.
+
+    With one batch this is the old rule: if exactly one r is cached at this cap, use it.
+    With several, the candidates are the r values cached at this cap in EVERY batch, so a
+    stitch can never silently resolve to an r only one side is able to serve.
+    """
+    if r is not None:
+        return r
+
+    per_batch = [
+        {e[0] for e in list_cached_fixation_steps(p) if e[1] == max_points_per_category}
+        for p in batch_paths
+    ]
+    common = set.intersection(*per_batch) if per_batch else set()
+    if len(common) == 1:
+        return common.pop()
+
+    raise ValueError(
+        f"r=None needs exactly one r cached at cap {max_points_per_category} in every "
+        f"batch, found {len(common)}: {sorted(common)}. Pass r=<value> explicitly.\n"
+        + "\n".join(
+            f"  {p.name}: {sorted(s) or 'nothing'}"
+            for p, s in zip(batch_paths, per_batch)
+        )
+    )
+
+
+def _missing_cache_message(batch_path, r, max_points_per_category):
+    """Explain a cache miss, separating "not built yet" from "never simulated".
+
+    Only the first is fixable by running a job. batch_info.json records which r values the
+    batch actually ran, so telling the two apart is a dict lookup, and without it you
+    would chase a cache job that can never succeed.
+    """
+    available = list_cached_fixation_steps(batch_path)
+    expected = fixation_steps_cache_path(batch_path, r, max_points_per_category)
+    simulated = load_batch_info(batch_path).get("simulation", {}).get("r_values")
+
+    head = (
+        f"No violin cache for r={r} at cap {max_points_per_category} in "
+        f"{batch_path.name}.\n"
+        f"  Expected: {expected}\n"
+        f"  Cached in this batch: {[(e[0], e[1]) for e in available] or 'nothing'}\n"
+    )
+
+    if simulated is not None and r not in simulated:
+        return head + (
+            f"  Reason: r={r} was never simulated in this batch "
+            f"(batch_info r_values = {simulated}).\n"
+            f"  This is not fixable by building a cache. Drop r={r}, or drop this batch "
+            f"from the stitch."
+        )
+
+    return head + (
+        f"  Reason: r={r} was simulated but its cache has not been built.\n"
+        f"  Build it:\n"
+        f"    uv run python -m moran_process.pipeline.cache_violin_data "
+        f"--batch-dir {batch_path} --r-values {r} "
+        f"--max-points-per-category {max_points_per_category}\n"
+        f"  or submit the whole post-batch chain:\n"
+        f"    uv run python -m moran_process.pipeline.post_batch --batch-dir {batch_path}"
+    )
+
+
+def _report_cache_stitch(batch_paths, frames, merged_raw):
+    """Report a stitched violin sample, warning about categories present in two batches.
+
+    Unlike a (wl_hash, r) collision in the statistics, a shared category here is not
+    wrong: pooling two batches' fixation steps for the same category estimates the same
+    distribution, and the summed counts give a valid pooled rho. It is only surprising,
+    so it is announced rather than refused.
+    """
+    print(
+        f"Stitched {len(frames)} batches -> {len(merged_raw):,} sampled rows; "
+        f"column 'batch' identifies the source."
+    )
+
+    seen = {}
+    for path, frame in zip(batch_paths, frames):
+        for category in frame["category"].dropna().unique():
+            seen.setdefault(category, []).append(path.name)
+    shared = sorted(c for c, batches in seen.items() if len(batches) > 1)
+    if shared:
+        print(
+            f"WARNING: {len(shared)} category/categories appear in more than one batch "
+            f"({', '.join(map(str, shared))}). Their violins POOL across batches unless "
+            f"you facet by 'batch', and the rho annotation pools too (counts summed)."
+        )
+
+
 def load_fixation_steps_by_category(batch_dir, r=None, max_points_per_category=50_000):
     """READER. Load the cached fixation-steps sample for one (r, cap). Never scans.
 
     Shared loader for ``plot_steps_violin`` and ``plot_steps_pvalue_matrix`` so the two
     figures are always built from exactly the same rows. Returns:
 
-    - a tidy pandas DataFrame with columns ['category', 'steps'] (subsampled);
+    - a tidy pandas DataFrame with columns ['batch', 'category', 'steps'] (subsampled);
     - ``fixation_counts``: true per-category fixation counts, counted *before*
       subsampling so callers can annotate how much data backs each category;
     - ``total_counts``: per-category total run counts (fixation + non-fixation),
@@ -844,42 +1009,56 @@ def load_fixation_steps_by_category(batch_dir, r=None, max_points_per_category=5
     (``pipeline.cache_violin_data``), so asking for one that does not exist is a
     missing prerequisite, not a slow path.
 
+    ``batch_dir`` may be one directory or a **list** of them, matching
+    ``load_graph_statistics``. Stitching is exact rather than approximate: the cache is a
+    per-category reservoir, so concatenating two batches' samples is the same as sampling
+    their union, and ``fixation_counts`` / ``total_counts`` are counted before subsampling
+    and therefore sum. A batch that cannot serve the requested r raises rather than being
+    skipped, because dropping one silently yields a figure that looks complete while
+    missing half its categories.
+
     Args:
-        batch_dir: the batch directory (the cache lives in <batch_dir>/cache/).
-        r: which selection coefficient. If None and exactly one r is cached at this cap,
-            that one is used; otherwise you are asked to pick.
+        batch_dir: a batch directory (the cache lives in <batch_dir>/cache/), or a list
+            of them to stitch.
+        r: which selection coefficient. If None, resolved to the single r cached at this
+            cap across every batch; otherwise you are asked to pick.
         max_points_per_category: the cap the cache was built with. Part of the cache key.
     """
-    batch_path = Path(batch_dir)
-    available = list_cached_fixation_steps(batch_path)
+    batch_paths = _batch_paths(batch_dir)
+    r = _resolve_stitch_r(batch_paths, r, max_points_per_category)
 
-    if r is None:
-        at_cap = [entry for entry in available if entry[1] == max_points_per_category]
-        if len(at_cap) == 1:
-            r = at_cap[0][0]
-        else:
-            raise ValueError(
-                f"r=None needs exactly one cached r at cap {max_points_per_category}, "
-                f"found {len(at_cap)}. Pass r=<value> explicitly. "
-                f"Cached: {[(e[0], e[1]) for e in available] or 'nothing'}"
+    frames, fixation_counts, total_counts = [], {}, {}
+    subsampled, r_suffix = False, None
+
+    for batch_path in batch_paths:
+        cached = _read_fixation_steps_cache(batch_path, r, max_points_per_category)
+        if cached is None:
+            raise FileNotFoundError(
+                _missing_cache_message(batch_path, r, max_points_per_category)
             )
+        frame, batch_fix, batch_total, _, batch_suffix, batch_subsampled = cached
 
-    cached = _read_fixation_steps_cache(batch_path, r, max_points_per_category)
-    if cached is not None:
-        return cached
+        frame = frame.copy()
+        frame.insert(0, "batch", batch_path.name)
+        frames.append(frame)
 
-    expected = fixation_steps_cache_path(batch_path, r, max_points_per_category)
-    raise FileNotFoundError(
-        f"No violin cache for r={r} at cap {max_points_per_category}.\n"
-        f"Expected: {expected}\n"
-        f"Cached in this batch: {[(e[0], e[1]) for e in available] or 'nothing'}\n"
-        f"Build it with:\n"
-        f"    uv run python -m moran_process.pipeline.cache_violin_data "
-        f"--batch-dir {batch_path} --r-values {r} "
-        f"--max-points-per-category {max_points_per_category}\n"
-        f"or submit the whole post-batch chain:\n"
-        f"    uv run python -m moran_process.pipeline.post_batch --batch-dir {batch_path}"
-    )
+        for accumulator, counts in (
+            (fixation_counts, batch_fix),
+            (total_counts, batch_total),
+        ):
+            for category, count in counts.items():
+                accumulator[category] = accumulator.get(category, 0) + int(count)
+
+        subsampled = subsampled or batch_subsampled
+        r_suffix = r_suffix if r_suffix is not None else batch_suffix
+
+    if len(frames) == 1:
+        merged_raw = frames[0]
+    else:
+        merged_raw = pd.concat(frames, ignore_index=True)
+        _report_cache_stitch(batch_paths, frames, merged_raw)
+
+    return merged_raw, fixation_counts, total_counts, r, r_suffix, subsampled
 
 
 def build_fixation_steps_cache(
