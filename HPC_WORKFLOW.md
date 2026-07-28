@@ -1,4 +1,4 @@
-# HPC Workflow — WEXAC (Weizmann)
+# HPC Workflow: WEXAC (Weizmann)
 
 The WEXAC cluster uses the **LSF** scheduler. All job submission uses `bsub`.
 Full docs: https://hpcwiki.weizmann.ac.il/en/home/lsf/basic
@@ -23,7 +23,7 @@ Simulations default to a compiled C++ core (`_moran_cpp`, built from
 Equivalence is checked end-to-end through the real pipeline, not just the
 simulation class. Submit two batches from `design_zoo.ipynb` that are identical
 in every parameter (same `zoo_path`, `r_values`, `n_repeats`, `n_graphs`) except
-the engine — one `engine="python"`, one `engine="cpp"` — then compare them:
+the engine (one `engine="python"`, one `engine="cpp"`), then compare them:
 
 ```bash
 uv run python scripts/compare_batches.py \
@@ -46,7 +46,7 @@ and is safe to run on the login node.
 
 ## Typical Workflow for a Simulation Batch
 
-### Step 0 — Design the Graph Zoo (always first)
+### Step 0: Design the Graph Zoo (always first)
 Open `notebooks/design_zoo.ipynb`. This is the entry point for every new batch.
 
 1. Set `BATCH_NAME` at the top (e.g. `"2026-05-20_my_study"`).
@@ -56,7 +56,7 @@ Open `notebooks/design_zoo.ipynb`. This is the entry point for every new batch.
 
 The saved `graph_zoo.joblib` is the input to all downstream steps.
 
-### Step 1 — Submit the Batch
+### Step 1: Submit the Batch
 Load the saved zoo and call `ProcessLab.submit_jobs()` (Section 4 of the notebook, or from a script):
 
 ```python
@@ -83,7 +83,7 @@ This call:
 3. Splits the zoo into per-worker GraphCore shards `tmp/zoo_shards/zoo_worker_*.pkl` (and adds `local_graph_idx` to the manifest)
 4. Submits the main job array via `bsub`
 
-### Step 2 — Monitor Jobs
+### Step 2: Monitor Jobs
 ```bash
 bjobs                      # list your jobs
 bjobs -w                   # wide format (see full names)
@@ -91,7 +91,7 @@ bjobs -l <job_id>          # detailed info (why pending?)
 bpeek -f <job_id>          # follow stdout of a running job
 ```
 
-### Step 3 — Post-simulation jobs
+### Step 3: Post-simulation jobs
 
 Four independent jobs turn the raw shards into analysis-ready files. `submit_jobs` already chains them onto a fresh batch, so for a normal submission there is nothing to do here: check back later and the batch is ready.
 
@@ -144,7 +144,7 @@ The shards under a combined batch's `tmp/results/` are **absolute symlinks** int
 
 `aggregate_results_no_load(batch_dir)` still exists and fuses all shards into a single `raw_results.parquet`, but it is no longer part of the normal path: polars indexes rows with a u32 and cannot read a single Parquet file over 2**32-1 rows, and the 100K-reps batch is 7.2e9. Everything scans `tmp/results/*.parquet` as a glob instead.
 
-### Step 4 — Analyze
+### Step 4: Analyze
 Once Step 3 reports `ready`, open `notebooks/experiment_analysis.ipynb` via `ijup` on a compute node and Run All. Every figure input is a file read; no cell triggers job-sized compute. The readiness cell at the top prints the per-step status table and, if anything is missing, the exact `ensure_post_batch(...)` call to fix it.
 
 ---
@@ -201,7 +201,7 @@ bsub -Is -q new-short -n 2 -W 30 bash
 ```
 
 ### Environment Variables in Workers
-- `LSB_JOBINDEX` — the array index (1-based). `worker_lsf.py` reads this automatically.
+- `LSB_JOBINDEX`: the array index (1-based). `worker_lsf.py` reads this automatically.
 
 ---
 

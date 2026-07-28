@@ -125,20 +125,20 @@ Use the post-simulation jobs above. `ProcessLab.submit_jobs` already chains them
 ## Key Conventions
 
 - Graph names follow the pattern `{type}_{param1}{val1}_{param2}{val2}` (e.g. `avian_r4_l7`, `mammalian_b2_d4`).
-- `PopulationGraph.metadata` returns only `{wl_hash, graph_name}` — this is what gets merged into result rows; do not add expensive fields here.
+- `PopulationGraph.metadata` returns only `{wl_hash, graph_name}`: this is what gets merged into result rows; do not add expensive fields here.
 - `pipeline/main.py` builds the respiratory + random zoo and submits via `submit_jobs` (HPC). For local small-scale runs, use `run_comparative_study` directly from `design_zoo.ipynb` (cell 17, commented-out block).
 - The VS Code green Run button always executes on the WEXAC **login node**. Use an `inode` terminal session for anything compute-heavy, or `bsub` for real simulations.
 
 ## Reference Docs
 
 Read these files when the task requires deeper context:
-- `AI_CONTEXT.md` — single comprehensive, up-to-date context primer; start here
-- `PROJECT_OVERVIEW.md` — research question, graph types, current status, open tasks
-- `CODE_ARCHITECTURE.md` — full class API, ML pipeline, analysis notebooks
-- `HPC_WORKFLOW.md` — WEXAC job submission, monitoring, the post-simulation job DAG, debugging
-- `OPTIMIZATION_NOTES.md` — memory and speed work, with the measurements behind each decision
-- `RESEARCH_BACKGROUND.md` — Moran process math, amplifier/suppressor theory, key papers
-- `VSCODE_WEXAC_WORKFLOW.md` — VS Code + WEXAC setup, when to use inode/ijup/bsub
+- `AI_CONTEXT.md`: single comprehensive, up-to-date context primer; start here
+- `PROJECT_OVERVIEW.md`: research question, graph types, current status, open tasks
+- `CODE_ARCHITECTURE.md`: full class API, ML pipeline, analysis notebooks
+- `HPC_WORKFLOW.md`: WEXAC job submission, monitoring, the post-simulation job DAG, debugging
+- `OPTIMIZATION_NOTES.md`: memory and speed work, with the measurements behind each decision
+- `RESEARCH_BACKGROUND.md`: Moran process math, amplifier/suppressor theory, key papers
+- `VSCODE_WEXAC_WORKFLOW.md`: VS Code + WEXAC setup, when to use inode/ijup/bsub
 
 ## Rules
 
