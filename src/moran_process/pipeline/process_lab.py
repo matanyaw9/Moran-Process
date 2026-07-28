@@ -349,14 +349,16 @@ class ProcessLab:
             queue=queue,
         )
 
-        # And chain the two consumers of that aggregation: the QC report (did the batch
-        # come out clean?) and the violin-sample cache (the only figure input that still
-        # needs raw rows). Both PEND until aggregation succeeds, so by the time you open
-        # experiment_analysis.ipynb the batch is both verified and fast.
+        # And chain the rest of the post-batch DAG: verify (did every requested run
+        # happen?) and the violin-sample cache (the only figure input that still needs raw
+        # rows) PEND on the aggregation; job speed hangs off the array directly and so runs
+        # alongside it. By the time you open experiment_analysis.ipynb the batch is
+        # verified, aggregated, and every figure input is a file read.
         submit_post_batch_jobs(
             batch_dir=batch_dir,
             batch_name=batch_name,
             aggregate_job_id=aggregate_job_id,
+            array_job_id=lsf_job_id,
             queue=queue,
         )
 
@@ -658,8 +660,9 @@ def submit_violin_cache_job(
     batch_name,
     aggregate_job_id=None,
     queue="short",
-    memory="32GB",
+    memory="8GB",
     max_points_per_category=50_000,
+    force=False,
 ):
     """Chain the violin-sample cache after aggregation.
 
@@ -667,31 +670,38 @@ def submit_violin_cache_job(
     graph_statistics.csv to learn which r values were simulated. If aggregation failed
     there is nothing to cache, and PENDing forever is the honest outcome.
 
-    Memory defaults higher than aggregation's: this materialises every fixation row for
-    one r before subsampling, and unlike the moment rollup that step does not decompose
-    into per-shard partials, so it is a genuine collect. It is still one r at a time and
-    fixation rows only, so 32GB is comfortable for the 100K-reps batch.
+    8GB is roughly 20x the measured peak. The sampler holds one shard plus the reservoir
+    (about 17 categories x 50k rows), never the full fixation set, so its memory does not
+    grow with batch size. This used to ask for 32GB and still died at it (exit 137) on the
+    combined batch, because the old implementation collected every fixation row for one r
+    before subsampling; see io.compute_fixation_steps_by_category.
     """
     return _submit_dependent_job(
         batch_dir=batch_dir,
         step="violin_cache",
         batch_name=batch_name,
         module="moran_process.pipeline.cache_violin_data",
-        module_args=["--max-points-per-category", str(max_points_per_category)],
+        module_args=[
+            "--max-points-per-category",
+            str(max_points_per_category),
+            # The only post-batch step that skips work it has already done, so it is the
+            # only one that needs telling to redo it. The others always overwrite.
+            *(["--force"] if force else []),
+        ],
         dependencies=[f"done({aggregate_job_id})" if aggregate_job_id else None],
         queue=queue,
         memory=memory,
     )
 
 
-def submit_report_job(
+def submit_verify_job(
     batch_dir,
     batch_name,
     aggregate_job_id=None,
     queue="short",
     memory="8GB",
 ):
-    """Chain the QC report after aggregation.
+    """Chain the batch verification after aggregation.
 
     Reads only the CSVs, batch_info.json and the parquet footers, so it is seconds of work
     and modest memory whatever the batch size. Depends on ``done`` of aggregation because
@@ -699,10 +709,39 @@ def submit_report_job(
     """
     return _submit_dependent_job(
         batch_dir=batch_dir,
-        step="report",
+        step="verify",
         batch_name=batch_name,
-        module="moran_process.pipeline.batch_report",
+        module="moran_process.pipeline.batch_verify",
         dependencies=[f"done({aggregate_job_id})" if aggregate_job_id else None],
+        queue=queue,
+        memory=memory,
+    )
+
+
+def submit_job_speed_job(
+    batch_dir,
+    batch_name,
+    array_job_id=None,
+    queue="short",
+    memory="8GB",
+):
+    """Reduce the raw shards to per-job step/duration totals, for the speed figures.
+
+    Unlike verify and the violin cache, this does NOT wait on aggregation: it reads the
+    raw shards and the LSF logs, and needs nothing from graph_statistics.csv. So it hangs
+    off ``ended(array)`` directly and LSF runs it concurrently with the aggregation,
+    making its wall-clock cost effectively zero.
+
+    ``ended`` rather than ``done`` for the same reason aggregation uses it: one crashed
+    worker should not strand this in PEND, and a batch with a dead worker is exactly the
+    batch whose speed numbers you want to look at.
+    """
+    return _submit_dependent_job(
+        batch_dir=batch_dir,
+        step="job_speed",
+        batch_name=batch_name,
+        module="moran_process.pipeline.job_speed",
+        dependencies=[f"ended({array_job_id})" if array_job_id else None],
         queue=queue,
         memory=memory,
     )
@@ -712,23 +751,40 @@ def submit_post_batch_jobs(
     batch_dir,
     batch_name,
     aggregate_job_id=None,
+    array_job_id=None,
     queue="short",
+    include_job_speed=True,
+    force=False,
 ):
-    """Submit both post-aggregation jobs (QC report, violin cache) for a batch.
+    """Submit the post-aggregation jobs (verify, violin cache) and optionally job speed.
 
-    They are independent of each other, so both wait on the aggregation alone and LSF is
-    free to run them concurrently. Called by submit_jobs for a simulated batch and by
-    combine_batches for a synthesised one; in the latter case there is no aggregation job
-    to wait for, so both run immediately.
+    verify and the violin cache are independent of each other, so both wait on the
+    aggregation alone and LSF is free to run them concurrently. Job speed waits on the
+    array instead, so it overlaps the aggregation entirely.
+
+    Called by submit_jobs for a simulated batch and by combine_batches for a synthesised
+    one. A combined batch has no aggregation job to wait for (its rollup is inherited from
+    the parents), so verify and the violin cache run immediately; it also passes
+    ``include_job_speed=False``, because its linked shards carry each parent's original
+    job_id 1..N and summing them would produce a fiction.
     """
-    return {
-        "report": submit_report_job(
+    jobs = {
+        "verify": submit_verify_job(
             batch_dir, batch_name, aggregate_job_id=aggregate_job_id, queue=queue
         ),
         "violin_cache": submit_violin_cache_job(
-            batch_dir, batch_name, aggregate_job_id=aggregate_job_id, queue=queue
+            batch_dir,
+            batch_name,
+            aggregate_job_id=aggregate_job_id,
+            queue=queue,
+            force=force,
         ),
     }
+    if include_job_speed:
+        jobs["job_speed"] = submit_job_speed_job(
+            batch_dir, batch_name, array_job_id=array_job_id, queue=queue
+        )
+    return jobs
 
 
 def register_graphs_job(

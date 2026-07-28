@@ -1,4 +1,4 @@
-"""Answer one question about a finished batch: did it come out clean?
+"""Verify a finished batch: did every requested run happen, and did any job fail quietly?
 
 A batch is thousands of independent LSF tasks writing thousands of files, so the failure
 modes are quiet ones: a worker that died leaves a missing shard, a truncated write leaves
@@ -6,7 +6,7 @@ a short one, a graph that never registered leaves result rows with no properties
 of that raises anywhere. You would notice weeks later as a hole in a figure.
 
 This job runs the checks that catch those, and writes both a machine-readable
-``report/qc_report.json`` and a human-readable ``report/qc_report.txt``. Every check is
+``report/verification.json`` and a human-readable ``report/verification.txt``. Every check is
 cheap by construction: it reads graph_props.csv, graph_statistics.csv, batch_info.json and
 the parquet *footers* (row counts are metadata, not data), so it never scans the 7.2e9 raw
 rows and finishes in seconds regardless of batch size.
@@ -18,9 +18,9 @@ the analysis will be wrong; WARN means something is worth a look but is often in
 Runs the same way however it is launched --
 
   * automatically, as the job ProcessLab chains after the aggregation
-    (see process_lab.submit_report_job); or
+    (see process_lab.submit_verify_job); or
   * by hand:
-      uv run python -m moran_process.pipeline.batch_report --batch-dir <batch>
+      uv run python -m moran_process.pipeline.batch_verify --batch-dir <batch>
 
 Imports from the ``io``/``provenance`` submodules directly (not the analysis_utils package
 root) so this never pulls in the plotting stack, exactly like aggregate_batch.
@@ -359,12 +359,16 @@ def _render_text(report):
     return "\n".join(lines)
 
 
-def run_report(batch_dir, count_rows=True):
-    """Run every QC check on a batch and write report/qc_report.{json,txt}.
+def run_verification(batch_dir, count_rows=True):
+    """Answer the two verification questions and write report/verification.{json,txt}.
 
-    Returns the report dict. Does not raise on a failing check: a report that refuses to
-    be written is a report you cannot read, and the caller (an LSF job) has nothing to do
-    with a non-zero exit anyway. The overall status is in the file and in the log.
+    The questions are: did every requested run actually happen, and did any job fail
+    without saying so. Everything here exists to answer one of those.
+
+    Returns the verification dict. Does not raise on a failing check: a verdict that
+    refuses to be written is a verdict you cannot read, and the caller (an LSF job) has
+    nothing to do with a non-zero exit anyway. The overall status is in the file, in the
+    log, and in what post_batch_status reports.
     """
     batch_path = Path(batch_dir)
     info = load_batch_info(batch_path)
@@ -399,20 +403,20 @@ def run_report(batch_dir, count_rows=True):
 
     report_dir = batch_path / "report"
     report_dir.mkdir(parents=True, exist_ok=True)
-    with open(report_dir / "qc_report.json", "w") as f:
+    with open(report_dir / "verification.json", "w") as f:
         json.dump(report, f, indent=2, default=str)
     text = _render_text(report)
-    with open(report_dir / "qc_report.txt", "w") as f:
+    with open(report_dir / "verification.txt", "w") as f:
         f.write(text)
 
     print("\n" + text)
-    log.info("QC report written to %s (overall: %s)", report_dir, report["overall"])
+    log.info("Verification written to %s (overall: %s)", report_dir, report["overall"])
     return report
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Write a QC report for a finished (or combined) simulation batch."
+        description="Verify a finished (or combined) simulation batch ran completely."
     )
     parser.add_argument(
         "--batch-dir", required=True, help="Batch directory to check."
@@ -423,4 +427,4 @@ if __name__ == "__main__":
         help="Do not read the parquet footers (skips the empty/truncated shard check).",
     )
     args = parser.parse_args()
-    run_report(args.batch_dir, count_rows=not args.skip_row_counts)
+    run_verification(args.batch_dir, count_rows=not args.skip_row_counts)

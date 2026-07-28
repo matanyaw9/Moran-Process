@@ -285,6 +285,10 @@ def combine_batches(
             batch_name=info["name"],
             aggregate_job_id=None,  # nothing to wait for: the rollup came from the parents
             queue=queue,
+            # The linked shards still carry each parent's own job_id numbering (1..N per
+            # parent), so summing steps per job_id across a combined batch would add up
+            # unrelated workers. There is no meaningful per-job speed here.
+            include_job_speed=False,
         )
 
     return dest

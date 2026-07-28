@@ -47,7 +47,7 @@ from moran_process.analysis.analysis_utils import (
     GRAPH_PROPERTY_COLUMNS,
     generate_robust_color_dict,
     resolve_results_path,
-    build_graph_statistics,
+    load_graph_statistics,
     load_batch_info,
     plot_batch_info_card,
     plot_steps_violin,
@@ -117,16 +117,15 @@ def list_batches():
 def load_batch(batch_name: str):
     """Load the light, aggregated data a batch's property figures need.
 
-    This deliberately does NOT touch the multi-GB raw_results file beyond what
-    build_graph_statistics already cached to graph_statistics.csv. Returns
-    (df_graphs, analysis_df, results_path, color_dict, batch_info).
+    This deliberately does NOT touch the multi-GB raw_results file: it only reads the
+    graph_statistics.csv that the aggregation job already built. If a batch has not been
+    aggregated, load_graph_statistics raises rather than starting the rollup inside the
+    web app. Returns (df_graphs, analysis_df, results_path, color_dict, batch_info).
     """
     batch_dir = SIM_DATA_DIR / batch_name
     df_graphs = pd.read_csv(batch_dir / "graph_props.csv")
     results_path = resolve_results_path(batch_dir)
-    analysis_df = build_graph_statistics(
-        results_path, df_graphs, batch_dir / "graph_statistics.csv"
-    )
+    analysis_df = load_graph_statistics(batch_dir)
     color_dict = generate_robust_color_dict(analysis_df, CATEGORY_COLOR_DICT)
     batch_info = load_batch_info(batch_dir)
     return df_graphs, analysis_df, str(results_path), color_dict, batch_info
@@ -383,7 +382,7 @@ elif page == "Fixation time":
     st.markdown("#### Steps-to-fixation distribution by category")
     cached_figure(
         plot_steps_violin,
-        results_path,
+        SIM_DATA_DIR / batch_name,
         df_graphs,
         cache_name="plot_steps_violin",
         cache_key={"r": selected_r},
@@ -391,13 +390,13 @@ elif page == "Fixation time":
         color_dict=color_dict,
         r=selected_r,
         batch_name=batch_name,
-        spinner="Building violins (scanning raw results)...",
+        spinner="Building violins from the cached sample...",
     )
 
     st.markdown("#### Pairwise significance (Mann-Whitney, effect size)")
     cached_figure(
         plot_steps_pvalue_matrix,
-        results_path,
+        SIM_DATA_DIR / batch_name,
         df_graphs,
         cache_name="plot_steps_pvalue_matrix",
         cache_key={"r": selected_r},

@@ -28,9 +28,12 @@ __all__ = [
     "aggregate_results_no_load",
     "add_analytic_reference_columns",
     "build_graph_statistics",
+    "load_graph_statistics",
     "load_fixation_steps_by_category",
+    "compute_fixation_steps_by_category",
     "build_fixation_steps_cache",
     "fixation_steps_cache_path",
+    "list_cached_fixation_steps",
 ]
 
 
@@ -350,18 +353,22 @@ def build_graph_statistics(
     results_path,
     df_graphs,
     graph_statistics_path,
-    category_filter=None,
-    r_filter=None,
     include_order_stats=False,
 ):
     """Aggregate raw simulation results to one row per (graph, r) with fixation statistics.
 
-    If graph_statistics_path already exists, loads it directly. Otherwise streams results
-    from results_path (Parquet or CSV), merges with df_graphs, sorts, and saves.
+    BUILDER. Streams results from results_path (Parquet or CSV), merges with df_graphs,
+    sorts, and writes graph_statistics.csv, unconditionally overwriting any existing file.
 
-    Filtering is applied as a view *after* the full table is built/loaded, so the cached
-    graph_statistics.csv always holds every category and r value; only the returned frame
-    is narrowed.
+    This is a job-sized operation: on the 100K-reps batch it reads ~39GB across 1000
+    shards. It is therefore called from ``pipeline.aggregate_batch`` (i.e. from an LSF
+    job) and nowhere else. Readers -- notebooks, streamlit, the ML step -- call
+    ``load_graph_statistics`` instead, which reads the CSV and refuses to build it.
+
+    The two used to be one "compute if missing, else load" function. That shape is right
+    when the compute is cheap and wrong here: hitting the build branch by accident meant a
+    Jupyter kernel silently starting a 1000-shard aggregation, indistinguishable from a
+    hung cell. Splitting them makes the expensive path something you can only ask for.
 
     Two classes of statistic are computed, and they pick different execution paths:
 
@@ -376,100 +383,124 @@ def build_graph_statistics(
       in the current notebooks (no figure or ML feature reads them), which is why they
       default off. ``iqr_steps`` is just q75 - q25, so it rides along for free.
 
-    NOTE: this flag only takes effect when graph_statistics.csv does NOT yet exist -- an
-    existing file is loaded verbatim. To switch the set of columns, delete the cached CSV
-    and rebuild.
-
     Args:
         results_path: raw results to scan -- a single raw_results.parquet/.csv, or a glob
             of per-job shards (see resolve_results_source, which prefers the glob and
             explains why the fused file breaks on large batches).
         df_graphs: DataFrame with graph structural properties (must have 'wl_hash', 'graph_name')
-        graph_statistics_path: path where graph_statistics.csv is saved / loaded from
-        category_filter: keep only these categories. A single value or a list/tuple/set;
-            None keeps all categories.
-        r_filter: keep only these selection coefficients. A single value or a
-            list/tuple/set; None keeps all r values.
+        graph_statistics_path: path where graph_statistics.csv is written
         include_order_stats: if True, also compute median/quartile/iqr of steps (slow).
 
     Returns:
-        analysis_df: aggregated DataFrame ready for plotting
+        analysis_df: the table as written (no filters, no analytic reference columns --
+            those are a reader concern, see load_graph_statistics)
     """
     import polars as pl
 
     graph_statistics_path = Path(graph_statistics_path)
+    files = _expand_shards(results_path)
 
-    if graph_statistics_path.exists():
-        print(
-            f"Aggregated statistics already exist -- loading {graph_statistics_path}..."
+    if include_order_stats:
+        # Quantiles are NOT decomposable: an exact median needs every value of a group
+        # held at once, so it cannot be combined from per-shard partials. This path
+        # therefore does the whole batch in one group_by, which polars does not bound
+        # (see _aggregate_chunked) -- fine for small batches, fatal for large ones.
+        print(f"Aggregating {len(files)} file(s) in ONE pass (order stats requested)...")
+        agg_results_df = (
+            scan_results(results_path)
+            .with_columns(_steps_success_expr())
+            .group_by(GROUP_KEYS)
+            .agg(
+                [
+                    pl.col("fixation").mean().alias("prob_fixation"),
+                    pl.col("steps_success").mean().alias("mean_steps"),
+                    pl.col("steps_success").std().alias("std_steps"),
+                    pl.col("fixation").count().alias("n_grouped"),
+                    pl.col("steps_success").median().alias("median_steps"),
+                    pl.col("steps_success").quantile(0.25).alias("q25_steps"),
+                    pl.col("steps_success").quantile(0.75).alias("q75_steps"),
+                    (
+                        pl.col("steps_success").quantile(0.75)
+                        - pl.col("steps_success").quantile(0.25)
+                    ).alias("iqr_steps"),
+                ]
+            )
+            .collect(engine="streaming")
+            .to_pandas()
         )
-        analysis_df = pd.read_csv(graph_statistics_path)
     else:
-        files = _expand_shards(results_path)
+        print(f"Aggregating {len(files)} shard(s) chunked (bounded memory)...")
+        agg_results_df = _aggregate_chunked(files)
 
-        if include_order_stats:
-            # Quantiles are NOT decomposable: an exact median needs every value of a group
-            # held at once, so it cannot be combined from per-shard partials. This path
-            # therefore does the whole batch in one group_by, which polars does not bound
-            # (see _aggregate_chunked) -- fine for small batches, fatal for large ones.
-            print(
-                f"Aggregating {len(files)} file(s) in ONE pass (order stats requested)..."
-            )
-            agg_results_df = (
-                scan_results(results_path)
-                .with_columns(_steps_success_expr())
-                .group_by(GROUP_KEYS)
-                .agg(
-                    [
-                        pl.col("fixation").mean().alias("prob_fixation"),
-                        pl.col("steps_success").mean().alias("mean_steps"),
-                        pl.col("steps_success").std().alias("std_steps"),
-                        pl.col("fixation").count().alias("n_grouped"),
-                        pl.col("steps_success").median().alias("median_steps"),
-                        pl.col("steps_success").quantile(0.25).alias("q25_steps"),
-                        pl.col("steps_success").quantile(0.75).alias("q75_steps"),
-                        (
-                            pl.col("steps_success").quantile(0.75)
-                            - pl.col("steps_success").quantile(0.25)
-                        ).alias("iqr_steps"),
-                    ]
-                )
-                .collect(engine="streaming")
-                .to_pandas()
-            )
-        else:
-            print(f"Aggregating {len(files)} shard(s) chunked (bounded memory)...")
-            agg_results_df = _aggregate_chunked(files)
+    print("Shape before merging: ", agg_results_df.shape)
 
-        print("Shape before merging: ", agg_results_df.shape)
-
-        analysis_df = pd.merge(
-            agg_results_df,
-            df_graphs,
-            on="wl_hash",
-            how="left",
-            suffixes=("", "_db"),
+    analysis_df = pd.merge(
+        agg_results_df,
+        df_graphs,
+        on="wl_hash",
+        how="left",
+        suffixes=("", "_db"),
+    )
+    # graph_props is deduped to one row per wl_hash, so an unmatched hash here means a
+    # result graph was never registered -- its n_nodes stays NaN and later crashes the
+    # analytic baseline. Surface it plainly instead of failing 200 lines downstream.
+    n_unmatched = analysis_df["n_nodes"].isna().sum()
+    if n_unmatched:
+        missing = analysis_df.loc[analysis_df["n_nodes"].isna(), "wl_hash"].unique()
+        print(
+            f"WARNING: {n_unmatched} result row(s) have no graph_props match "
+            f"({len(missing)} wl_hash(es), e.g. {missing[:3].tolist()})."
         )
-        # graph_props is deduped to one row per wl_hash, so an unmatched hash here means a
-        # result graph was never registered -- its n_nodes stays NaN and later crashes the
-        # analytic baseline. Surface it plainly instead of failing 200 lines downstream.
-        n_unmatched = analysis_df["n_nodes"].isna().sum()
-        if n_unmatched:
-            missing = analysis_df.loc[analysis_df["n_nodes"].isna(), "wl_hash"].unique()
-            print(
-                f"WARNING: {n_unmatched} result row(s) have no graph_props match "
-                f"({len(missing)} wl_hash(es), e.g. {missing[:3].tolist()})."
-            )
-        analysis_df["z_order"] = (analysis_df["category"] != "Random").astype(int)
-        analysis_df = analysis_df.sort_values("z_order").drop(columns="z_order")
-        analysis_df.to_csv(graph_statistics_path, index=False)
+    analysis_df["z_order"] = (analysis_df["category"] != "Random").astype(int)
+    analysis_df = analysis_df.sort_values("z_order").drop(columns="z_order")
 
-    # Derived from n_nodes and r alone, so they are recomputed on both the cached and
-    # the freshly-built path rather than being persisted. That keeps the on-disk
-    # graph_statistics.csv schema unchanged, so existing batches need no migration.
+    graph_statistics_path.parent.mkdir(parents=True, exist_ok=True)
+    analysis_df.to_csv(graph_statistics_path, index=False)
+    print(f"Wrote {len(analysis_df):,} rows -> {graph_statistics_path}")
+    return analysis_df
+
+
+def load_graph_statistics(batch_dir, category_filter=None, r_filter=None):
+    """READER. Load a batch's aggregated statistics; never builds them.
+
+    Counterpart to ``build_graph_statistics``. Raises if the aggregation has not run,
+    rather than quietly starting a 1000-shard scan inside whatever process asked --
+    a notebook, streamlit, the ML step. If you see the error, run the aggregation job.
+
+    Filtering is applied as a view on the way out, so the on-disk graph_statistics.csv
+    always holds every category and r value; only the returned frame is narrowed.
+
+    Args:
+        batch_dir: the batch directory holding graph_statistics.csv.
+        category_filter: keep only these categories. A single value or a list/tuple/set;
+            None keeps all categories.
+        r_filter: keep only these selection coefficients. A single value or a
+            list/tuple/set; None keeps all r values.
+
+    Returns:
+        analysis_df: aggregated DataFrame ready for plotting, with the analytic
+            complete-graph reference columns attached.
+    """
+    batch_path = Path(batch_dir)
+    stats_path = batch_path / "graph_statistics.csv"
+    if not stats_path.exists():
+        raise FileNotFoundError(
+            f"{stats_path} does not exist: this batch has not been aggregated yet.\n"
+            f"Build it with the aggregation job:\n"
+            f"    uv run python -m moran_process.pipeline.aggregate_batch "
+            f"--batch-dir {batch_path}\n"
+            f"or submit the whole post-batch chain:\n"
+            f"    uv run python -m moran_process.pipeline.post_batch "
+            f"--batch-dir {batch_path}"
+        )
+
+    analysis_df = pd.read_csv(stats_path)
+
+    # Derived from n_nodes and r alone, so they are recomputed on read rather than being
+    # persisted. That keeps the on-disk graph_statistics.csv schema unchanged, so
+    # existing batches need no migration.
     analysis_df = add_analytic_reference_columns(analysis_df)
-
-    print("Shape after merging: ", analysis_df.shape)
+    print(f"Loaded {len(analysis_df):,} rows from {stats_path}")
 
     def _as_list(val):
         return list(val) if isinstance(val, (list, tuple, set)) else [val]
@@ -486,7 +517,6 @@ def build_graph_statistics(
         analysis_df = analysis_df[analysis_df["r"].isin(rs)].copy()
         print(f"Filtered to r in {sorted(rs)}: {len(analysis_df):,} rows")
 
-    print(f"Graph statistics columns: {list(analysis_df.columns)}")
     return analysis_df
 
 
@@ -537,11 +567,32 @@ def _fixation_steps_cache_is_valid(batch_dir, r, max_points_per_category):
     return path.exists() and path.with_suffix(".json").exists()
 
 
-def _read_fixation_steps_cache(batch_dir, r, max_points_per_category):
-    """Return the cached loader tuple for this (r, cap), or None on a miss.
+def list_cached_fixation_steps(batch_dir):
+    """Every (r, cap) pair this batch has a complete cache for, sorted by r.
 
-    A miss is not an error: the caller silently falls back to the full scan.
+    Used both to resolve ``r=None`` when exactly one r is cached and to make a cache
+    miss say what IS available instead of just what is not.
+
+    Returns:
+        list of (r, max_points_per_category, path) tuples.
     """
+    cache_dir = Path(batch_dir) / CACHE_DIR_NAME
+    if not cache_dir.is_dir():
+        return []
+
+    found = []
+    for path in sorted(cache_dir.glob(f"{FIXATION_STEPS_CACHE_STEM}_r*_n*.parquet")):
+        sidecar = path.with_suffix(".json")
+        if not sidecar.exists():
+            continue
+        with open(sidecar) as f:
+            meta = json.load(f)
+        found.append((meta["r"], meta.get("max_points_per_category"), path))
+    return sorted(found, key=lambda t: (t[0], t[1] is None, t[1] or 0))
+
+
+def _read_fixation_steps_cache(batch_dir, r, max_points_per_category):
+    """Return the cached loader tuple for this (r, cap), or None on a miss."""
     if not _fixation_steps_cache_is_valid(batch_dir, r, max_points_per_category):
         return None
 
@@ -591,124 +642,244 @@ def _write_fixation_steps_cache(batch_dir, loaded, max_points_per_category):
     return path
 
 
-def load_fixation_steps_by_category(
-    results_path,
-    df_graphs,
-    r=None,
-    max_points_per_category=50_000,
-    cache_dir=None,
-):
-    """Load fixation 'steps' joined to graph 'category' for a single r value.
+def _accumulate_counts(acc, df, key_col, val_col):
+    """Fold a per-shard count frame into a running {category: count} dict."""
+    for key, val in zip(df.get_column(key_col).to_list(), df.get_column(val_col).to_list()):
+        acc[key] = acc.get(key, 0) + int(val)
 
-    Shared loader for ``plot_steps_violin`` and ``plot_steps_pvalue_matrix`` so the
-    two figures are always built from exactly the same rows (same r resolution, same
-    fixation filter, same subsample). Returns:
+
+def _trim_reservoir(reservoir, max_points_per_category):
+    """Keep the ``cap`` smallest sampling keys per category, dropping the rest."""
+    import polars as pl
+
+    return (
+        reservoir.sort("_key")
+        .with_columns(pl.int_range(pl.len()).over("category").alias("_rank"))
+        .filter(pl.col("_rank") < max_points_per_category)
+        .drop("_rank")
+    )
+
+
+def compute_fixation_steps_by_category(
+    results_source,
+    df_graphs,
+    r_values,
+    max_points_per_category=50_000,
+    seed=0,
+    progress_every=100,
+):
+    """BUILDER. Scan the raw shards ONCE and return a bounded sample for every r value.
+
+    This is the job-sized half of the violin/p-value input. It never materialises more
+    than one shard plus the reservoirs, whatever the batch size.
+
+    Two things make that true, and they solve different problems.
+
+    **Bounded memory: a reservoir keyed on a uniform draw**, not a per-shard quota. Every
+    fixation row gets an iid uniform(0, 1) key; after each shard a reservoir keeps only
+    the ``cap`` smallest keys per category. Keeping the k smallest of n iid uniforms is
+    exactly a uniform random subset of size k, and that property does not care how the
+    rows were split across files or what order they arrived in. So folding shard by shard
+    gives the *same distribution* as shuffling all 7.2e9 rows and taking the first k, and
+    allocation lands proportional to each shard's contribution automatically, with no
+    counting pass and no second read. The implementation this replaced collected every
+    fixation row for one r before subsampling (~1.2e9 rows) and died at 32GB, exit 137.
+
+    **Bounded I/O: all r values share one pass.** Every shard holds rows for every r, so
+    looping r on the outside and shards on the inside meant opening all 2000 files once
+    per r value: six passes over 39GB to extract data that arrives together. Measured
+    cold, reading one r from a shard costs 1.10-1.64s and reading all six costs 1.46s,
+    because the cost is fetching the file off shared storage, not decoding rows. Row-group
+    pruning does not help with that and rather disguised it. So the shard loop is on the
+    outside and each read fans out to one reservoir per r.
+
+    Args:
+        results_source: raw results -- a single file or a glob of per-job shards
+            (see resolve_results_source).
+        df_graphs: DataFrame with at least 'wl_hash' and 'category'.
+        r_values: the selection coefficients to sample. A single value is accepted and
+            treated as a one-element list. Required rather than resolved from the data,
+            because resolving would cost an extra full-column scan.
+        max_points_per_category: reservoir size per category, per r. None keeps every
+            fixation row, which removes the memory bound -- only sensible on small batches.
+        seed: base seed. Shard i, r-slot j draws from ``default_rng((seed, i, j))``, so
+            the sample is reproducible and every (shard, r) stream is independent.
+
+    Returns:
+        dict mapping r -> the same 6-tuple ``load_fixation_steps_by_category`` returns:
+        (sample_df, fixation_counts, total_counts, r, r_suffix, subsampled).
+    """
+    import polars as pl
+
+    if not isinstance(r_values, (list, tuple, set)):
+        r_values = [r_values]
+    r_values = sorted({float(r) for r in r_values})
+    if not r_values:
+        raise ValueError("r_values is empty; nothing to sample.")
+
+    files = _expand_shards(results_source)
+    cats = pl.from_pandas(df_graphs[["wl_hash", "category"]]).lazy()
+
+    total_counts = {r: {} for r in r_values}
+    fixation_counts = {r: {} for r in r_values}
+    reservoirs = {r: None for r in r_values}
+    rows_seen = {r: 0 for r in r_values}
+
+    print(
+        f"sampling {len(files)} shard(s) in one pass for r={r_values}, "
+        f"cap={max_points_per_category}"
+    )
+    for i, path in enumerate(files):
+        if i > 0 and i % progress_every == 0:
+            print(f"  sampled {i}/{len(files)} shards...")
+
+        scanner = scan_results(path)
+        names = scanner.collect_schema().names()
+        has_r = "r" in names
+        if not has_r and len(r_values) > 1:
+            raise ValueError(
+                f"{path} has no r column, so it cannot be split across "
+                f"{len(r_values)} r values; pass a single r for this batch."
+            )
+
+        lf = scanner.select(["wl_hash", "steps", "fixation"] + (["r"] if has_r else []))
+        if has_r:
+            lf = lf.filter(pl.col("r").is_in(r_values))
+
+        # Left-join category before the fixation filter: total_counts is the rho
+        # denominator, so it has to count non-fixation runs too.
+        shard = (
+            lf.join(cats, on="wl_hash", how="left")
+            .select(["category", "steps", "fixation"] + (["r"] if has_r else []))
+            .collect()
+        )
+        if shard.height == 0:
+            continue
+
+        for j, r in enumerate(r_values):
+            slice_ = shard.filter(pl.col("r") == r).drop("r") if has_r else shard
+            if slice_.height == 0:
+                continue
+            rows_seen[r] += slice_.height
+
+            _accumulate_counts(
+                total_counts[r],
+                slice_.group_by("category").agg(pl.len().alias("n")),
+                "category",
+                "n",
+            )
+
+            fx = slice_.filter(pl.col("fixation")).select(["category", "steps"])
+            if fx.height == 0:
+                continue
+
+            _accumulate_counts(
+                fixation_counts[r],
+                fx.group_by("category").agg(pl.len().alias("n")),
+                "category",
+                "n",
+            )
+
+            if max_points_per_category is not None:
+                keys = np.random.default_rng((seed, i, j)).random(fx.height)
+                fx = fx.with_columns(pl.Series("_key", keys))
+
+            current = reservoirs[r]
+            current = fx if current is None else pl.concat([current, fx])
+            if max_points_per_category is not None:
+                current = _trim_reservoir(current, max_points_per_category)
+            reservoirs[r] = current
+
+        del shard
+
+    missing = [r for r in r_values if rows_seen[r] == 0]
+    if missing:
+        raise ValueError(
+            f"no rows matched r={missing} in {results_source}; check "
+            f"graph_statistics.csv for the r values this batch actually holds."
+        )
+
+    results = {}
+    for r in r_values:
+        reservoir = reservoirs[r]
+        if reservoir is None:
+            sample = pd.DataFrame({"category": [], "steps": []})
+        else:
+            sample = reservoir.drop("_key", strict=False).to_pandas()
+
+        # Counted before the cap was applied, so this reports whether the picture you see
+        # is a sample or the whole thing.
+        largest = max(fixation_counts[r].values(), default=0)
+        subsampled = (
+            max_points_per_category is not None and largest > max_points_per_category
+        )
+        results[r] = (
+            sample,
+            fixation_counts[r],
+            total_counts[r],
+            r,
+            f"  (r={r})",
+            subsampled,
+        )
+    return results
+
+
+def load_fixation_steps_by_category(batch_dir, r=None, max_points_per_category=50_000):
+    """READER. Load the cached fixation-steps sample for one (r, cap). Never scans.
+
+    Shared loader for ``plot_steps_violin`` and ``plot_steps_pvalue_matrix`` so the two
+    figures are always built from exactly the same rows. Returns:
 
     - a tidy pandas DataFrame with columns ['category', 'steps'] (subsampled);
-    - ``fixation_counts``: true per-category fixation counts, read *before*
+    - ``fixation_counts``: true per-category fixation counts, counted *before*
       subsampling so callers can annotate how much data backs each category;
     - ``total_counts``: per-category total run counts (fixation + non-fixation),
       counted before the fixation filter, so callers can report rho = fix / total;
     - the resolved ``r`` and an ``r_suffix`` label for titles;
     - ``subsampled``: whether the cap actually trimmed any category.
 
-    See ``plot_steps_violin`` for why only fixation rows are materialised and why
-    subsampling to ``max_points_per_category`` is faithful to the full distribution.
+    A miss raises instead of falling back to a raw scan. The fallback is what made the
+    notebook unpredictable: the same cell was either a 20ms file read or a 42GB scan
+    depending on state you could not see from the call. Building the sample is a job
+    (``pipeline.cache_violin_data``), so asking for one that does not exist is a
+    missing prerequisite, not a slow path.
 
     Args:
-        cache_dir: a batch directory. If given and it holds a cached sample for this
-            (r, max_points_per_category), the cache is read and results_path is never
-            scanned; on a miss the sample is computed and then written there. Requires an
-            explicit ``r``, since resolving r=None needs the very scan the cache avoids.
-            Build the cache ahead of time with ``pipeline.cache_violin_data``.
+        batch_dir: the batch directory (the cache lives in <batch_dir>/cache/).
+        r: which selection coefficient. If None and exactly one r is cached at this cap,
+            that one is used; otherwise you are asked to pick.
+        max_points_per_category: the cap the cache was built with. Part of the cache key.
     """
-    import polars as pl
+    batch_path = Path(batch_dir)
+    available = list_cached_fixation_steps(batch_path)
 
-    if cache_dir is not None and r is not None:
-        cached = _read_fixation_steps_cache(cache_dir, r, max_points_per_category)
-        if cached is not None:
-            return cached
-
-    _scanner = scan_results(results_path)
-    _has_r = "r" in _scanner.collect_schema().names()
-
-    lf = _scanner.select(["wl_hash", "steps", "fixation"] + (["r"] if _has_r else []))
-
-    # Pooling several r values would silently overlay distributions, so resolve to a
-    # single r before collecting.
-    r_suffix = ""
-    if _has_r:
-        r_available = sorted(
-            lf.select(pl.col("r")).unique().collect().to_series().to_list()
-        )
-        if r is None:
-            if len(r_available) == 1:
-                r = r_available[0]
-            else:
-                raise ValueError(
-                    f"results contain multiple r values {r_available}; pass r=<value> "
-                    f"(one r at a time)"
-                )
-        elif r not in r_available:
-            raise ValueError(f"r={r} not found in results; available: {r_available}")
-        lf = lf.filter(pl.col("r") == r)
-        r_suffix = f"  (r={r})"
-
-    # Attach category to every run (lazy). Totals per category must be counted before
-    # the fixation filter so we can report rho = fixations / total runs, hence the join
-    # happens here rather than after filtering.
-    lf = lf.join(
-        pl.from_pandas(df_graphs[["wl_hash", "category"]]).lazy(),
-        on="wl_hash",
-        how="left",
-    )
-
-    # Total runs per category (the rho denominator), counted before non-fixation rows
-    # are dropped. Streamed, so the full frame is never materialised.
-    _tot = (
-        lf.group_by("category").agg(pl.len().alias("total")).collect(engine="streaming")
-    )
-    total_counts = dict(
-        zip(_tot.get_column("category").to_list(), _tot.get_column("total").to_list())
-    )
-
-    # Only fixation events are ever drawn/tested, so materialise just those.
-    merged_raw = lf.filter(pl.col("fixation")).collect()
-
-    _vc = merged_raw["category"].value_counts()
-    fixation_counts = dict(
-        zip(_vc.get_column("category").to_list(), _vc.get_column("count").to_list())
-    )
-
-    # Subsample each category down to the cap with a within-category shuffle (uniform
-    # sample), keeping every violin's KDE and every pairwise test cheap and faithful.
-    subsampled = False
-    if max_points_per_category is not None:
-        largest_category = max(fixation_counts.values(), default=None)
-        subsampled = (
-            largest_category is not None and largest_category > max_points_per_category
-        )
-        merged_raw = (
-            merged_raw.with_columns(
-                pl.int_range(pl.len()).shuffle(seed=0).over("category").alias("_rn")
+    if r is None:
+        at_cap = [entry for entry in available if entry[1] == max_points_per_category]
+        if len(at_cap) == 1:
+            r = at_cap[0][0]
+        else:
+            raise ValueError(
+                f"r=None needs exactly one cached r at cap {max_points_per_category}, "
+                f"found {len(at_cap)}. Pass r=<value> explicitly. "
+                f"Cached: {[(e[0], e[1]) for e in available] or 'nothing'}"
             )
-            .filter(pl.col("_rn") < max_points_per_category)
-            .drop("_rn")
-        )
 
-    loaded = (
-        merged_raw.to_pandas(),
-        fixation_counts,
-        total_counts,
-        r,
-        r_suffix,
-        subsampled,
+    cached = _read_fixation_steps_cache(batch_path, r, max_points_per_category)
+    if cached is not None:
+        return cached
+
+    expected = fixation_steps_cache_path(batch_path, r, max_points_per_category)
+    raise FileNotFoundError(
+        f"No violin cache for r={r} at cap {max_points_per_category}.\n"
+        f"Expected: {expected}\n"
+        f"Cached in this batch: {[(e[0], e[1]) for e in available] or 'nothing'}\n"
+        f"Build it with:\n"
+        f"    uv run python -m moran_process.pipeline.cache_violin_data "
+        f"--batch-dir {batch_path} --r-values {r} "
+        f"--max-points-per-category {max_points_per_category}\n"
+        f"or submit the whole post-batch chain:\n"
+        f"    uv run python -m moran_process.pipeline.post_batch --batch-dir {batch_path}"
     )
-
-    if cache_dir is not None:
-        _write_fixation_steps_cache(cache_dir, loaded, max_points_per_category)
-
-    return loaded
 
 
 def build_fixation_steps_cache(
@@ -719,8 +890,12 @@ def build_fixation_steps_cache(
 ):
     """Precompute the cached fixation-steps sample for every r in a finished batch.
 
-    One scan of the raw shards per r value. Meant to run once, on a compute node, as the
-    job chained after aggregation, so every later violin / p-value figure is a file read.
+    **One** scan of the raw shards, covering every r value at once, not one scan per r.
+    Every shard holds rows for every r, so a pass per r meant re-fetching the same 39GB
+    off shared storage six times for data that arrives together (see
+    compute_fixation_steps_by_category for the measurements). Meant to run once, on a
+    compute node, as the job chained after aggregation, so every later violin / p-value
+    figure is a file read.
 
     Args:
         batch_dir: a finished batch (needs graph_props.csv and tmp/results/).
@@ -730,7 +905,7 @@ def build_fixation_steps_cache(
         force: rebuild even if a matching cache already exists.
 
     Returns:
-        list of written cache paths.
+        list of cache paths that now exist (both freshly written and already present).
     """
     batch_path = Path(batch_dir)
 
@@ -749,24 +924,37 @@ def build_fixation_steps_cache(
             raise FileNotFoundError(
                 f"{stats_path} missing; pass r_values explicitly or run aggregate_batch first."
             )
-        r_values = sorted(pd.read_csv(stats_path, usecols=["r"])["r"].unique().tolist())
+        r_values = pd.read_csv(stats_path, usecols=["r"])["r"].unique().tolist()
 
-    written = []
+    # Normalise to plain floats: these r values become dict keys and filename fragments,
+    # and numpy scalars stringify differently across numpy versions.
+    r_values = sorted(float(r) for r in r_values)
+
+    # Decide what still needs building BEFORE the scan, so the single pass covers exactly
+    # the missing r values. Skipping an r here is what makes the job cheap to re-run.
+    todo, present = [], []
     for r in r_values:
-        path = fixation_steps_cache_path(batch_path, r, max_points_per_category)
         if not force and _fixation_steps_cache_is_valid(
             batch_path, r, max_points_per_category
         ):
             print(f"r={r}: cache already present, skipping.")
-            written.append(path)
-            continue
-        print(f"r={r}: scanning raw results...")
-        load_fixation_steps_by_category(
+            present.append(r)
+        else:
+            todo.append(r)
+
+    if todo:
+        results = compute_fixation_steps_by_category(
             results_source,
             df_graphs,
-            r=r,
+            r_values=todo,
             max_points_per_category=max_points_per_category,
-            cache_dir=batch_path,
         )
-        written.append(path)
-    return written
+        for r in todo:
+            _write_fixation_steps_cache(
+                batch_path, results[r], max_points_per_category
+            )
+
+    return [
+        fixation_steps_cache_path(batch_path, r, max_points_per_category)
+        for r in sorted(present + todo)
+    ]

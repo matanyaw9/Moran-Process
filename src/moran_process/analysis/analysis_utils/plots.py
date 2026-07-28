@@ -654,13 +654,12 @@ def plot_batch_info_card(
 
 
 def plot_steps_violin(
-    results_path,
+    batch_dir,
     df_graphs,
     color_dict=None,
     categories=None,
     r=None,
     max_points_per_category=50_000,
-    cache_dir=None,
     *,
     figures_dir=None,
     force_recompute=False,
@@ -678,23 +677,19 @@ def plot_steps_violin(
     rows are never drawn), and each category is subsampled to ``max_points_per_category``
     points before the KDE (a 50k sample is visually identical to the full distribution).
 
+    The sample is read from the batch's violin cache, built once by the post-batch job
+    ``pipeline.cache_violin_data``. If it is missing this raises with the command to
+    build it rather than silently starting a multi-GB scan.
+
     Args:
-        results_path: raw results, read lazily -- a raw_results.parquet/.csv or a glob of
-            per-job shards (see resolve_results_source; the glob is preferred and is the
-            only form that works for batches over 2**32-1 rows)
+        batch_dir: the batch directory; the cached sample lives in <batch_dir>/cache/
         df_graphs: DataFrame with at least 'wl_hash' and 'category' columns
         color_dict: category -> hex color mapping for violin fills
         categories: x-axis order; defaults to sorted unique values in df_graphs['category']
         r: which selection coefficient to plot (violins show one r at a time). If None
-            and the data has a single r, that value is used; if None and several r
-            values are present, a ValueError is raised asking you to pick one.
-        max_points_per_category: cap on the number of fixation events fed to each
-            category's KDE. None disables subsampling and plots every point (slow for
-            large batches). Default 50_000.
-        cache_dir: a batch directory holding a precomputed fixation-steps sample (see
-            io.build_fixation_steps_cache). On a hit the raw shards are never scanned,
-            which is the difference between a multi-minute figure and an instant one.
-            Requires an explicit ``r``. On a miss the sample is computed and cached there.
+            and exactly one r is cached at this cap, that value is used.
+        max_points_per_category: the cap the cache was built with; part of the cache key.
+            Default 50_000.
 
     See the module docstring for the shared output tail (figures_dir,
     force_recompute, fig_title, batch_name, show, save).
@@ -713,11 +708,9 @@ def plot_steps_violin(
 
     merged_raw, fixation_counts, total_counts, r, r_suffix, subsampled = (
         _load_fixation_steps_by_category(
-            results_path,
-            df_graphs,
+            batch_dir,
             r=r,
             max_points_per_category=max_points_per_category,
-            cache_dir=cache_dir,
         )
     )
 
@@ -803,12 +796,11 @@ def _significance_stars(p):
 
 
 def plot_steps_pvalue_matrix(
-    results_path,
+    batch_dir,
     df_graphs,
     categories=None,
     r=None,
     max_points_per_category=50_000,
-    cache_dir=None,
     *,
     figures_dir=None,
     force_recompute=False,
@@ -857,11 +849,9 @@ def plot_steps_pvalue_matrix(
 
     merged, fixation_counts, _total_counts, r, r_suffix, subsampled = (
         _load_fixation_steps_by_category(
-            results_path,
-            df_graphs,
+            batch_dir,
             r=r,
             max_points_per_category=max_points_per_category,
-            cache_dir=cache_dir,
         )
     )
 
