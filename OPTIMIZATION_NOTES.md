@@ -467,3 +467,33 @@ seeds 0-4, matching a numpy-uniform baseline of 0.817, 0.367, 0.948, 0.219,
 |---|---|---|---|---|
 | `2026_07_21-combined-...` (previously OOM at 32GB) | 7.25e9 | 1,488 MB | 8,192 MB | 34 min |
 | `2026_07_28-respiratory-vs-random-10K-reps-3` | 4.8e8 | 418 MB | 8,192 MB | 3.4 min |
+
+## 12. Done - Correctness: read-time stitching equals the on-disk combined batch
+
+Validated 2026-07-28, against `2026_07_21-combined-respiratory-random-extreme`
+before it was deleted. This comparison cannot be re-run: the oracle is gone.
+
+**Stats.** `load_graph_statistics([07_15, 07_20])` vs the combined
+`graph_statistics.csv`, sorted by `(wl_hash, r)`: 72,492 rows both sides, 41
+shared columns, identical column sets, 38 of 41 bit-identical. `mean_steps`,
+`std_steps` and the derived `log_ratio_mean_steps` agree to **1 ULP** (757 of
+72,492 values differ in the last bit, max relative 2.52e-16 against a float64
+eps of 2.22e-16). The extra error is the *oracle's*: `combine_batches` did
+`read_csv -> concat -> to_csv`, a decimal round-trip the stitch does not
+perform. Where they disagree, the stitch is the more faithful value.
+
+**Violin counts.** `fixation_counts` and `total_counts` identical across 17
+categories: 139,987,537 fixations of 1,209,100,000 runs. Exact equality here is
+what proves the two sources saw the same underlying shards, since both are
+counted before subsampling.
+
+**Violin samples.** Drawn independently, so compared by per-category two-sample
+KS at r=1.1, cap 50k. Every p in [0.394, 1.000]. The nine respiratory/random
+categories return exactly 1.000 (seeded reservoir, row-identical samples); the
+eight GA categories vary because the combined batch sampled them through linked
+shards in a different order.
+
+**Figure.** Same violin: identical category order, rho annotations, n counts and
+shapes. 2.118% of pixels differ, entirely y-axis autoscale (oracle peaks near
+93,000, stitch near 110,000) because one independently-resampled GA tail caught
+a longer maximum run. Expected for a 50k reservoir over 298,790 fixations.
