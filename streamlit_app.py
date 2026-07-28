@@ -22,6 +22,7 @@ radio runs only the selected page's code, so heavy work happens on demand.
 """
 
 import io
+import glob
 import contextlib
 from pathlib import Path
 
@@ -46,7 +47,7 @@ from moran_process.analysis.analysis_utils import (
     CATEGORY_COLOR_DICT,
     GRAPH_PROPERTY_COLUMNS,
     generate_robust_color_dict,
-    resolve_results_path,
+    resolve_results_source,
     load_graph_statistics,
     load_batch_info,
     plot_batch_info_card,
@@ -96,20 +97,27 @@ def _human_size(num_bytes: int) -> str:
 
 
 def list_batches():
-    """Batches with both an aggregated results file and graph_props.csv.
+    """Batches with both raw results and graph_props.csv.
 
-    Returns a list of (name, results_size_bytes) so the picker can warn about
-    multi-GB batches before the user selects one.
+    Resolves results through ``resolve_results_source``, which prefers the per-job shard
+    glob and only falls back to a fused raw_results.parquet. Gating on the fused file
+    alone (what this used to do) hid every batch written since the shard migration, since
+    those never produce one.
+
+    Returns a list of (name, results_size_bytes) so the picker can warn about multi-GB
+    batches before the user selects one. The size is summed over the shards.
     """
     if not SIM_DATA_DIR.exists():
         return []
     out = []
     for d in sorted(SIM_DATA_DIR.iterdir()):
-        if not d.is_dir():
+        if not d.is_dir() or not (d / "graph_props.csv").exists():
             continue
-        rp = resolve_results_path(d)
-        if rp is not None and (d / "graph_props.csv").exists():
-            out.append((d.name, rp.stat().st_size))
+        source = resolve_results_source(d)
+        if source is None:
+            continue
+        paths = [Path(p) for p in glob.glob(str(source))] if "*" in str(source) else [Path(source)]
+        out.append((d.name, sum(p.stat().st_size for p in paths if p.exists())))
     return out
 
 
@@ -124,7 +132,7 @@ def load_batch(batch_name: str):
     """
     batch_dir = SIM_DATA_DIR / batch_name
     df_graphs = pd.read_csv(batch_dir / "graph_props.csv")
-    results_path = resolve_results_path(batch_dir)
+    results_path = resolve_results_source(batch_dir)
     analysis_df = load_graph_statistics(batch_dir)
     color_dict = generate_robust_color_dict(analysis_df, CATEGORY_COLOR_DICT)
     batch_info = load_batch_info(batch_dir)
@@ -132,30 +140,17 @@ def load_batch(batch_name: str):
 
 
 @st.cache_data(show_spinner=False)
-def load_speed_agg(results_path: str) -> pd.DataFrame:
-    """Per-job sums of steps (and duration) via a streaming scan of raw_results.
+def load_speed_agg(batch_name: str) -> pd.DataFrame:
+    """READER. Per-job sums of steps and duration, from the job_speed post-batch job.
 
-    The raw file can be many GB, so we never load it into pandas. polars scans it
-    lazily, keeps only the columns the speed report needs, and reduces to one row
-    per job_id. Because batch_speed_report re-groups by job_id and sums, feeding
-    it these pre-summed rows yields identical numbers.
+    This used to scan the raw shards with polars inside the web app, which on the 100K
+    batch meant a 39GB read triggered by opening a page. The job_speed job now writes
+    exactly what batch_speed_report re-groups and sums, so this is a small CSV read and
+    the numbers are identical.
     """
-    import polars as pl
+    from moran_process.pipeline.job_speed import job_speed_path
 
-    p = Path(results_path)
-    lf = pl.scan_parquet(str(p)) if p.suffix == ".parquet" else pl.scan_csv(str(p))
-    cols = lf.collect_schema().names()
-    select_cols = ["job_id", "steps"] + (["duration"] if "duration" in cols else [])
-    aggs = [pl.col("steps").sum()] + (
-        [pl.col("duration").sum()] if "duration" in cols else []
-    )
-    return (
-        lf.select(select_cols)
-        .group_by("job_id")
-        .agg(aggs)
-        .collect(engine="streaming")
-        .to_pandas()
-    )
+    return pd.read_csv(job_speed_path(SIM_DATA_DIR / batch_name))
 
 
 # --------------------------------------------------------------------------- #
@@ -275,18 +270,28 @@ def cached_figure(
         st.rerun()
 
 
-def render_speed_report(batch_name: str, results_path: str):
+def render_speed_report(batch_name: str):
     """Render batch_speed_report's printed stats + histograms inside the page.
 
     Skipped with a message when the batch has no logs/ dir (the report parses LSF
-    .out files for run time / memory and is meaningless without them).
+    .out files for run time / memory and is meaningless without them), or when the
+    job_speed post-batch job has not run.
     """
+    from moran_process.pipeline.job_speed import job_speed_path
+
     batch_dir = SIM_DATA_DIR / batch_name
     if not (batch_dir / "logs").is_dir():
         st.info("No `logs/` directory for this batch, so no speed report is available.")
         return
-    with st.spinner("Scanning raw results for per-job speed stats..."):
-        slim = load_speed_agg(results_path)
+    if not Path(job_speed_path(batch_dir)).exists():
+        st.info(
+            "No `job_speed.csv` for this batch. Build it with:\n\n"
+            f"`uv run python -m moran_process.pipeline.post_batch "
+            f"--batch-dir simulation_data/{batch_name} --submit`"
+        )
+        return
+    with st.spinner("Loading per-job speed stats..."):
+        slim = load_speed_agg(batch_name)
         plt.close("all")
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
@@ -374,7 +379,7 @@ if page == "Overview":
     )
 
     st.markdown("### Run speed & resource usage")
-    render_speed_report(batch_name, results_path)
+    render_speed_report(batch_name)
 
 elif page == "Fixation time":
     st.caption(f"Showing r = {selected_r}" if selected_r is not None else "")
