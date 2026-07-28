@@ -379,7 +379,9 @@ small batches and only appeared at 7.2e9 rows.
 **Symptom.** On the combined batch `2026_07_21-combined-respiratory-random-extreme`
 (7.2546e9 rows), the violin cache job was killed by LSF at exactly 32768 MB
 (exit 137, TERM_MEMLIMIT) at the *first* r value, having written nothing. That
-batch had never once produced a cache.
+batch had never once produced a cache. (That batch no longer exists: combined
+batches were later replaced by read-time stitching, and its two parents now each
+carry their own cache. The measurement stands as recorded.)
 
 **Root cause.** `io.load_fixation_steps_by_category` did, on a cache miss:
 

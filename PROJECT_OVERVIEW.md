@@ -97,7 +97,6 @@ moran-process/
     │   ├── batch_verify.py              # post-sim job 2: completeness + failure verdict
     │   ├── cache_violin_data.py         # post-sim job 3: bounded fixation-step sample
     │   ├── job_speed.py                 # post-sim job 4: per-job steps/duration
-    │   ├── combine_batches.py           # union two batches into one
     │   └── extreme_graphs.py            # mutation/GA search for extreme graphs
     └── analysis/
         ├── analysis_utils/              # package: io, plots, colors, theory, provenance
@@ -133,7 +132,8 @@ A single batch lives at `simulation_data/<batch_name>/` and contains `graph_prop
 - Polars streaming aggregation in `analysis_utils.io.build_graph_statistics`
 - C++ simulation engine (`CppMoranProcess`), statistically validated against the Python
   reference; roughly 300x to 1800x faster
-- Batch combination (`combine_batches.py`): union two batches into one analysable batch
+- Multi-batch figures: the readers take a list of batch directories and stitch in memory,
+  so a figure can span two simulation runs without building a combined batch on disk
 - Post-simulation jobs: aggregate, verify, violin cache, and job speed, chained
   automatically after the array so `experiment_analysis.ipynb` runs on any batch with no
   compute in the kernel and none on the login node

@@ -81,7 +81,20 @@ uv run python -m moran_process.pipeline.post_batch --batch-dir <batch>          
 uv run python -m moran_process.pipeline.post_batch --batch-dir <batch> --submit
 ```
 
-Three batch kinds are classified and reported, so "works on any batch" includes saying no clearly: `CURRENT` (all four steps), `COMBINED` (aggregate is `INHERITED` from the parents and job speed is `N/A`, since linked shards reuse each parent's `job_id` numbering), and `LEGACY` (pre-June batches; none apply, no compat shims were added).
+Two batch kinds are classified and reported, so "works on any batch" includes saying no clearly: `CURRENT` (all four steps apply) and `LEGACY` (pre-June batches; none apply, no compat shims were added).
+
+**Spanning several batches: stitch at read time, do not build a combined batch.** Both readers take a single batch directory **or a list of them**:
+
+```python
+analysis_df = load_graph_statistics([dir_a, dir_b], r_filter=[1.1])
+plot_steps_violin([dir_a, dir_b], df_graph_props, r=1.1, ...)
+```
+
+The frames are concatenated in memory and a `batch` column records each row's source. This is exact, not an approximation: every statistic in `graph_statistics.csv` is an additive per-shard partial keyed by `(wl_hash, r)`, so concatenating two rollups equals the rollup of their union, and the violin cache is a per-category reservoir, so joining two samples equals sampling the union. Counts behind the rho annotation are taken before subsampling and therefore sum.
+
+Two things are reported at load time rather than left to surprise you mid-figure: **ragged columns** (the respiratory-only construction params, which a GA graph genuinely does not have, so they are NaN elsewhere) and **`(wl_hash, r)` collisions**. A collision is not an error: stitching two batches of the *same* zoo at different `n_repeats` is a legitimate comparison, so both rows are kept and labelled by `batch`. Facet or color by it, or the same graph is drawn twice. A batch that cannot serve the requested `r` raises, and the message says whether the cache merely has not been built (fixable) or `r` was never simulated there (not fixable).
+
+There is deliberately no on-disk "combined batch". An earlier version built one by unioning the CSVs and symlinking 2000 raw shards into a third directory, which bought only the ability to re-run shard-scanning jobs over the union, and cost a permanent coupling to the parents' locations.
 
 **Builder/reader split.** Every expensive artefact has a builder that only jobs call and a reader that only consumers call, and the reader raises rather than silently building:
 

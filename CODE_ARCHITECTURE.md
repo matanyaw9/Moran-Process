@@ -152,11 +152,11 @@ ProcessLab.submit_post_batch_jobs(
     batch_dir, batch_name,
     aggregate_job_id=None,    # chain the consumers onto this rollup; None = run now
     array_job_id=None,        # gate aggregate and job_speed on this array; None = run now
-    queue="short", include_job_speed=True, force=False,
+    queue="short", force=False,
 )
 ```
 
-One rule unifies every launch mode: **if a job id is passed the job PENDs on it; if `None` is passed no `-w` flag is added and the job runs immediately.** That is what lets the same four submitters serve a fresh batch, a finished batch, and a combined batch without branching.
+One rule unifies every launch mode: **if a job id is passed the job PENDs on it; if `None` is passed no `-w` flag is added and the job runs immediately.** That is what lets the same four submitters serve a fresh batch and a finished one without branching.
 
 | module | mem | in | out |
 |---|---|---|---|
@@ -166,8 +166,8 @@ One rule unifies every launch mode: **if a job id is passed the job PENDs on it;
 | `pipeline/job_speed.py` | 8GB | shards | `job_speed.csv` (`job_id,steps,duration`) |
 
 `pipeline/post_batch.py` is the entry point:
-- `classify_batch(batch_dir)` -> `CURRENT` / `COMBINED` / `LEGACY`.
-- `post_batch_status(batch_dir, r_values=None)` -> per-step `DONE` / `MISSING` / `INHERITED` / `NOT_APPLICABLE`. Inspection only.
+- `classify_batch(batch_dir)` -> `CURRENT` / `LEGACY`.
+- `post_batch_status(batch_dir, r_values=None)` -> per-step `DONE` / `MISSING` / `NOT_APPLICABLE`. Inspection only.
 - `print_post_batch_status(status)` renders the table the notebook shows.
 - `ensure_post_batch(batch_dir, force=False)` submits. The only thing that starts work.
 
@@ -236,7 +236,7 @@ Interactive browser over a single batch's results (`uv run streamlit run streaml
 | Fixation time | Steps-to-fixation violins, pairwise Mann-Whitney significance matrix, per-metric histograms |
 | Property effects | Outcome vs. a single structural property, and the combined two-property view |
 
-**On-disk figure cache (`cached_figure`).** Every plot is served from a cached PNG under `simulation_data/<batch>/figures/`, built with the *same* `_resolve_figure_path` the `plot_*` functions use, so the dashboard and notebooks share the same cache files in both directions. The cache has no code-version awareness: a figure that gained content from a code change still shows the old PNG until rebuilt. Each plot exposes **Regenerate** (rebuild from raw data, show unsaved) and **Save / Overwrite** (persist the displayed bytes). `cache_key` carries everything that changes the figure (`r`, selected columns, style) so distinct selections map to distinct files. The freshly built PNG bytes are stashed in `session_state`, so Save writes instantly instead of re-running a multi-GB scan.
+**On-disk figure cache (`cached_figure`).** This is a **streamlit-only** feature. Every plot in the dashboard is served from a cached PNG under `simulation_data/<batch>/figures/`, built with the same `_resolve_figure_path` the `plot_*` functions use to decide where to save. The notebooks no longer read these PNGs: their equivalent cache was removed once every heavy figure input became a job-built file read, so the draw itself is all that remains (7.4s for the heaviest violin, 0.5s for a scatter) and each `plot_*` call now prints its own build time instead. In streamlit the cache stays worth having because a dashboard redraws on every widget interaction, and because it is under explicit user control rather than silent. The cache has no code-version awareness: a figure that gained content from a code change still shows the old PNG until rebuilt. Each plot exposes **Regenerate** (rebuild from raw data, show unsaved) and **Save / Overwrite** (persist the displayed bytes). `cache_key` carries everything that changes the figure (`r`, selected columns, style) so distinct selections map to distinct files. The freshly built PNG bytes are stashed in `session_state`, so Save writes instantly instead of re-running a multi-GB scan.
 
 **Combined two-property view.** X, Y, and Color can each show *either* a structural trait *or* a simulation result; the selectbox groups them with a `Property ·` / `Result ·` label prefix. When X is `n_nodes` and Y is `prob_fixation`, the plot overlays analytic reference lines: the neutral `1/N` baseline (always) and the complete-graph Moran curve `rho(N, r)` (only when the data is a single `r`). Both lines are drawn in the shared tail `_finish_two_property_figure`, so scatter and hexbin styles get them identically.
 

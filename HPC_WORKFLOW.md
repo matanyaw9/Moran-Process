@@ -138,9 +138,7 @@ uv run python -m moran_process.pipeline.job_speed         --batch-dir <batch>
 
 `batch_verify` is seconds and modest memory at any batch size (it reads Parquet footers, not data), so it is safe on the login node. The other three are not.
 
-**Combined batches.** `combine_batches` unions the parents' CSVs and symlinks their raw shards. Two steps do not apply and are reported as such rather than silently skipped: aggregate is `INHERITED` (concatenating the parents' `graph_statistics.csv` is exact, so there is nothing to recompute) and job speed is `N/A` (the linked shards still carry each parent's own 1..N `job_id` numbering, so summing by `job_id` would add unrelated workers together). Verify and the violin cache run normally.
-
-The shards under a combined batch's `tmp/results/` are **absolute symlinks** into the parents. The parents must stay in place; do not move or delete them.
+**Figures spanning several batches.** Each batch keeps its own four artefacts and stays self-sufficient; nothing is combined on disk. To plot two batches together, hand the readers a list of batch directories and they stitch in memory (see the stitching section in `CLAUDE.md`). Every post-simulation job stays scoped to one batch, which is what `job_speed` in particular requires: `job_id` is an LSF array index numbered 1..N within a single submission, so it is only meaningful next to the batch that produced it.
 
 `aggregate_results_no_load(batch_dir)` still exists and fuses all shards into a single `raw_results.parquet`, but it is no longer part of the normal path: polars indexes rows with a u32 and cannot read a single Parquet file over 2**32-1 rows, and the 100K-reps batch is 7.2e9. Everything scans `tmp/results/*.parquet` as a glob instead.
 

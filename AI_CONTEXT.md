@@ -108,12 +108,11 @@ moran-process/
     │   ├── batch_verify.py            # job 2: completeness + failure verdict
     │   ├── cache_violin_data.py       # job 3: bounded fixation-step sample per r
     │   ├── job_speed.py               # job 4: per-job steps/duration sums
-    │   ├── combine_batches.py         # union two batches into one combined batch
     │   └── extreme_graphs.py          # mutation/GA search for extreme graphs
     └── analysis/
         ├── analysis_utils/            # package, not a module
         │   ├── io.py                  # builders + readers, aggregation, batch_info
-        │   ├── plots.py               # all plot_* functions, figure cache
+        │   ├── plots.py               # all plot_* functions, figure paths + timing
         │   ├── colors.py              # CATEGORY_COLOR_DICT and friends
         │   ├── theory.py              # analytic fixation-probability reference
         │   └── provenance.py          # batch_info.json read/write
@@ -350,13 +349,13 @@ Do not connect VS Code itself to the compute node; the session dies when the job
   now off the normal path.
 - Batch metadata (`provenance.py`): `create_batch_info(...)` and `load_batch_info(batch_dir)`
   read/write `batch_info.json`.
-- Plotting functions share a figure-cache pattern: each one takes `figures_dir`,
-  `force_recompute`, and `batch_name`. If a cached PNG exists and `force_recompute=False`,
-  it displays the PNG instead of recomputing; otherwise it renders, saves the PNG, and
-  stamps the source batch name. Key plotters:
+- Plotting functions share an output tail: each takes `figures_dir`, `batch_name`, `show`
+  and `save`. They always render (there is no PNG cache to short-circuit them) and each
+  prints its own build time via the `_timed` decorator. Key plotters:
   - `plot_steps_violin(batch_dir, df_graphs, ...)` and `plot_steps_pvalue_matrix(...)` read
     the cached fixation-step sample built by the violin job. They take `batch_dir`, not
     `results_path` plus `cache_dir`, and raise on a cache miss naming what *is* cached.
+    `batch_dir` may be a list, in which case the samples are stitched.
   - `plot_outcome_vs_property(...)` is the current recommended scatter-vs-property plot
     (auto violins for discrete x, vectorized jitter, correct 1/N neutral line). It
     supersedes the older `plot_hybrid_density(...)` and `plot_property_effect(...)`.
