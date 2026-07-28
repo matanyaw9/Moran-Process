@@ -27,7 +27,7 @@ CATEGORY_COLOR_DICT = {
     "Random": "#E0E0E0",
     "Complete": "#000000",
     "Cycle": "#5C6BC0",
-    "Star": "#FFE656FF",
+    "Star": "#FFE656",
     # --- PROBABILITY (Blues/Purples) ---
     "maximize LR Fixation Probability": "#08519C",  # Navy Blue
     "maximize XGBOOST Fixation Probability": "#6BAED6",  # Soft Sky Blue
