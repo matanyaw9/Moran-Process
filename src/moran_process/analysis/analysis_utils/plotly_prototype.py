@@ -453,10 +453,27 @@ def plot_outcome_vs_property_plotly(
                 if (
                     n_mean > 0 and (n_col.std() / n_mean) < 0.05
                 ):  # only when N homogeneous
+                    # Same baseline choice as the static twin: complete-graph rho(N, r)
+                    # when a single r is in play (it is the amplifier/suppressor
+                    # reference and lies inside the data), neutral 1/N only when r is
+                    # ambiguous. rho equals 1/N at r=1, so nothing is lost there.
+                    if len(r_values) == 1:
+                        rv = r_values[0]
+                        base = float(analytic_moran_fc_fixation_prob(n_mean, rv))
+                        label = (
+                            f"Moran ρ(N={n_mean:.0f}, r={rv:g})={base:.4f}"
+                            if rv != 1
+                            else f"Neutral (1/N={n_mean:.0f})"
+                        )
+                        color = "royalblue" if rv != 1 else "black"
+                    else:
+                        base = 1.0 / n_mean
+                        label = f"Neutral (1/N={n_mean:.0f})"
+                        color = "black"
                     fig.add_hline(
-                        y=1.0 / n_mean,
-                        line=dict(color="black", dash="dot", width=1.2),
-                        annotation_text=f"Neutral (1/N={n_mean:.0f})",
+                        y=base,
+                        line=dict(color=color, dash="dot", width=1.2),
+                        annotation_text=label,
                     )
 
     r_suffix = f"  (r={r_values[0]})" if len(r_values) == 1 else ""

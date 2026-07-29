@@ -1283,12 +1283,34 @@ def plot_outcome_vs_property(
                 n_mean = n_col.mean()
                 n_cv = n_col.std() / n_mean if n_mean > 0 else 1.0
                 if n_cv < 0.05:
+                    if len(r_values) == 1:
+                        # The baseline that matters is the COMPLETE-graph rho(N, r):
+                        # amplifier/suppressor is defined against it, and it sits inside
+                        # the data. Neutral 1/N is the r=1 baseline, so at r>1 it lands
+                        # far below every point (0.033 vs ~0.10 at N=30, r=1.1) and
+                        # stretched the autoscaled y axis over probabilities that never
+                        # occur. rho collapses to exactly 1/N at r=1, so that case still
+                        # draws the neutral line, just via the general formula.
+                        rv = r_values[0]
+                        base = float(analytic_moran_fc_fixation_prob(n_mean, rv))
+                        label = (
+                            rf"Moran  $\rho$(N={n_mean:.0f}, r={rv:g})={base:.4f}"
+                            if rv != 1
+                            else f"Neutral (1/N={n_mean:.0f})"
+                        )
+                        color = "tab:blue" if rv != 1 else "black"
+                    else:
+                        # rho depends on r, so several r values have no single line.
+                        # 1/N is the only r-independent reference left.
+                        base = 1.0 / n_mean
+                        label = f"Neutral (1/N={n_mean:.0f})"
+                        color = "black"
                     ax.axhline(
-                        1.0 / n_mean,
-                        color="black",
+                        base,
+                        color=color,
                         linestyle=":",
                         linewidth=1.0,
-                        label=f"Neutral (1/N={n_mean:.0f})",
+                        label=label,
                         zorder=4,
                     )
                 # else: N varies too much -- a flat line would be misleading, so skip
