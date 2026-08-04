@@ -405,8 +405,15 @@ class PopulationGraph:
         Structure:
         - n_rods: Number of parallel 'parabronchi' (linear paths).
         - rods_length: Number of nodes in each rod.
-        - Connectivity: All rods connect to an 'Inlet' and 'Outlet'.
-          A 'Circuit node connects Outlet back to Inlet to close the loop.
+        - Connectivity: every parabronchus runs from the posterior air sac to the
+          anterior air sac; the trachea closes the loop from anterior back to
+          posterior.
+
+        With directed=True every edge points downstream, so air (and offspring)
+        flow one way only: posterior air sac -> parabronchi -> anterior air sac
+        -> trachea -> posterior air sac. Node identifiers are anatomical and are
+        preserved as a 'label' node attribute after the integer relabelling, so
+        draw(with_labels=True) shows them.
 
         Args:
             n_rods (int): Number of parallel paths.
@@ -415,7 +422,7 @@ class PopulationGraph:
         """
         G = nx.DiGraph() if directed else nx.Graph()
 
-        inlet, outlet, circuit = "Inlet", "Outlet", "Circuit"
+        inlet, outlet, circuit = "posterior-air-sac", "anterior-air-sac", "trachea"
         G.add_nodes_from([inlet, outlet, circuit])
 
         # 1. Define Macro Layout
@@ -439,31 +446,37 @@ class PopulationGraph:
             y = (i - (n_rods - 1) / 2) * 1.0
 
             # Connect Inlet
-            first_node = f"r{i}_0"
+            first_node = f"parabronchus_{i}_0"
             G.add_edge(inlet, first_node)
 
             for j in range(rod_length):
-                node_id = f"r{i}_{j}"
+                node_id = f"parabronchus_{i}_{j}"
                 x = x_start + j + 0.5
                 pos[node_id] = np.array([x, y])
 
                 # Internal Edges
                 if j > 0:
-                    prev_node = f"r{i}_{j-1}"
+                    prev_node = f"parabronchus_{i}_{j-1}"
                     G.add_edge(prev_node, node_id)
 
             # Connect Outlet
-            last_node = f"r{i}_{rod_length-1}"
+            last_node = f"parabronchus_{i}_{rod_length-1}"
             G.add_edge(last_node, outlet)
 
         # 3. Store pos & Convert labels
+        # The simulation layer indexes nodes as range(n) (see to_simulation_struct),
+        # so the anatomical identifiers cannot survive as node keys. label_attribute
+        # keeps them as a node attribute instead, which draw() picks up and which the
+        # WL hash ignores (weisfeiler_lehman_graph_hash reads node attrs only when
+        # node_attr is passed), so relabelling does not invalidate any existing batch.
         nx.set_node_attributes(G, pos, "pos")
-        G = nx.convert_node_labels_to_integers(G)
-        name = f"avian_r{n_rods}_l{rod_length}"
+        G = nx.convert_node_labels_to_integers(G, label_attribute="label")
+        prefix = "directed_avian" if directed else "avian"
+        name = f"{prefix}_r{n_rods}_l{rod_length}"
         return cls(
             G,
             name,
-            category="Avian",
+            category="Directed Avian" if directed else "Avian",
             params={"n_rods": n_rods, "rods_length": rod_length},
             labeled_edges=labeled_edges,
         )
@@ -720,6 +733,28 @@ class PopulationGraph:
             created_internally = True
 
         with_edge_labels = self.labeled_edges
+
+        # Node keys are integers after convert_node_labels_to_integers, so factories
+        # that carry meaningful names (avian: parabronchi, air sacs, trachea) stash
+        # them in a 'label' node attribute. Prefer those over the integer keys;
+        # graphs without the attribute fall back to the keys as before.
+        label_kwargs = {}
+        if with_labels:
+            node_labels = nx.get_node_attributes(self.graph, "label")
+            if node_labels:
+                label_kwargs = {
+                    "labels": node_labels,
+                    "font_size": 8,
+                    # names are far wider than the 50pt markers. Sit them above the
+                    # node rather than on it, so they do not cover the edges (and,
+                    # on the directed variant, the arrowheads); the translucent box
+                    # keeps them readable where rods run close together.
+                    "verticalalignment": "bottom",
+                    "bbox": dict(
+                        boxstyle="round,pad=0.15", fc="white", ec="none", alpha=0.7
+                    ),
+                }
+
         # 3. Drawing
         nx.draw(
             self.graph,
@@ -730,6 +765,7 @@ class PopulationGraph:
             with_labels=with_labels,
             edge_color="#555555",
             width=1.5,
+            **label_kwargs,
         )
 
         if with_edge_labels:

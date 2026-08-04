@@ -22,6 +22,7 @@ CATEGORY_COLOR_DICT = {
     # Biological (Earthy/Natural)
     "Mammalian": "#8C510A",  # Deep Brown
     "Avian": "#2E7D32",  # Forest Green
+    "Directed Avian": "#7CB342",  # Lighter Green (same hue family as Avian)
     "Fish": "#084182",  # Dark Blue
     # Structural
     "Random": "#E0E0E0",

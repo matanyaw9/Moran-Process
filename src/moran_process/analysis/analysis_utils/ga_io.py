@@ -67,6 +67,18 @@ def load_ga_history(run_dirs, survivors_only=False):
         state = load_ga_state(run_dir)
         frame["metric"] = state["metric"] if state else None
         frame["objective"] = state["objective"] if state else None
+        # Attached here, once, rather than re-derived by each figure as
+        # objective + " " + metric. That derivation is right for a single-metric run and
+        # wrong for a weighted one, where it yields "maximize weighted" for every corner
+        # alike -- so two runs chasing opposite corners would share a color and a legend
+        # entry, and the figure contrasting them would show them as the same thing.
+        # ga_search records the real category in the state; the fallback covers runs
+        # written before it did.
+        frame["category"] = (state or {}).get("category") or (
+            f"{frame['objective'].iloc[0]} {frame['metric'].iloc[0]}"
+            if state
+            else None
+        )
         frames.append(frame)
 
     history = pd.concat(frames, ignore_index=True)
@@ -255,5 +267,6 @@ def final_elite_properties(run_dirs):
     merged = pd.concat(frames, ignore_index=True)
     suffix = merged["run"].str.extract(r"-rep(\d+)$")[0]
     merged["replicate"] = pd.to_numeric(suffix, errors="coerce").astype("Int64")
-    merged["category"] = merged["objective"] + " " + merged["metric"]
+    # Already carried by load_ga_history, which reads it from the run's state; the
+    # objective+metric form would flatten every weighted run to "maximize weighted".
     return merged

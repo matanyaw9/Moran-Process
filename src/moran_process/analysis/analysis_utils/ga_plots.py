@@ -298,9 +298,13 @@ def plot_ga_runs_comparison(run_dirs, figures_dir=None, figsize=(13, 6), logscal
     fig, axes = plt.subplots(1, 2, figsize=figsize)
     for metric, axis in zip(("mean_steps", "prob_fixation"), axes):
         for run, group in history.groupby("run"):
-            category = f"{group['objective'].iloc[0]} {group['metric'].iloc[0]}"
+            category = group["category"].iloc[0]
             trajectory = _survivor_trajectory(group)
-            optimizes_this = group["metric"].iloc[0] == metric
+            # A weighted run optimizes a combination of both, so neither trace is
+            # the incidental one; without this both would be drawn dotted and thin,
+            # reading as "this run was not chasing either of these".
+            run_metric = group["metric"].iloc[0]
+            optimizes_this = run_metric in (metric, "weighted")
             axis.plot(
                 trajectory["generation"], trajectory[f"{metric}_mean"],
                 color=CATEGORY_COLOR_DICT.get(category, "#2ca02c"),
@@ -321,9 +325,16 @@ def plot_ga_runs_comparison(run_dirs, figures_dir=None, figsize=(13, 6), logscal
         axis.grid(True, linestyle=":", alpha=0.7)
         axis.set_title(_METRIC_LABEL[metric])
 
+    # Deduplicated by label: one line is drawn per RUN but the legend describes
+    # CATEGORIES, so a 3-replicate launch would otherwise repeat each entry three times
+    # and a 12-run matrix would print a twelve-item legend naming four things.
     handles, labels = axes[0].get_legend_handles_labels()
+    seen = {}
+    for handle, label in zip(handles, labels):
+        seen.setdefault(label, handle)
     fig.legend(
-        handles, labels, loc="lower center", ncol=4,
+        list(seen.values()), list(seen), loc="lower center",
+        ncol=min(4, len(seen)),
         bbox_to_anchor=(0.5, -0.06), fancybox=True,
     )
     fig.suptitle(
@@ -493,7 +504,7 @@ def _selection_efficiency(history):
         rows.append({
             "run": run,
             "generation": generation,
-            "category": f"{group['objective'].iloc[0]} {metric}",
+            "category": group["category"].iloc[0],
             "sd_between": sd,
             "sem": sem,
             "rho": 1.0 / np.sqrt(1.0 + (sem / sd) ** 2),
@@ -705,7 +716,6 @@ def _ml_vs_simulation_frame(run_dirs, ml_stats, keep_name=False):
             ml.assign(source="ML-driven", run=None)[columns],
             winners.assign(
                 source="simulation-driven",
-                category=winners["objective"] + " " + winners["metric"],
             )[columns],
         ],
         ignore_index=True,
