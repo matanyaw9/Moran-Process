@@ -157,10 +157,28 @@ def final_population_stats(run_dirs):
     """The last generation's surviving elites, one row per graph, across runs.
 
     This is the answer to "which graphs are the best": measured values, not predictions.
+
+    "Last" means each run's own latest generation, which is not the same thing as its
+    final one while a run is still going. Comparing a run stopped at generation 50 against
+    one that reached 99 understates the first, and nothing about the resulting frame or
+    the figures built on it would look wrong -- so a warning is printed rather than left
+    for the reader to notice. Deliberately not an error: watching the comparison take
+    shape mid-flight is a legitimate thing to do.
     """
     history = load_ga_history(run_dirs, survivors_only=True)
     last = history.groupby("run")["generation"].transform("max")
-    return history[history["generation"] == last].reset_index(drop=True)
+    result = history[history["generation"] == last].reset_index(drop=True)
+
+    reached = result.groupby("run")["generation"].max()
+    if reached.nunique() > 1:
+        behind = reached[reached < reached.max()]
+        print(
+            f"WARNING: these runs have not reached generation {reached.max()} yet, so "
+            f"they are being compared before they finished evolving:\n"
+            + "\n".join(f"  {name}: generation {gen}" for name, gen in behind.items())
+            + "\nCheck ga_progress(); rerun once every run is finished."
+        )
+    return result
 
 
 def load_elite_population(run_dir):
