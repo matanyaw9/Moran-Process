@@ -19,6 +19,7 @@ __all__ = [
     "ga_progress",
     "load_ga_runs",
     "final_population_stats",
+    "load_elite_population",
     "final_elite_properties",
 ]
 
@@ -160,6 +161,40 @@ def final_population_stats(run_dirs):
     history = load_ga_history(run_dirs, survivors_only=True)
     last = history.groupby("run")["generation"].transform("max")
     return history[history["generation"] == last].reset_index(drop=True)
+
+
+def load_elite_population(run_dir):
+    """The run's current best graphs, ranked, whether or not it has finished.
+
+    ``final_population.pkl`` is only written when a run completes, so reading it directly
+    raises FileNotFoundError on every run still in flight -- and on any run whose driver
+    died, which is exactly when you most want to look at what it found. This falls back to
+    reconstructing the elites from the last checkpoint: ``ga_state.json`` records the elite
+    hashes in ranked order, and ``populations/gen_NNN.pkl`` holds the graph objects.
+
+    Returns a list of PopulationGraph, best first. Raises only when the run has not
+    completed a single generation, since then there is genuinely nothing to show.
+    """
+    import joblib
+
+    run_dir = Path(run_dir)
+    final = run_dir / "final_population.pkl"
+    if final.exists():
+        return joblib.load(final)
+
+    state = load_ga_state(run_dir)
+    if state is None or "elite_hashes" not in state:
+        raise FileNotFoundError(
+            f"{run_dir.name} has no final_population.pkl and no usable ga_state.json, so "
+            f"it has not finished a generation yet. Check ga_progress()."
+        )
+    population = joblib.load(
+        run_dir / "populations" / f"gen_{state['generation']:03d}.pkl"
+    )
+    by_hash = {g.wl_hash: g for g in population}
+    # elite_hashes is written straight off the selection sort, so it IS the ranking; a
+    # plain filter over the pickle would silently return them in candidate order.
+    return [by_hash[h] for h in state["elite_hashes"] if h in by_hash]
 
 
 def final_elite_properties(run_dirs):

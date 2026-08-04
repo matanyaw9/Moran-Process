@@ -46,6 +46,10 @@ import joblib
 import numpy as np
 import pandas as pd
 
+from moran_process.analysis.analysis_utils.theory import (
+    analytic_moran_fc_fixation_prob,
+    analytic_moran_fc_fixation_time,
+)
 from moran_process.core.population_graph import PopulationGraph
 from moran_process.pipeline.process_lab import ProcessLab
 
@@ -59,8 +63,33 @@ N_NODES = 31
 N_EDGES = 34
 R_VALUE = 1.1
 
-METRICS = ("mean_steps", "prob_fixation")
+METRICS = ("mean_steps", "prob_fixation", "weighted")
 OBJECTIVES = ("maximize", "minimize")
+
+# --- The combined objective -------------------------------------------------------
+# mean_steps runs 2400-41000 and prob_fixation 0.09-0.16, so they cannot be weighted
+# against each other directly. Each is therefore expressed as a residual from the
+# complete graph (the project's usual amplifier/suppressor zero) and divided by the
+# spread of that residual among RANDOM graphs of the same size:
+#
+#   weighted = w_prob * (rho - rho_c)/SD_PROB  +  w_time * log(T / T_c)/SD_LOG_TIME
+#
+# Both terms are then "standard deviations away from a typical random (31, 34) graph",
+# so w = (+1, -1) means one SD of probability gain is worth one SD of time reduction --
+# a defensible default rather than an arbitrary knob.
+#
+# Measured on 501 random (31, 34) graphs at r=1.1 in
+# 2026_07_28-respiratory-vs-random-10K-reps-3. Normalizing by the random-graph spread
+# rather than by the current population's is what keeps the objective fixed: a
+# population-relative scale would rescale itself every generation as the population
+# converges, so the quantity being optimized would drift and generation 1 and generation
+# 100 would no longer be on the same axis.
+SD_PROB_RESIDUAL = 0.00426
+SD_LOG_TIME_RESIDUAL = 0.1586
+
+# The residual origin. Constants because N and r are fixed for the whole search.
+RHO_COMPLETE = float(analytic_moran_fc_fixation_prob(N_NODES, R_VALUE))
+T_COMPLETE = float(analytic_moran_fc_fixation_time(N_NODES, R_VALUE))
 
 # --- Array sizing -----------------------------------------------------------------
 # Measured on 2026_07_28-respiratory-vs-random-10K-reps-3/job_speed.csv over 4.8e8
@@ -478,7 +507,13 @@ def _aggregate_inline(gen_dir):
 
     try:
         run_aggregation(str(gen_dir))
-    except Exception as error:  # noqa: BLE001 - becomes a retryable complaint
+    except (Exception, SystemExit) as error:  # noqa: BLE001 - a retryable complaint
+        # SystemExit explicitly, and this is not defensive padding: run_aggregation
+        # signals its two expected failures (no shards, no graph_props.csv) by raising
+        # SystemExit, which derives from BaseException and so slips straight through
+        # `except Exception`. That turned the single most retryable condition in the whole
+        # driver into a fatal one, and killed four runs mid-flight the first time the
+        # cluster was busy enough for a register job to be preempted.
         return f"inline aggregation failed: {type(error).__name__}: {error}"
     return None
 
@@ -526,6 +561,49 @@ def _add_sem(stats):
     )
 
 
+def weighted_category(w_prob, w_time):
+    """A readable name for a weighted run, e.g. ``high_prob low_time``.
+
+    The direction lives in the signs of the weights, not in ``--objective``, so the
+    category has to say which corner is being chased or two runs with opposite weights
+    would both be called "maximize weighted" and collide in every figure's color map.
+    Magnitudes are appended only when they are not 1:1, which keeps the common case short.
+    """
+    prob = {1: "high_prob", -1: "low_prob"}.get(int(np.sign(w_prob)), "any_prob")
+    # Negative time weight means shorter fixation scores higher.
+    time = {-1: "low_time", 1: "high_time"}.get(int(np.sign(w_time)), "any_time")
+    label = f"{prob} {time}"
+    if (abs(w_prob), abs(w_time)) != (1.0, 1.0):
+        label += f" ({abs(w_prob):g}:{abs(w_time):g})"
+    return label
+
+
+def _add_weighted(stats, w_prob, w_time):
+    """Add the combined objective and its standard error.
+
+    The SEM is propagated rather than left out, so plot_selection_efficiency keeps working
+    on weighted runs: without it there would be no noise floor to judge the trajectory
+    against, which is the whole reason those error bars exist. Both terms are linear in
+    their residual, and log(T/T_c) has SEM = SEM_T / T by the delta method, so
+
+        SEM_weighted = sqrt( (w_prob/SD_PROB * SEM_rho)^2
+                           + (w_time/SD_LOG_TIME * SEM_T / T)^2 )
+
+    The two measurements are independent draws from the same simulations, and are treated
+    as uncorrelated here. They are not exactly: a graph that fixates more often also
+    contributes more fixation-time samples. The residual correlation is second order next
+    to the weights themselves, and this SEM is used for display, never for selection.
+    """
+    prob_term = w_prob * (stats["prob_fixation"] - RHO_COMPLETE) / SD_PROB_RESIDUAL
+    time_term = w_time * np.log(stats["mean_steps"] / T_COMPLETE) / SD_LOG_TIME_RESIDUAL
+    sem = np.sqrt(
+        (w_prob / SD_PROB_RESIDUAL * stats["prob_fixation_sem"]) ** 2
+        + (w_time / SD_LOG_TIME_RESIDUAL * stats["mean_steps_sem"] / stats["mean_steps"])
+        ** 2
+    )
+    return stats.assign(weighted=prob_term + time_term, weighted_sem=sem)
+
+
 def _run_generation(state, cfg, candidates, generation, seconds_per_sim):
     """Submit, wait, aggregate, verify, and resubmit on failure. Returns verified stats."""
     run_dir = Path(cfg["run_dir"])
@@ -568,20 +646,36 @@ def _run_generation(state, cfg, candidates, generation, seconds_per_sim):
             timeout_s=cfg["generation_timeout_s"],
             label=f"gen {generation} array",
         )
+        register_state = "DONE"
         if job_ids.get("register") is not None:
-            _wait_for_job(
+            register_state = _wait_for_job(
                 job_ids["register"],
                 timeout_s=cfg["generation_timeout_s"],
                 label=f"gen {generation} register",
             )
 
-        complaint = _aggregate_inline(gen_dir)
+        # The register job's verdict is acted on, not merely awaited. It writes the
+        # graph_props.csv the rollup joins against, so an EXIT here guarantees the
+        # aggregation below fails; saying so plainly beats letting it surface as a
+        # confusing "graph_props.csv missing" three lines later.
+        if register_state == "EXIT":
+            complaint = (
+                f"register_graphs job {job_ids['register']} exited; graph_props.csv was "
+                f"never written"
+            )
+        else:
+            complaint = _aggregate_inline(gen_dir)
         if complaint is None:
             stats, complaint = _read_generation_stats(
                 gen_dir, candidates, cfg["n_repeats"]
             )
             if stats is not None:
-                return _add_sem(stats), gen_dir
+                stats = _add_sem(stats)
+                if cfg["metric"] == "weighted":
+                    stats = _add_weighted(
+                        stats, cfg["weight_prob"], cfg["weight_time"]
+                    )
+                return stats, gen_dir
 
         warning = (
             f"generation {generation} attempt {attempt + 1} unusable "
@@ -666,6 +760,9 @@ def _append_history(run_dir, generation, ranked, metric, pop_size, parents, elit
         "prob_fixation", "prob_fixation_sem", "mean_steps", "mean_steps_sem",
         "std_steps", "n_grouped", "fitness", "rank", "survived", "is_new",
     ]
+    # Present only on weighted runs; the readers key off the metric name, so an
+    # absent column is never silently read as zero.
+    columns += [c for c in ("weighted", "weighted_sem") if c in ranked]
     path = Path(run_dir) / "ga_history.csv"
     rows[columns].to_csv(path, mode="a", header=not path.exists(), index=False)
 
@@ -711,7 +808,11 @@ def _write_state(run_dir, state, seen):
 def run_search(cfg):
     run_dir = Path(cfg["run_dir"])
     metric, objective = cfg["metric"], cfg["objective"]
-    category = f"{objective} {metric}"
+    category = (
+        weighted_category(cfg["weight_prob"], cfg["weight_time"])
+        if metric == "weighted"
+        else f"{objective} {metric}"
+    )
     state_path = run_dir / "ga_state.json"
 
     if state_path.exists():
@@ -752,6 +853,9 @@ def run_search(cfg):
             "run": run_dir.name,
             "metric": metric,
             "objective": objective,
+            # Recorded rather than re-derived: for a weighted run it names the corner
+            # and cannot be reconstructed from objective + metric alone.
+            "category": category,
             "generations": cfg["generations"],
             "started_at": datetime.now().isoformat(timespec="seconds"),
             "warnings": [],
@@ -859,6 +963,8 @@ def submit_driver(
     driver_queue="gsla-cpu",
     driver_walltime="12:00",
     notify_on_finish=True,
+    weight_prob=1.0,
+    weight_time=-1.0,
     extra_args=(),
 ):
     """bsub one driver job. Returns its LSF job id.
@@ -932,6 +1038,11 @@ def submit_driver(
         "--n-repeats", str(n_repeats),
         "--seed", str(seed),
         "--queue", queue,
+        *(
+            ["--weight-prob", str(weight_prob), "--weight-time", str(weight_time)]
+            if metric == "weighted"
+            else []
+        ),
         *([] if notify_on_finish else ["--no-finish-notify"]),
         *extra_args,
     ]
@@ -944,6 +1055,58 @@ def submit_driver(
     else:
         print(f"{run_dir.name:34s} bsub FAILED: {(result.stderr or '').strip()}")
     return job_id
+
+
+#: The two corners the single-objective runs cannot reach. The first is the interesting
+#: one: among random (31, 34) graphs the two metrics are POSITIVELY correlated (+0.35),
+#: so "fixes more often AND finishes sooner" is asking the search to break the natural
+#: trend, and none of the four single-objective runs got near it -- the high-probability
+#: runs all sat at long times, and the fast run gave up its probability advantage.
+CORNERS = {
+    "high_prob-low_time": (1.0, -1.0),
+    "low_prob-high_time": (-1.0, 1.0),
+}
+
+
+def submit_corner_runs(
+    ga_runs_dir, prefix, corners=None, replicates=1, seed=42, **kwargs
+):
+    """Submit weighted-objective runs, one per corner per replicate.
+
+    ``corners`` maps a name to ``(weight_prob, weight_time)``; it defaults to CORNERS.
+    Everything else works exactly as submit_all_runs, including the single summary
+    notification once every run has ended.
+
+    Direction lives in the weights, not in ``--objective``, so every one of these is a
+    maximization: w = (+1, -1) maximizes "probability gain minus time cost" in units of
+    random-graph SDs.
+    """
+    corners = dict(corners or CORNERS)
+    jobs, run_dirs = {}, []
+    for replicate in range(replicates):
+        suffix = f"-rep{replicate}" if replicates > 1 else ""
+        for name, (w_prob, w_time) in corners.items():
+            run_dir = Path(ga_runs_dir) / f"{prefix}-{name}{suffix}"
+            run_dirs.append(run_dir)
+            jobs[run_dir.name] = submit_driver(
+                run_dir,
+                metric="weighted",
+                objective="maximize",
+                seed=seed + replicate * 1000,
+                weight_prob=w_prob,
+                weight_time=w_time,
+                notify_on_finish=False,
+                **kwargs,
+            )
+    submit_summary_job(run_dirs, list(jobs.values()), prefix)
+    notify(
+        os.environ.get("NTFY_TOPIC", ""),
+        f"GA launched: {prefix}",
+        f"{len(jobs)} weighted-objective runs submitted\n"
+        + "\n".join(f"{n}: w=({p:+g}, {t:+g})" for n, (p, t) in corners.items())
+        + "\nOne summary message when they have ALL finished.",
+    )
+    return jobs
 
 
 def submit_summary_job(run_dirs, job_ids, prefix, queue="short", walltime="0:10"):
@@ -1090,6 +1253,16 @@ def main():
     parser.add_argument("--n-repeats", type=int, default=500_000)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--queue", default="gsla-cpu")
+    parser.add_argument(
+        "--weight-prob", type=float, default=1.0,
+        help="Weight on (rho - rho_c)/SD_PROB_RESIDUAL. Only used by "
+        "--metric weighted. Positive seeks high fixation probability.",
+    )
+    parser.add_argument(
+        "--weight-time", type=float, default=-1.0,
+        help="Weight on log(T/T_c)/SD_LOG_TIME_RESIDUAL. Only used by "
+        "--metric weighted. NEGATIVE seeks short fixation time.",
+    )
     parser.add_argument(
         "--no-finish-notify",
         dest="notify_on_finish",

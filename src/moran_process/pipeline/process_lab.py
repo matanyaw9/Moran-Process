@@ -246,7 +246,14 @@ class ProcessLab:
         logs_dir = os.path.join(batch_dir, "logs")
         os.makedirs(logs_dir, exist_ok=True)
 
-        register_job_id = register_graphs_job(zoo_path, batch_name, batch_dir)
+        # Same queue as the simulation array, not the 'short' default. The register
+        # job is a dependency of the rollup, so preempting it wastes the whole
+        # generation -- and 'short' is PREEMPTABLE while the queue a caller chooses
+        # for real work (gsla-cpu) is not. Under a 12-run GA launch this was killing
+        # register jobs and taking their generations down with them.
+        register_job_id = register_graphs_job(
+            zoo_path, batch_name, batch_dir, queue=queue
+        )
 
         log.info("--- Preparing Batch %s ---", batch_name)
 

@@ -49,6 +49,9 @@ R_VALUE = 1.1
 _METRIC_LABEL = {
     "mean_steps": "Mean Fixation Time (steps)",
     "prob_fixation": "Fixation Probability",
+    # ga_search --metric weighted. The units are random-graph SDs, which is the only
+    # thing that makes the two terms addable, so the label says so.
+    "weighted": "Combined objective (random-graph SDs)",
 }
 # The linestyle convention carried over from plot_multi_model_history.
 _METRIC_LINESTYLE = {"mean_steps": "-", "prob_fixation": "--"}
@@ -208,11 +211,17 @@ def plot_ga_history(
     )
     ax_prob.set_ylabel(_METRIC_LABEL["prob_fixation"], fontweight="bold")
 
-    color = CATEGORY_COLOR_DICT.get(f"{objective} {metric}", "#2ca02c")
+    # A weighted run optimizes a combination, so its category names the corner it
+    # chases rather than "objective metric", and BOTH traces are the optimized one.
+    combined = metric == "weighted"
+    # From the state, which records it, with a fallback for runs written before the
+    # field existed.
+    category = state.get("category") or f"{objective} {metric}"
+    color = CATEGORY_COLOR_DICT.get(category, "#2ca02c")
     lines = []
     for this_metric in ("mean_steps", "prob_fixation"):
         axis = ax_time if this_metric == "mean_steps" else ax_prob
-        is_main = this_metric == metric
+        is_main = combined or this_metric == metric
         # The optimized metric takes the run's category color; the other is drawn in gray
         # so the figure never implies the search was chasing it.
         line_color = color if is_main else "#9e9e9e"
@@ -253,10 +262,14 @@ def plot_ga_history(
     _sorted_legend(ax_time, lines)
     ax_time.grid(True, linestyle=":", alpha=0.7)
     ax_time.set_title(
-        f"Evolution of Topologies (measured)\n"
-        f"Optimizing: {objective.title()} {_METRIC_LABEL[metric]}  |  "
-        f"N={N_NODES}, r={R_VALUE}, {state.get('generations', '?')} generations  |  "
-        f"{_sims_note(history['n_grouped'])} simulations per graph",
+        "Evolution of Topologies (measured)\n"
+        + (
+            f"Optimizing: {category}  |  "
+            if combined
+            else f"Optimizing: {objective.title()} {_METRIC_LABEL[metric]}  |  "
+        )
+        + f"N={N_NODES}, r={R_VALUE}, {state.get('generations', '?')} generations  |  "
+        + f"{_sims_note(history['n_grouped'])} simulations per graph",
         fontsize=14, pad=15,
     )
     fig.tight_layout()

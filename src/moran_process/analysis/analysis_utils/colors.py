@@ -47,6 +47,14 @@ CATEGORY_COLOR_DICT = {
     "minimize prob_fixation": "#54278F",  # Deep Indigo
     "maximize mean_steps": "#A50F15",  # Blood Red
     "minimize mean_steps": "#D94801",  # Burnt Orange
+    # --- COMBINED OBJECTIVE (ga_search --metric weighted) ---
+    # Named for the corner they chase, since direction lives in the weights rather
+    # than in maximize/minimize. Greens, so a combined-objective run is instantly
+    # distinguishable from the single-metric blues and reds it is plotted beside.
+    "high_prob low_time": "#00701A",  # Forest Green -- the corner fighting the
+    "low_prob high_time": "#78C679",  # Sage Green      +0.35 natural correlation
+    "high_prob high_time": "#41AB5D",  # Medium Green
+    "low_prob low_time": "#C7E9C0",  # Pale Green
 }
 
 # The GA now targets RESIDUALS, so its categories carry a target suffix -- e.g.
