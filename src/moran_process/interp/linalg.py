@@ -67,18 +67,19 @@ class TransitionMatrix:
         # allocation. see if this can be rewritten sparsely.
         row_sums = 1 - self.r_none.toarray()
         q = self.q / row_sums
-        r = self.r_all / row_sums
         gv = self._genesis_vec(gen)
         iq = sparse.identity(q.shape[1]) - q
-        res = gv @ sparse.linalg.spsolve(iq @ iq, r)
+        # TODO: this np.ones call also makes a huge allocation,
+        # see if it can be done better. same goes for the
+        # call in absorb_time.
+        res = gv @ sparse.linalg.spsolve(iq, np.ones((iq.shape[1], 1)))
         return res[0]
 
     def absorb_time(self, gen: Genesis) -> np.float64:
         q = self.q
-        r = self.r_none + self.r_all
         gv = self._genesis_vec(gen)
         iq = sparse.identity(q.shape[1]) - q
-        res = gv @ sparse.linalg.spsolve(iq @ iq, r)
+        res = gv @ sparse.linalg.spsolve(iq, np.ones((iq.shape[1], 1)))
         return res[0]
 
     def _genesis_vec(self, gen: Genesis) -> sparse.csr_array:
