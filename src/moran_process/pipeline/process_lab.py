@@ -191,6 +191,7 @@ class ProcessLab:
         batch_seed=None,
         engine="cpp",
         zoo_config=None,
+        post_batch="all",
     ):
         """
         1. Dumps all graphs to 'graphs.pkl'
@@ -203,7 +204,27 @@ class ProcessLab:
             'zoo' section of batch_info.json so the batch is reproducible from
             that file alone. main.py assembles it; everything else here is
             captured automatically.
+
+        post_batch: which of the post-simulation jobs to chain.
+            'all'       -- aggregate, verify, violin cache, job speed (the default; what
+                           every ordinary batch wants).
+            'aggregate' -- aggregate only. For callers that submit a batch per iteration
+                           and only need prob_fixation / mean_steps back, where the other
+                           three are pure scheduling latency: verify, the violin cache and
+                           job speed all exist to serve figures and QC on a large one-off
+                           batch. ga_search uses this.
+            'none'      -- nothing beyond the array. The batch is left raw.
+
+        Returns:
+            dict of LSF job ids keyed by step ('register', 'array', 'aggregate', and
+            whichever post-batch steps were submitted). Values may be None if a bsub
+            failed or its output could not be parsed. Callers that chain on these degrade
+            to "runs immediately" rather than PENDing forever on a stale condition.
         """
+        if post_batch not in ("all", "aggregate", "none"):
+            raise ValueError(
+                f"post_batch must be 'all', 'aggregate' or 'none', got {post_batch!r}"
+            )
         log.info(
             "Submitting batch '%s' (engine=%s, %d jobs, queue=%s)",
             batch_name,
@@ -338,6 +359,12 @@ class ProcessLab:
             bsub_command=bsub_command,
         )
 
+        job_ids = {"register": register_job_id, "array": lsf_job_id}
+
+        if post_batch == "none":
+            log.info("post_batch='none': no post-simulation jobs chained.")
+            return job_ids
+
         # Chain the post-processing job: it PENDs until the array has ended and
         # register_graphs is done, then builds raw_results.parquet + graph_statistics.csv
         # on a compute node. This is what makes experiment_analysis.ipynb open instantly.
@@ -348,19 +375,25 @@ class ProcessLab:
             register_job_id=register_job_id,
             queue=queue,
         )
+        job_ids["aggregate"] = aggregate_job_id
 
         # And chain the rest of the post-batch DAG: verify (did every requested run
         # happen?) and the violin-sample cache (the only figure input that still needs raw
         # rows) PEND on the aggregation; job speed hangs off the array directly and so runs
         # alongside it. By the time you open experiment_analysis.ipynb the batch is
         # verified, aggregated, and every figure input is a file read.
-        submit_post_batch_jobs(
-            batch_dir=batch_dir,
-            batch_name=batch_name,
-            aggregate_job_id=aggregate_job_id,
-            array_job_id=lsf_job_id,
-            queue=queue,
-        )
+        if post_batch == "all":
+            job_ids.update(
+                submit_post_batch_jobs(
+                    batch_dir=batch_dir,
+                    batch_name=batch_name,
+                    aggregate_job_id=aggregate_job_id,
+                    array_job_id=lsf_job_id,
+                    queue=queue,
+                )
+            )
+
+        return job_ids
 
     # @staticmethod
     # def _create_task_list(n_graphs, r_values, n_jobs, n_repeats):

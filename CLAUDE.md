@@ -83,6 +83,43 @@ uv run python -m moran_process.pipeline.post_batch --batch-dir <batch> --submit
 
 Two batch kinds are classified and reported, so "works on any batch" includes saying no clearly: `CURRENT` (all four steps apply) and `LEGACY` (pre-June batches; none apply, no compat shims were added).
 
+**5. Genetic Search Layer: `pipeline/ga_search.py`**
+Evolves topologies whose fitness is **measured by simulation**, not predicted by a regressor
+(the ML-predicted version is `notebooks/extreme_graphs.ipynb`, kept for comparison). Full
+rationale and the measurements behind every constant: `GA_SIMULATION_PLAN.md`.
+
+- One **driver job** per GA run holds the loop and waits on LSF, using ~no CPU itself. Launch
+  with `ga_search.submit_driver(...)` or the 2x2 matrix with `submit_all_runs(...)`. Never run
+  the loop in a notebook: it takes hours.
+- Each generation is its own **standard batch directory** under
+  `simulation_data/ga_runs/<run>/generations/gen_NNN/`, so every existing reader works on it
+  unchanged. `submit_jobs(post_batch="none")`: verify, the violin cache and job speed serve
+  figures on large one-off batches and are pure latency here, and **the driver runs the
+  rollup itself** rather than chaining an aggregate job. Measured, a GA generation's
+  aggregation is 19 s of work for which the chained job cost 66 s of queue wait and poll
+  latency, on an idle driver slot. This does not apply to ordinary batches, where
+  aggregation scans 7.2e9 rows and needs its own 16GB job.
+- **Raw shards are deleted** after each generation's rollup is verified. `populations/gen_NNN.pkl`
+  is kept, so any generation replays in ~2 min; retaining them would cost ~370GB.
+- **Elites are re-simulated every generation.** Carrying a score forward means a lucky-high
+  estimate is never re-tested and sits at the top of the ranking permanently.
+- **`n_repeats` is set by the noisier metric, judged by selection efficiency** rather than by
+  raw S/N: `rho = 1/sqrt(1 + (SEM/SD_between)^2)`, the correlation between measured and true
+  fitness, to which the per-generation response is proportional. 100K holds `prob_fixation` at
+  rho ~ 0.85 for 100 generations. `plot_selection_efficiency` computes it from
+  `ga_history.csv` at no simulation cost. Watch `mean_steps` there: its SEM is proportional to
+  the mean, so a run that succeeds at maximizing it inflates its own noise floor.
+- **Runs are reproducible from their seed**: `batch_seed = seed*100003 + generation`, and
+  selection breaks ties on `wl_hash` (`prob_fixation` is k/n, so exact ties are routine and
+  hit the elite cutoff in ~7% of generations).
+- **Resume is automatic**: an existing `ga_state.json` is resumed from, because preemptable
+  queues requeue a job from the beginning. `--force` is the only way to restart.
+- **Notifications**: one message when *every* run in a launch has ended, via a watcher job
+  holding `-w ended(...)` on all drivers. Set `NTFY_TOPIC` (letters, digits, `-`, `_` only)
+  in `~/.bashrc` and restart the Jupyter server. Failures notify per run, immediately.
+- Readers: `analysis_utils/ga_io.py` (history, state, `ga_progress`), figures:
+  `analysis_utils/ga_plots.py`. Notebook: `notebooks/ga_simulation.ipynb` (launch + read only).
+
 **Spanning several batches: stitch at read time, do not build a combined batch.** Both readers take a single batch directory **or a list of them**:
 
 ```python

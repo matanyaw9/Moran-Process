@@ -38,6 +38,15 @@ CATEGORY_COLOR_DICT = {
     "maximize XGBOOST Fixation Time": "#FC9272",  # Salmon
     "minimize LR Fixation Time": "#D94801",  # Burnt Orange
     "minimize XGBOOST Fixation Time": "#FDBB84",  # Peach
+    # --- SIMULATION-DRIVEN GA (pipeline.ga_search) ---
+    # Fitness is measured rather than predicted, so there is no LR/XGBOOST axis and the
+    # category is just objective + metric. Each takes the same hue as its ML-driven
+    # counterpart above -- probability in blues, time in reds -- so a simulation-driven
+    # run and the ML-driven run it is being compared against share a color.
+    "maximize prob_fixation": "#08519C",  # Navy Blue
+    "minimize prob_fixation": "#54278F",  # Deep Indigo
+    "maximize mean_steps": "#A50F15",  # Blood Red
+    "minimize mean_steps": "#D94801",  # Burnt Orange
 }
 
 # The GA now targets RESIDUALS, so its categories carry a target suffix -- e.g.
