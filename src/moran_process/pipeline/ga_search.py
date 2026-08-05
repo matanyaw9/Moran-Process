@@ -471,7 +471,7 @@ def _submit_generation(
         n_jobs,
         seconds_per_sim * 1e6,
     )
-    return ProcessLab().submit_jobs(
+    job_ids = ProcessLab().submit_jobs(
         zoo_path=str(zoo_path),
         n_graphs=len(candidates),
         r_values=[R_VALUE],
@@ -485,6 +485,55 @@ def _submit_generation(
         post_batch="none",
         batch_seed=batch_seed,
     )
+    # Carried out so the caller knows how many shards to wait for; it is the array
+    # width, and nothing downstream can otherwise tell "not written yet" from
+    # "this generation only needed 11 workers".
+    job_ids["n_shards"] = n_jobs
+    return job_ids
+
+
+def _wait_for_shards(gen_dir, n_expected, timeout_s=600, poll_s=5):
+    """Block until every shard is present AND complete. Returns None or a complaint.
+
+    LSF reporting an array index DONE means the process exited, not that its output has
+    landed on the shared filesystem. The chained aggregate job never had to care: it sat
+    in the queue for ~51 s first, which was accidentally long enough for the writes to
+    flush. Aggregating in the driver removed that buffer and reads the instant the last
+    index reports terminal -- so polars memory-mapped a Parquet file that was still being
+    written and segfaulted, taking the whole driver with it. Four of eight corner runs
+    died this way, and the same files read back perfectly at rest minutes later.
+
+    Completeness is checked by parsing each footer rather than by counting files or
+    comparing sizes, because Parquet writes its footer LAST: a file whose footer parses is
+    necessarily whole, and a half-written one raises rather than reading short.
+
+    A crash here cannot be caught in Python (SIGSEGV is not an exception), so this has to
+    be prevention rather than recovery.
+    """
+    import polars as pl
+
+    results = Path(gen_dir) / "tmp" / "results"
+    deadline = time.monotonic() + timeout_s
+    while True:
+        shards = sorted(results.glob("raw_results_job_*.parquet"))
+        if len(shards) >= n_expected:
+            unreadable = []
+            for shard in shards:
+                try:
+                    pl.read_parquet_schema(shard)
+                except Exception:  # noqa: BLE001 - still being written
+                    unreadable.append(shard.name)
+            if not unreadable:
+                return None
+        else:
+            unreadable = [f"only {len(shards)}/{n_expected} shards present"]
+
+        if time.monotonic() > deadline:
+            return (
+                f"shards never became readable within {timeout_s}s: "
+                f"{', '.join(unreadable[:3])}"
+            )
+        time.sleep(poll_s)
 
 
 def _aggregate_inline(gen_dir):
@@ -658,7 +707,12 @@ def _run_generation(state, cfg, candidates, generation, seconds_per_sim):
         # graph_props.csv the rollup joins against, so an EXIT here guarantees the
         # aggregation below fails; saying so plainly beats letting it surface as a
         # confusing "graph_props.csv missing" three lines later.
-        if register_state == "EXIT":
+        # Shards first: an unreadable one segfaults polars, which no except clause
+        # can catch, so it has to be prevented rather than retried.
+        complaint = _wait_for_shards(gen_dir, job_ids.get("n_shards", 1))
+        if complaint is not None:
+            pass
+        elif register_state == "EXIT":
             complaint = (
                 f"register_graphs job {job_ids['register']} exited; graph_props.csv was "
                 f"never written"
