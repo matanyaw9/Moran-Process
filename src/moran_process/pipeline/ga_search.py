@@ -1027,7 +1027,22 @@ def submit_driver(
         "-e", str(logs_dir / f"{run_dir.name}_%J.err"),
         # NTFY_TOPIC is forwarded from the submitting shell, so the driver can notify
         # without the topic ever being written into the repo or a job's command line.
-        "-env", f"PYTHONPATH=src, NTFY_TOPIC={topic}",
+        # Thread limits, and a requeue-on-crash. The driver is a 1-slot job that spends
+        # its life asleep, so LSF packs many of them onto one node -- 7 of the 8 corner
+        # drivers landed on cn773. Each then periodically turns into a polars scan of the
+        # generation's shards, and polars sizes its thread pool from the machine's core
+        # count (168 here), not from the slot it was given. Seven of those at once
+        # segfaulted four drivers mid-run with 681MB of a 4GB reservation in use, so it
+        # was contention, not memory. This is the cost of aggregating in the driver
+        # instead of in its own job; one thread each is ample for 19s of work.
+        "-env",
+        f"PYTHONPATH=src, NTFY_TOPIC={topic}, POLARS_MAX_THREADS=1, "
+        f"OMP_NUM_THREADS=1, MKL_NUM_THREADS=1, OPENBLAS_NUM_THREADS=1",
+        # Requeue rather than die if it happens anyway. A driver resumes from
+        # ga_state.json by design, so a crashed one losing its current generation and
+        # continuing is strictly better than sitting dead until someone notices -- which
+        # is what cost this launch a night.
+        "-Q", "139",
         sys.executable, "-u", "-m", "moran_process.pipeline.ga_search",
         "--run-dir", str(run_dir),
         "--metric", metric,
