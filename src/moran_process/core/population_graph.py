@@ -140,8 +140,15 @@ class PopulationGraph:
 
                 # --- SLOW METRICS (Guarded by N) ---
 
+                # Distances need every node to reach every other. A connected undirected
+                # graph gives that for free; a digraph needs strong connectivity, which
+                # the directed star (one source, N-1 sinks) does not have. Without this
+                # guard nx.diameter raises and aborts the whole try block, taking the six
+                # centrality columns down with it even though they compute fine.
+                distances_defined = not self.is_directed or nx.is_strongly_connected(G)
+
                 # CRITICAL FIX: Diameter is O(N^2). It will freeze your computer for N > 1000.
-                if self.n_nodes <= 500:
+                if self.n_nodes <= 500 and distances_defined:
                     properties["diameter"] = nx.diameter(G)
                     properties["radius"] = nx.radius(G)
                     properties["average_shortest_path_length"] = (
@@ -258,30 +265,53 @@ class PopulationGraph:
         )
 
     @classmethod
-    def cycle_graph(cls, n_nodes: int, labeled_edges: bool = False):
+    def cycle_graph(cls, n_nodes: int, directed: bool = False, labeled_edges: bool = False):
         """
         Creates a ring graph.
+
+        With directed=True every edge points one way around the ring
+        (0 -> 1 -> ... -> n-1 -> 0). That leaves every node with in-degree 1 and
+        out-degree 1, which is the isothermal condition, so it neither amplifies nor
+        suppresses: rho equals the well-mixed Moran value (1 - 1/r)/(1 - 1/r**N). It is
+        the natural control against the directed graphs that do deviate.
+
+        Args:
+            n_nodes (int): Number of nodes in the ring.
+            directed (bool): If True, returns a DiGraph circulating one way.
         """
-        name = f"cycle_n{n_nodes}"
+        name = f"directed_cycle_n{n_nodes}" if directed else f"cycle_n{n_nodes}"
         return cls(
-            nx.cycle_graph(n_nodes),
+            nx.cycle_graph(n_nodes, create_using=nx.DiGraph if directed else None),
             name=name,
             category="Cycle",
             labeled_edges=labeled_edges,
         )
 
     @classmethod
-    def line_graph(cls, n_nodes: int, labeled_edges: bool = False):
+    def line_graph(cls, n_nodes: int, directed: bool = False, labeled_edges: bool = False):
         """
         Creates a path (line) graph: nodes arranged in a linear chain.
         Known theoretical suppressor of selection in evolutionary graph theory.
+
+        With directed=True every edge points downstream (0 -> 1 -> ... -> n-1). Node 0
+        becomes a source that nothing can overwrite, so a mutant fixates iff it is born
+        there: rho = 1/N at every r, selection fully abolished. Same verdict as the
+        directed star, but it fixates far faster (a front sweeping a chain, rather than
+        a hub coupon-collecting its leaves).
+
+        Note the directed variant is weakly but NOT strongly connected, so its distance
+        metrics are undefined and recorded as None.
+
+        Args:
+            n_nodes (int): Number of nodes in the chain.
+            directed (bool): If True, returns a DiGraph flowing one way.
         """
-        G = nx.path_graph(n_nodes)
+        G = nx.path_graph(n_nodes, create_using=nx.DiGraph if directed else None)
 
         pos = {i: np.array([float(i), 0.0]) for i in range(n_nodes)}
         nx.set_node_attributes(G, pos, "pos")
 
-        name = f"line_n{n_nodes}"
+        name = f"directed_line_n{n_nodes}" if directed else f"line_n{n_nodes}"
         return cls(
             G,
             name=name,
@@ -291,14 +321,30 @@ class PopulationGraph:
         )
 
     @classmethod
-    def star_graph(cls, n_nodes: int, labeled_edges: bool = False):
+    def star_graph(
+        cls, n_nodes: int, directed: bool = False, labeled_edges: bool = False
+    ):
         """
         Creates a star graph: one central hub connected to all other nodes.
         Node 0 is the hub; nodes 1..n_nodes-1 are leaves.
         Classic selective amplifier in evolutionary graph theory (Lieberman et al. 2005).
+
+        With directed=True every edge points hub -> leaf. That makes the hub a source
+        (in-degree 0, so nothing can overwrite it) and every leaf a sink (out-degree 0,
+        so it can never propagate), which abolishes selection entirely: a mutant fixates
+        iff it is born on the hub, so rho = 1/N at every r. It is the exact counterpart
+        of the undirected star -- same nodes, same edges, amplifier becomes suppressor.
+
+        Note the directed variant is weakly but NOT strongly connected, so distance
+        metrics (diameter, radius, average shortest path) are undefined for it.
+
+        Args:
+            n_nodes (int): Total nodes (1 hub + n_nodes-1 leaves).
+            directed (bool): If True, returns a DiGraph with edges hub -> leaf.
         """
-        # nx.star_graph(k) produces k+1 nodes (hub + k leaves), so pass n_nodes-1
-        G = nx.star_graph(n_nodes - 1)
+        # nx.star_graph(k) produces k+1 nodes (hub + k leaves), so pass n_nodes-1.
+        # create_using=DiGraph emits exactly the (0, i) edges, i.e. hub -> leaf.
+        G = nx.star_graph(n_nodes - 1, create_using=nx.DiGraph if directed else None)
 
         # Layout: hub at center, leaves on a unit circle
         angles = np.linspace(0, 2 * np.pi, n_nodes - 1, endpoint=False)
@@ -307,7 +353,7 @@ class PopulationGraph:
             pos[i + 1] = np.array([np.cos(angle), np.sin(angle)])
         nx.set_node_attributes(G, pos, "pos")
 
-        name = f"star_n{n_nodes}"
+        name = f"directed_star_n{n_nodes}" if directed else f"star_n{n_nodes}"
         return cls(
             G,
             name=name,
@@ -356,11 +402,30 @@ class PopulationGraph:
         cls,
         branching_factor: int = 2,
         depth: int = 3,
+        directed: bool = False,
         name="mammalian",
         labeled_edges: bool = False,
     ):
-        """Generates a tree shaped population graph mimicking mammalian lung topology."""
-        G = nx.balanced_tree(branching_factor, depth)
+        """Generates a tree shaped population graph mimicking mammalian lung topology.
+
+        With directed=True every edge points parent -> child, i.e. top to bottom, the
+        direction air travels on inhalation. The root is then the only source (in-degree
+        0, so nothing can overwrite it) and every leaf a sink, which abolishes selection:
+        a mutant fixates iff it is born at the root, so rho = 1/N at every r. It is the
+        fastest of the single-source suppressors, because a tree sweeps 2**k fronts in
+        parallel and so fixates in time set by depth rather than by node count.
+
+        Note the directed variant is weakly but NOT strongly connected, so its distance
+        metrics are undefined and recorded as None.
+
+        Args:
+            branching_factor (int): Children per internal node.
+            depth (int): Levels below the root.
+            directed (bool): If True, returns a DiGraph flowing root -> leaves.
+        """
+        G = nx.balanced_tree(
+            branching_factor, depth, create_using=nx.DiGraph if directed else None
+        )
 
         pos = {}
 
@@ -381,7 +446,8 @@ class PopulationGraph:
 
         assign_pos(0, 0, 100, 0)
         nx.set_node_attributes(G, pos, "pos")
-        name = f"mammalian_b{branching_factor}_d{depth}"
+        prefix = "directed_mammalian" if directed else "mammalian"
+        name = f"{prefix}_b{branching_factor}_d{depth}"
         return cls(
             G,
             name=name,
@@ -476,7 +542,7 @@ class PopulationGraph:
         return cls(
             G,
             name,
-            category="Directed Avian" if directed else "Avian",
+            category="Avian",
             params={"n_rods": n_rods, "rods_length": rod_length},
             labeled_edges=labeled_edges,
         )

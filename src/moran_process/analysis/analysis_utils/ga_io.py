@@ -13,6 +13,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from .constants import HASH_DTYPES
+
 __all__ = [
     "load_ga_history",
     "load_ga_state",
@@ -62,7 +64,7 @@ def load_ga_history(run_dirs, survivors_only=False):
                 f"No ga_history.csv in {run_dir}. The run has not finished its first "
                 f"generation yet (check ga_state.json), or --run-dir was wrong."
             )
-        frame = pd.read_csv(path)
+        frame = pd.read_csv(path, dtype=HASH_DTYPES)
         frame["run"] = run_dir.name
         state = load_ga_state(run_dir)
         frame["metric"] = state["metric"] if state else None
@@ -258,7 +260,9 @@ def final_elite_properties(run_dirs):
                 f"The generation directory is pruned of raw shards but graph_props.csv is "
                 f"kept, so this means the generation never completed."
             )
-        props = pd.read_csv(props_path).drop_duplicates("wl_hash")
+        props = pd.read_csv(props_path, dtype=HASH_DTYPES).drop_duplicates(
+            "wl_hash"
+        )
         # 'category' and 'seed' exist on both sides and mean different things there, so
         # the props copies are dropped rather than suffixed into ambiguity.
         props = props.drop(columns=["category", "seed", "graph_name"], errors="ignore")

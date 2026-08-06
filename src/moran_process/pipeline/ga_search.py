@@ -46,6 +46,8 @@ import joblib
 import numpy as np
 import pandas as pd
 
+from moran_process.analysis.analysis_utils.constants import HASH_DTYPES
+
 from moran_process.analysis.analysis_utils.theory import (
     analytic_moran_fc_fixation_prob,
     analytic_moran_fc_fixation_time,
@@ -578,7 +580,7 @@ def _read_generation_stats(gen_dir, candidates, n_repeats):
     if not stats_path.exists():
         return None, f"graph_statistics.csv missing at {stats_path}"
 
-    stats = pd.read_csv(stats_path)
+    stats = pd.read_csv(stats_path, dtype=HASH_DTYPES)
     stats = stats[np.isclose(stats["r"], R_VALUE)]
 
     wanted = {g.wl_hash for g in candidates}

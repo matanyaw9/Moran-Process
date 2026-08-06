@@ -13,6 +13,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from .constants import HASH_DTYPES
+
 from .provenance import load_batch_info
 from .theory import (
     analytic_moran_fc_fixation_prob,
@@ -563,7 +565,7 @@ def load_graph_statistics(batch_dir, category_filter=None, r_filter=None):
                 f"--batch-dir {batch_path}"
             )
 
-        frame = pd.read_csv(stats_path)
+        frame = pd.read_csv(stats_path, dtype=HASH_DTYPES)
 
         # Derived from n_nodes and r alone, so they are recomputed on read rather than
         # being persisted. That keeps the on-disk graph_statistics.csv schema unchanged,
@@ -675,8 +677,14 @@ def _read_fixation_steps_cache(batch_dir, r, max_points_per_category):
         meta = json.load(f)
 
     print(f"Using cached fixation-steps sample: {path}")
+    sample = pd.read_parquet(path)
+    # Caches written before direction existed have no 'group' column. Every batch from
+    # that era was entirely undirected, so group == category is the true value there,
+    # not a placeholder standing in for something unknown.
+    if "group" not in sample.columns:
+        sample["group"] = sample["category"]
     return (
-        pd.read_parquet(path),
+        sample,
         meta["fixation_counts"],
         meta["total_counts"],
         meta["r"],
@@ -723,12 +731,16 @@ def _accumulate_counts(acc, df, key_col, val_col):
 
 
 def _trim_reservoir(reservoir, max_points_per_category):
-    """Keep the ``cap`` smallest sampling keys per category, dropping the rest."""
+    """Keep the ``cap`` smallest sampling keys per violin group, dropping the rest.
+
+    Partitioned on 'group' rather than 'category' so a directed graph and its undirected
+    twin each get the full cap, instead of sharing one.
+    """
     import polars as pl
 
     return (
         reservoir.sort("_key")
-        .with_columns(pl.int_range(pl.len()).over("category").alias("_rank"))
+        .with_columns(pl.int_range(pl.len()).over("group").alias("_rank"))
         .filter(pl.col("_rank") < max_points_per_category)
         .drop("_rank")
     )
@@ -792,7 +804,22 @@ def compute_fixation_steps_by_category(
         raise ValueError("r_values is empty; nothing to sample.")
 
     files = _expand_shards(results_source)
-    cats = pl.from_pandas(df_graphs[["wl_hash", "category"]]).lazy()
+
+    # A violin needs one x position per distribution, and since an undirected graph and
+    # its directed twin now share a category (direction lives in its own column), the
+    # grouping key is the (category, is_directed) pair. It is materialised as one string
+    # because the counts end up as JSON sidecar keys, which cannot be tuples. 'category'
+    # is carried alongside so callers can still colour a pair with a single hue.
+    graphs = df_graphs[["wl_hash", "category"]].copy()
+    _directed = (
+        df_graphs["is_directed"].fillna(False).astype(bool)
+        if "is_directed" in df_graphs.columns
+        else pd.Series(False, index=df_graphs.index)
+    )
+    graphs["group"] = graphs["category"].where(
+        ~_directed, graphs["category"] + " (directed)"
+    )
+    cats = pl.from_pandas(graphs).lazy()
 
     total_counts = {r: {} for r in r_values}
     fixation_counts = {r: {} for r in r_values}
@@ -824,7 +851,9 @@ def compute_fixation_steps_by_category(
         # denominator, so it has to count non-fixation runs too.
         shard = (
             lf.join(cats, on="wl_hash", how="left")
-            .select(["category", "steps", "fixation"] + (["r"] if has_r else []))
+            .select(
+                ["category", "group", "steps", "fixation"] + (["r"] if has_r else [])
+            )
             .collect()
         )
         if shard.height == 0:
@@ -838,19 +867,21 @@ def compute_fixation_steps_by_category(
 
             _accumulate_counts(
                 total_counts[r],
-                slice_.group_by("category").agg(pl.len().alias("n")),
-                "category",
+                slice_.group_by("group").agg(pl.len().alias("n")),
+                "group",
                 "n",
             )
 
-            fx = slice_.filter(pl.col("fixation")).select(["category", "steps"])
+            fx = slice_.filter(pl.col("fixation")).select(
+                ["category", "group", "steps"]
+            )
             if fx.height == 0:
                 continue
 
             _accumulate_counts(
                 fixation_counts[r],
-                fx.group_by("category").agg(pl.len().alias("n")),
-                "category",
+                fx.group_by("group").agg(pl.len().alias("n")),
+                "group",
                 "n",
             )
 
@@ -877,7 +908,7 @@ def compute_fixation_steps_by_category(
     for r in r_values:
         reservoir = reservoirs[r]
         if reservoir is None:
-            sample = pd.DataFrame({"category": [], "steps": []})
+            sample = pd.DataFrame({"category": [], "group": [], "steps": []})
         else:
             sample = reservoir.drop("_key", strict=False).to_pandas()
 
@@ -1095,7 +1126,7 @@ def build_fixation_steps_cache(
             f"sample can only be built from raw rows."
         )
 
-    df_graphs = pd.read_csv(batch_path / "graph_props.csv")
+    df_graphs = pd.read_csv(batch_path / "graph_props.csv", dtype=HASH_DTYPES)
 
     if r_values is None:
         stats_path = batch_path / "graph_statistics.csv"

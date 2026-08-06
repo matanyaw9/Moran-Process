@@ -30,6 +30,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from moran_process.analysis.analysis_utils.constants import HASH_DTYPES
+
 from moran_process.analysis.analysis_utils.io import (
     build_graph_statistics,
     resolve_results_source,
@@ -67,7 +69,7 @@ def run_aggregation(batch_dir, include_order_stats=False):
         raise SystemExit(
             f"graph_props.csv missing at {graph_props_path}; did register_graphs run?"
         )
-    df_graph_props = pd.read_csv(graph_props_path)
+    df_graph_props = pd.read_csv(graph_props_path, dtype=HASH_DTYPES)
 
     graph_statistics_path = batch_path / "graph_statistics.csv"
     log.info(
