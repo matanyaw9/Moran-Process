@@ -44,7 +44,6 @@ impl<const N: usize> Graph<N> {
     pub fn neighbours(&self, state: u32) -> [f64; N] {
         debug_assert!(state < 1 << N);
         let mut res = [0.0; _];
-        let denum = N as f64 + (self.r - 1.0) * state.count_ones() as f64;
         for (bit, place) in (0..).map(|i| 1 << i).zip(&mut res) {
             let epidemic = state & bit == 0;
             let mut sum = 0.0;
@@ -57,7 +56,7 @@ impl<const N: usize> Graph<N> {
                     sum += 1.0 / self.adj_mat[j].count_ones() as f64;
                 }
             }
-            *place = sum * if epidemic { self.r } else { 1.0 } / denum;
+            *place = sum * if epidemic { self.r } else { 1.0 };
         }
         res
     }
