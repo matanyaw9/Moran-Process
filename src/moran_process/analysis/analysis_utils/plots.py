@@ -34,7 +34,12 @@ import matplotlib.colors as mcolors
 from matplotlib.ticker import FuncFormatter, MaxNLocator
 import seaborn as sns
 
-from .colors import DEFAULT_FIG_SIZE, GRAPH_PROPERTY_DESCRIPTION, _sort_categories
+from .colors import (
+    DEFAULT_FIG_SIZE,
+    GRAPH_PROPERTY_DESCRIPTION,
+    _sort_categories,
+    fill_missing_colors,
+)
 # The fixation-steps loader lives in io.py (pure polars/pandas) so the LSF cache job
 # can build the violin sample without importing matplotlib/seaborn.
 from .io import load_fixation_steps_by_category as _load_fixation_steps_by_category
@@ -733,12 +738,8 @@ def plot_steps_violin(
     # hatching instead, so the eye reads hue as topology and texture as orientation.
     # Any category the caller did not color falls back to a distinct husl entry, so a
     # partial color_dict never crashes the plot (same guard plot_outcome_vs_property uses).
-    uncolored = [c for c in categories if c not in color_dict]
-    fallback = dict(zip(uncolored, sns.color_palette("husl", len(uncolored))))
-    palette = {
-        grp: color_dict.get(base_category[grp], fallback.get(base_category[grp]))
-        for grp in order
-    }
+    cat_colors = fill_missing_colors(categories, color_dict)
+    palette = {grp: cat_colors[base_category[grp]] for grp in order}
 
     fig, ax = plt.subplots(figsize=(max(12, len(order) * 1.1), 7))
     sns.violinplot(
@@ -1242,11 +1243,9 @@ def plot_outcome_vs_property(
     draw_order = list(reversed(hue_order))
     # seaborn requires a dict palette to cover every hue level. Keep the caller's
     # colors and fill any uncolored category with a distinct fallback so the plot
-    # never crashes on a missing/partial color_dict.
-    palette = dict(color_dict)
-    missing_cats = [c for c in hue_order if c not in palette]
-    if missing_cats:
-        palette.update(zip(missing_cats, sns.color_palette("husl", len(missing_cats))))
+    # never crashes on a missing/partial color_dict. Shared with the plotly twin, which
+    # passes the same ordered list, so an unpinned category gets one color in both.
+    palette = fill_missing_colors(hue_order, color_dict)
     # Marker shape. Seaborn gives exactly one `style` slot, so direction and r compete
     # for it; direction wins whenever the frame contains any directed graph, because a
     # directed topology against its undirected twin is the comparison being made, and r

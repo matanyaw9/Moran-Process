@@ -1007,14 +1007,20 @@ def _report_cache_stitch(batch_paths, frames, merged_raw):
         f"column 'batch' identifies the source."
     )
 
+    # Keyed on 'group', not 'category', because that is what the figures actually draw a
+    # violin per. Since direction moved out of the category string, an undirected graph
+    # and its directed twin share a category while landing in different groups, so keying
+    # on category here would announce pooling that does not happen.
+    key = "group" if "group" in merged_raw.columns else "category"
     seen = {}
     for path, frame in zip(batch_paths, frames):
-        for category in frame["category"].dropna().unique():
-            seen.setdefault(category, []).append(path.name)
-    shared = sorted(c for c, batches in seen.items() if len(batches) > 1)
+        col = frame[key] if key in frame.columns else frame["category"]
+        for group in col.dropna().unique():
+            seen.setdefault(group, []).append(path.name)
+    shared = sorted(g for g, batches in seen.items() if len(batches) > 1)
     if shared:
         print(
-            f"WARNING: {len(shared)} category/categories appear in more than one batch "
+            f"WARNING: {len(shared)} group(s) appear in more than one batch "
             f"({', '.join(map(str, shared))}). Their violins POOL across batches unless "
             f"you facet by 'batch', and the rho annotation pools too (counts summed)."
         )

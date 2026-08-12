@@ -15,6 +15,7 @@ __all__ = [
     "GRAPH_PROPERTY_COLUMNS",
     "DEFAULT_FIG_SIZE",
     "generate_robust_color_dict",
+    "fill_missing_colors",
 ]
 
 
@@ -27,7 +28,7 @@ CATEGORY_COLOR_DICT = {
     "Random": "#E0E0E0",
     "Complete": "#000000",
     "Cycle": "#5C6BC0",
-    "Star": "#FFE656",
+    "Star": "#E4C306",
     # --- PROBABILITY (Blues/Purples) ---
     "maximize LR Fixation Probability": "#08519C",  # Navy Blue
     "maximize XGBOOST Fixation Probability": "#6BAED6",  # Soft Sky Blue
@@ -125,6 +126,27 @@ GRAPH_PROPERTY_COLUMNS = [
 ]
 
 DEFAULT_FIG_SIZE = (8.7, 6)
+
+
+def fill_missing_colors(categories, color_dict, default_palette="husl"):
+    """Complete a category -> color map, inventing a color for each unpinned category.
+
+    Shared by the static and interactive figures so a category with no entry in
+    CATEGORY_COLOR_DICT (today: 'Line', 'Grid') gets the SAME color in both. The plotly
+    twin used to fall back to a flat 'lightgray', which rendered every unpinned category
+    identical to each other and to 'Random', while the seaborn twin gave them distinct
+    husl colors.
+
+    Colors are assigned in the order ``categories`` is given, so callers that pass the
+    same ordered list (both scatter twins pass ``_sort_categories(...)``) agree exactly.
+    Returned as hex, which matplotlib and plotly both accept.
+    """
+    palette = {c: color_dict[c] for c in categories if c in color_dict}
+    missing = [c for c in categories if c not in color_dict]
+    if missing:
+        generated = sns.color_palette(default_palette, len(missing))
+        palette.update(zip(missing, (mcolors.to_hex(c) for c in generated)))
+    return palette
 
 
 def _sort_categories(categories):
