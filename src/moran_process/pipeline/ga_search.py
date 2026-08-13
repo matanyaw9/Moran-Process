@@ -133,6 +133,17 @@ DEFAULT_GENERATION_TIMEOUT_S = 2 * 60 * 60
 
 TERMINAL_STATES = {"DONE", "EXIT", "GONE"}
 
+# A hung bjobs must not hang the driver: without this the whole search blocks on one
+# unlucky LSF call, and the generation timeout never gets a chance to fire.
+BJOBS_TIMEOUT_S = 60
+# GONE is inferred from an absence rather than reported, so it is confirmed across this
+# many consecutive polls before it is believed. One flaky reply used to be enough to
+# declare a healthy 220-job array finished.
+GONE_CONFIRMATIONS = 3
+# How long to let a killed job actually leave the queue before its directory is deleted.
+# bkill signals, it does not stop the process on the spot.
+KILL_GRACE_S = 120
+
 # What ntfy.sh accepts as a topic. Anything else 404s, and a '#' does not even reach the
 # server: it is a URL fragment, so 'topic#secret' requests '/topic'.
 _VALID_TOPIC = re.compile(r"[-_A-Za-z0-9]{1,64}")
@@ -157,24 +168,48 @@ def _job_state(job_id):
     ``GONE`` means bjobs no longer has a record (jobs age out of its history), which is
     terminal from our point of view: whatever the job was going to do, it has done.
     Callers then fall back to inspecting the artefact itself.
+
+    ``UNKNOWN`` means bjobs told us nothing, and is deliberately NOT terminal. These used
+    to be the same answer, and conflating them was a live corruption path: one flaky
+    bjobs reply read as "the array finished", the shard wait then timed out on a
+    directory the array was still filling, and the retry deleted it under 220 running
+    jobs. An absence of information is not evidence of completion.
     """
-    result = subprocess.run(
-        ["bjobs", "-a", "-o", "stat", str(job_id)],
-        capture_output=True,
-        text=True,
-    )
+    try:
+        result = subprocess.run(
+            ["bjobs", "-a", "-o", "stat", str(job_id)],
+            capture_output=True,
+            text=True,
+            timeout=BJOBS_TIMEOUT_S,
+        )
+    except (OSError, subprocess.SubprocessError):
+        # bjobs missing from PATH, or it hung past BJOBS_TIMEOUT_S.
+        return "UNKNOWN"
+
+    # Output is a STAT header followed by one row per index.
     lines = [ln.strip() for ln in result.stdout.splitlines() if ln.strip()]
-    # Output is a STAT header followed by one row per index. Anything else (job not found,
-    # bjobs unavailable) means we have no state to act on.
-    if len(lines) < 2:
+    if len(lines) >= 2:
+        states = {line.split()[0] for line in lines[1:]}
+        unfinished = states - TERMINAL_STATES
+        if unfinished:
+            return sorted(unfinished)[0]
+        # Every index is terminal. One EXIT makes the whole array's result suspect, and
+        # the completeness check downstream decides whether it is actually unusable.
+        return "EXIT" if "EXIT" in states else "DONE"
+
+    # No rows. LSF says "Job <id> is not found" on stderr once a record has aged out,
+    # and that phrasing is the only thing here that actually means the job is over.
+    # Every other failure (daemon not responding, a truncated reply, a transient error)
+    # says nothing about the job and must not be read as completion.
+    if "not found" in result.stderr.lower():
         return "GONE"
-    states = {line.split()[0] for line in lines[1:]}
-    unfinished = states - TERMINAL_STATES
-    if unfinished:
-        return sorted(unfinished)[0]
-    # Every index is terminal. One EXIT makes the whole array's result suspect, and the
-    # completeness check downstream is what decides whether it is actually unusable.
-    return "EXIT" if "EXIT" in states else "DONE"
+    log.warning(
+        "bjobs gave no usable state for job %s (rc=%s): %s",
+        job_id,
+        result.returncode,
+        result.stderr.strip()[:200] or "<no stderr>",
+    )
+    return "UNKNOWN"
 
 
 def _wait_for_job(job_id, timeout_s, label=""):
@@ -183,11 +218,21 @@ def _wait_for_job(job_id, timeout_s, label=""):
     Polling bjobs rather than watching for graph_statistics.csv to appear is deliberate:
     build_graph_statistics writes with a plain ``to_csv``, so a file that exists may still
     be half-written. Waiting for the job to leave the queue removes that race.
+
+    DONE and EXIT are reported by LSF and believed on sight. GONE is inferred from the
+    job's absence from bjobs, so it has to survive GONE_CONFIRMATIONS consecutive polls
+    before it ends the wait: a record that has genuinely aged out stays absent, while a
+    momentary LSF failure does not.
     """
     deadline = time.monotonic() + timeout_s
+    gone_readings = 0
     while True:
         state = _job_state(job_id)
-        if state in TERMINAL_STATES:
+        gone_readings = gone_readings + 1 if state == "GONE" else 0
+        settled = state in TERMINAL_STATES and (
+            state != "GONE" or gone_readings >= GONE_CONFIRMATIONS
+        )
+        if settled:
             return state
         if time.monotonic() > deadline:
             log.warning(
@@ -199,6 +244,103 @@ def _wait_for_job(job_id, timeout_s, label=""):
             )
             return "TIMEOUT"
         time.sleep(POLL_SECONDS)
+
+
+def _bkill_and_settle(job_ids, label="", grace_s=KILL_GRACE_S):
+    """Kill ``job_ids`` and wait for them to actually leave the queue.
+
+    Called before a generation directory is deleted. The driver only ever deletes a
+    directory because it stopped trusting the generation, and "stopped trusting" includes
+    the case where the jobs are alive and healthy and the driver's view of them was
+    wrong. So they are killed rather than assumed dead: deleting under a live array would
+    leave it writing shards into the path a second array is also writing to, and the
+    completeness check counts rows, so the mixture can pass as a healthy generation.
+
+    Best effort by design. bkill on an already-finished job is a harmless no-op that
+    complains on stderr, so the return code is not acted on. The settle wait matters more
+    than the kill: bkill signals, it does not stop the process on the spot.
+    """
+    targets = [str(j) for j in job_ids if j]
+    if not targets:
+        return
+    log.warning("Killing %s job(s) %s before reusing their directory.", label, ", ".join(targets))
+    try:
+        subprocess.run(
+            ["bkill"] + targets,
+            capture_output=True,
+            text=True,
+            timeout=BJOBS_TIMEOUT_S,
+        )
+    except (OSError, subprocess.SubprocessError):
+        log.warning("bkill on %s failed to run; waiting for the jobs anyway.", ", ".join(targets))
+
+    deadline = time.monotonic() + grace_s
+    while time.monotonic() < deadline:
+        # UNKNOWN is not terminal, so an LSF outage here spends the grace period rather
+        # than concluding the jobs are dead. That is the safe direction: the cost is a
+        # two-minute pause, the alternative is deleting under a live array.
+        if all(_job_state(j) in TERMINAL_STATES for j in targets):
+            return
+        time.sleep(POLL_SECONDS)
+    log.warning(
+        "Job(s) %s still not terminal %ds after bkill; deleting anyway.",
+        ", ".join(targets),
+        grace_s,
+    )
+
+
+def _pending_path(run_dir):
+    return Path(run_dir) / "pending_jobs.json"
+
+
+def _record_pending(run_dir, generation, job_ids):
+    """Note which jobs are live right now, so a *replacement* driver can kill them.
+
+    The in-loop retry remembers its own submissions in a local, but a preempted driver
+    does not get to hand anything over: LSF requeues the job from the beginning, and the
+    new process restarts at this generation with no idea that the previous one left a
+    220-index array running. It would then delete the directory that array is filling.
+
+    Its own file rather than a key in ga_state.json, because this is scratch bookkeeping
+    with a lifetime of one generation, and ga_state.json is the run's readable summary
+    with several consumers in analysis_utils. Nothing outside this module reads it.
+    """
+    _pending_path(run_dir).write_text(
+        json.dumps(
+            {
+                "generation": generation,
+                "array": job_ids.get("array"),
+                "register": job_ids.get("register"),
+            },
+            indent=2,
+        )
+    )
+
+
+def _clear_pending(run_dir):
+    """Drop the record once the generation is banked and its jobs are finished."""
+    _pending_path(run_dir).unlink(missing_ok=True)
+
+
+def _load_pending(run_dir, generation):
+    """Jobs a previous driver invocation left running at ``generation``, if any.
+
+    A record for a different generation is ignored rather than acted on: the hazard being
+    closed is deleting *this* generation's directory, and a stale record is not evidence
+    about it. A corrupt or unreadable file is treated the same way, since this is a
+    best-effort safety net and must never be the thing that stops a run.
+    """
+    path = _pending_path(run_dir)
+    if not path.exists():
+        return {}
+    try:
+        record = json.loads(path.read_text())
+    except (OSError, ValueError):
+        log.warning("Unreadable %s; ignoring it.", path)
+        return {}
+    if record.get("generation") != generation:
+        return {}
+    return record
 
 
 def _run_dirs_arg(run_dirs):
@@ -660,6 +802,9 @@ def _run_generation(state, cfg, candidates, generation, seconds_per_sim):
     run_dir = Path(cfg["run_dir"])
     gen_dir = run_dir / "generations" / f"gen_{generation:03d}"
 
+    # Seeded from disk, not empty: on the first attempt these are the jobs a preempted
+    # predecessor left behind at this same generation. See _record_pending.
+    prior_job_ids = _load_pending(run_dir, generation)
     for attempt in range(MAX_GENERATION_RETRIES + 1):
         # Always start from an empty directory, not only on a retry. A driver killed
         # mid-generation (preemption) restarts at this same generation, and any shards
@@ -667,6 +812,13 @@ def _run_generation(state, cfg, candidates, generation, seconds_per_sim):
         # inflating n_grouped past n_repeats, so the completeness check below would pass
         # on doubled data.
         if gen_dir.exists():
+            # ...but kill the previous attempt first. A retry does not imply the previous
+            # jobs are dead: the loop also lands here after a timeout, and a timeout can
+            # mean the driver misread a perfectly healthy array. See _bkill_and_settle.
+            _bkill_and_settle(
+                [prior_job_ids.get("array"), prior_job_ids.get("register")],
+                label=f"gen {generation} attempt {attempt}",
+            )
             shutil.rmtree(gen_dir)
 
         job_ids = _submit_generation(
@@ -683,6 +835,10 @@ def _run_generation(state, cfg, candidates, generation, seconds_per_sim):
             batch_seed=cfg["seed"] * 100003 + generation,
             seconds_per_sim=seconds_per_sim,
         )
+        # Recorded before anything can go wrong, so the next attempt knows what to kill --
+        # in this process via the local, and in a requeued one via the file.
+        prior_job_ids = job_ids
+        _record_pending(run_dir, generation, job_ids)
         if job_ids.get("array") is None:
             # Retrying here would rmtree the directory the array is actively writing to.
             raise SystemExit(
@@ -731,6 +887,10 @@ def _run_generation(state, cfg, candidates, generation, seconds_per_sim):
                     stats = _add_weighted(
                         stats, cfg["weight_prob"], cfg["weight_time"]
                     )
+                # The generation is banked and its jobs are terminal, so there is nothing
+                # left for a successor to kill. Leaving the record would make the next
+                # driver bkill job ids that have since been recycled by LSF.
+                _clear_pending(run_dir)
                 return stats, gen_dir
 
         warning = (
@@ -823,19 +983,25 @@ def _append_history(run_dir, generation, ranked, metric, pop_size, parents, elit
     rows[columns].to_csv(path, mode="a", header=not path.exists(), index=False)
 
 
-def _progress_line(cfg, generation, ranked, metric, n_new_elites, elapsed):
+def _progress_line(cfg, generation, ranked, metric, n_new_elites, elapsed, start_gen=0):
     """A one-line bar for the driver's LSF log.
 
     The driver runs detached, so this is how you see where the search is from a
     ``tail -f``. Written as a whole line per generation rather than a carriage-return
     animation, which renders as garbage in an LSF .out file.
+
+    ``elapsed`` is measured from *this* driver invocation, so the per-generation rate
+    divides by the generations this invocation ran, not by the progress bar's ``done``.
+    A run resumed at generation 60 has done 61 but may have run only one of them here,
+    and dividing by 61 would report an ETA about sixty times too short.
     """
     total = cfg["generations"]
     done = generation + 1
+    ran_here = generation - start_gen + 1
     filled = min(22, max(0, int(22 * done / total)))
     best = ranked[metric].iloc[0]
     median = ranked[metric].median()
-    remaining = (total - done) * (elapsed / done) if done else 0
+    remaining = (total - done) * (elapsed / ran_here) if ran_here > 0 else 0
     return (
         f"[{cfg['objective']} {metric}] gen {done:3d}/{total} "
         f"|{'#' * filled}{'-' * (22 - filled)}| {100 * done / total:3.0f}%  "
@@ -900,7 +1066,13 @@ def run_search(cfg):
         )
     else:
         run_dir.mkdir(parents=True, exist_ok=True)
-        (run_dir / "ga_config.json").write_text(json.dumps(cfg, indent=2))
+        # ntfy_topic is dropped rather than serialised: anyone holding the topic can push
+        # notifications to the phone, and ga_config.json is a shared-filesystem file. It
+        # is not needed here anyway, since it is re-read from the environment on resume
+        # rather than loaded back from this file.
+        (run_dir / "ga_config.json").write_text(
+            json.dumps({k: v for k, v in cfg.items() if k != "ntfy_topic"}, indent=2)
+        )
         rng = np.random.default_rng(cfg["seed"])
         elites = build_initial_population(cfg["pop_size"], cfg["seed"], category)
         seen = {g.wl_hash for g in elites}
@@ -975,7 +1147,9 @@ def run_search(cfg):
         _write_state(run_dir, state, seen)
         log.info(
             "%s",
-            _progress_line(cfg, generation, ranked, metric, n_new_elites, elapsed),
+            _progress_line(
+                cfg, generation, ranked, metric, n_new_elites, elapsed, start_gen
+            ),
         )
 
     joblib.dump(elites, run_dir / "final_population.pkl")
@@ -1227,11 +1401,15 @@ def submit_summary_job(run_dirs, job_ids, prefix, queue="short", walltime="0:10"
 
 
 def submit_all_runs(ga_runs_dir, prefix, replicates=1, seed=42, **kwargs):
-    """Submit the 2x2 run matrix, optionally as ``replicates`` independent repeats.
+    """Submit the full run matrix, optionally as ``replicates`` independent repeats.
 
-    Within one replicate the four runs share a seed, and that is what makes them
-    comparable: they start from the identical 20 random graphs, so any divergence between
-    them is attributable to the objective rather than to where they started.
+    The matrix is METRICS x OBJECTIVES, so three metrics against two objectives gives six
+    runs per replicate, not four. (For the weighted corners specifically, see
+    ``submit_corner_runs``, which walks CORNERS instead.)
+
+    Within one replicate the runs share a seed, and that is what makes them comparable:
+    they start from the identical 20 random graphs, so any divergence between them is
+    attributable to the objective rather than to where they started.
 
     Across replicates the seed changes, and it changes for everything at once. Replicate
     k gets ``seed + k * 1000``, which reseeds the initial population, the mutation stream

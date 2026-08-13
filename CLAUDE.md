@@ -89,7 +89,8 @@ Evolves topologies whose fitness is **measured by simulation**, not predicted by
 rationale and the measurements behind every constant: `GA_SIMULATION_PLAN.md`.
 
 - One **driver job** per GA run holds the loop and waits on LSF, using ~no CPU itself. Launch
-  with `ga_search.submit_driver(...)` or the 2x2 matrix with `submit_all_runs(...)`. Never run
+  with `ga_search.submit_driver(...)` or the METRICS x OBJECTIVES matrix (3 x 2 = 6 runs)
+  with `submit_all_runs(...)`, or the weighted corners with `submit_corner_runs(...)`. Never run
   the loop in a notebook: it takes hours.
 - Each generation is its own **standard batch directory** under
   `simulation_data/ga_runs/<run>/generations/gen_NNN/`, so every existing reader works on it
@@ -114,6 +115,14 @@ rationale and the measurements behind every constant: `GA_SIMULATION_PLAN.md`.
   hit the elite cutoff in ~7% of generations).
 - **Resume is automatic**: an existing `ga_state.json` is resumed from, because preemptable
   queues requeue a job from the beginning. `--force` is the only way to restart.
+- **A generation directory is never deleted under live jobs.** Retrying a generation starts
+  by wiping its directory, but "retry" does not imply the previous jobs are dead: the driver
+  may simply have misread a healthy array. So the array and register jobs are `bkill`ed and
+  waited out first. Across a preemption the replacement driver has no memory of them, so the
+  ids are written to `<run>/pending_jobs.json` at submit and cleared once the generation is
+  banked. Relatedly, `_job_state` distinguishes `GONE` (LSF says "not found") from `UNKNOWN`
+  (bjobs itself failed); only the former is terminal, and it must hold for three consecutive
+  polls. Treating an absence of information as completion is what made this reachable.
 - **Notifications**: one message when *every* run in a launch has ended, via a watcher job
   holding `-w ended(...)` on all drivers. Set `NTFY_TOPIC` (letters, digits, `-`, `_` only)
   in `~/.bashrc` and restart the Jupyter server. Failures notify per run, immediately.
