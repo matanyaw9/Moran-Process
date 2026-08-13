@@ -635,7 +635,7 @@ def plot_ga_winners_in_context(
     )
 
     for run, group in winners.groupby("run"):
-        category = f"{group['objective'].iloc[0]} {group['metric'].iloc[0]}"
+        category = group["category"].iloc[0]
         for value in group[metric]:
             ax.axvline(
                 value, color=CATEGORY_COLOR_DICT.get(category, "#2ca02c"),
