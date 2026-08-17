@@ -7,20 +7,27 @@ fn main() {
     // SAFETY: bit-pattern zero is a valid `f64` and denotes value `0.0`
     let mut x = unsafe { Box::<[f64; 1 << N]>::new_zeroed().assume_init() };
 
-    for i in 0..400 {
-        gauss_seidel_step(&g, &mut x);
+    for i in 0..500 {
+        let change = gauss_seidel_step(&g, &mut x);
         let fix_prob = (0..N).map(|i| x[1 << i]).sum::<f64>() / N as f64;
-        println!("step {: >3}: {}", i, fix_prob);
+        println!("step {: >3}: {: <20} diff: {}", i, fix_prob, change);
+
+        if change < 3e-15 * 2.0f64.powi(N as _) {
+            break;
+        }
     }
 }
 
-fn gauss_seidel_step<const N: usize, const M: usize>(g: &Graph<N>, x: &mut [f64; M]) {
+const OVER_RLX: f64 = 1.5;
+
+fn gauss_seidel_step<const N: usize, const M: usize>(g: &Graph<N>, x: &mut [f64; M]) -> f64 {
     const {
         assert!(1 << N == M);
     }
     x[0] = 0.0;
     x[M - 1] = 1.0;
 
+    let mut change = 0.0;
     for (mut prev, seg) in [(0, 1..M * 2 / 3), (M - 1, M * 2 / 3 + 1..M)] {
         let seg = seg.map(|i| i ^ (i >> 1));
         let mut weights = [0.0; N];
@@ -30,16 +37,20 @@ fn gauss_seidel_step<const N: usize, const M: usize>(g: &Graph<N>, x: &mut [f64;
                 prev as u32,
                 (state ^ prev).trailing_zeros() as u8,
             );
-            x[state] = weights
-                .iter()
-                .enumerate()
-                .map(|(i, p)| p * x[1 << i ^ state])
-                .sum::<f64>()
-                / weights.iter().sum::<f64>();
-
+            let c = OVER_RLX
+                * (weights
+                    .iter()
+                    .enumerate()
+                    .map(|(i, p)| p * x[1 << i ^ state])
+                    .sum::<f64>()
+                    / weights.iter().sum::<f64>()
+                    - x[state]);
+            x[state] += c;
+            change += c.abs();
             prev = state;
         }
     }
+    change
 }
 
 pub struct Graph<const N: usize> {
