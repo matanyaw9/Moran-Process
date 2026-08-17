@@ -1,5 +1,5 @@
 fn main() {
-    const N: usize = 15;
+    const N: usize = 20;
     let g = Graph::<N>::mammal(2.0);
 
     print!("{:?}", g);
@@ -19,67 +19,99 @@ fn gauss_seidel_step<const N: usize, const M: usize>(g: &Graph<N>, x: &mut [f64;
         assert!(1 << N == M);
     }
     x[0] = 0.0;
-    x[(1 << N) - 1] = 1.0;
-    for i in 1..x.len() - 1 {
-        let state = i as u32;
-        let neighs = g.neighbours(state);
-        x[i] = neighs
-            .iter()
-            .enumerate()
-            .map(|(i, p)| p * x[1 << i ^ state as usize])
-            .sum::<f64>()
-            / neighs.iter().sum::<f64>();
+    x[M - 1] = 1.0;
+
+    for (mut prev, seg) in [(0, 1..M * 2 / 3), (M - 1, M * 2 / 3 + 1..M)] {
+        let seg = seg.map(|i| i ^ (i >> 1));
+        let mut weights = [0.0; N];
+        for state in seg {
+            g.adjust_neighbours(
+                &mut weights,
+                prev as u32,
+                (state ^ prev).trailing_zeros() as u8,
+            );
+            x[state] = weights
+                .iter()
+                .enumerate()
+                .map(|(i, p)| p * x[1 << i ^ state])
+                .sum::<f64>()
+                / weights.iter().sum::<f64>();
+
+            prev = state;
+        }
     }
 }
 
 pub struct Graph<const N: usize> {
     r: f64,
     adj_mat: [u32; N],
+    /// vuln[u] = ∑_{(v, u) ∈ V} 1 / deg(v)
+    vuln: [f64; N],
 }
 
 impl<const N: usize> Graph<N> {
-    /// Probabilities to go from `state` to all of its neighbours.
-    /// `g.neighbours(s)[i]` is the probability to go from state `s` to
-    /// `s ^ (1 << i)`.
-    pub fn neighbours(&self, state: u32) -> [f64; N] {
+    /// Given `weights` stores the connection weights of `state`, adjusts
+    /// `weights` to store the connection weights of `state ^ 1 << idx`.
+    pub fn adjust_neighbours(&self, weights: &mut [f64; N], state: u32, idx: u8) {
+        let idx = idx as usize;
         debug_assert!(state < 1 << N);
-        let mut res = [0.0; _];
-        for (bit, place) in (0..).map(|i| 1 << i).zip(&mut res) {
-            let epidemic = state & bit == 0;
-            let mut sum = 0.0;
+        debug_assert!(idx < N);
 
-            let mut attks = state ^ if epidemic { 0 } else { (1 << N) - 1 };
-            while attks != 0 {
-                let j = attks.trailing_zeros() as usize;
-                attks &= attks - 1;
-                if self.adj_mat[j] & bit != 0 {
-                    sum += 1.0 / self.adj_mat[j].count_ones() as f64;
-                }
+        let neighbours = self.adj_mat[idx];
+        let conn_stength = 1.0 / neighbours.count_ones() as f64;
+
+        if state >> idx & 1 == 0 {
+            let mut n = neighbours & !state;
+            while n != 0 {
+                weights[n.trailing_zeros() as usize] += conn_stength * self.r;
+                n &= n - 1;
             }
-            *place = sum * if epidemic { self.r } else { 1.0 };
+            n = neighbours & state;
+            while n != 0 {
+                weights[n.trailing_zeros() as usize] -= conn_stength;
+                n &= n - 1;
+            }
+            weights[idx] = self.vuln[idx] - weights[idx] / self.r;
+        } else {
+            let mut n = neighbours & !state;
+            while n != 0 {
+                weights[n.trailing_zeros() as usize] -= conn_stength * self.r;
+                n &= n - 1;
+            }
+            n = neighbours & state;
+            while n != 0 {
+                weights[n.trailing_zeros() as usize] += conn_stength;
+                n &= n - 1;
+            }
+            weights[idx] = (self.vuln[idx] - weights[idx]) * self.r;
         }
-        res
     }
 
     pub fn complete(r: f64) -> Self {
-        Graph {
-            r,
-            adj_mat: std::array::from_fn(|i| (1 << N) - (1 << i) - 1),
-        }
+        Graph::new(r, std::array::from_fn(|i| (1 << N) - (1 << i) - 1))
     }
 
     pub fn mammal(r: f64) -> Self {
-        Graph {
+        Graph::new(
             r,
-            adj_mat: std::array::from_fn(|i| {
-                ((1 << N) - 1)
-                    & if i == 0 {
-                        6
-                    } else {
-                        3u32.unbounded_shl(2 * i as u32 + 1) + (1 << ((i - 1) / 2))
-                    }
+            std::array::from_fn(|i| {
+                (3u32.unbounded_shl(2 * i as u32 + 1)
+                    | i.checked_sub(1).map_or(0, |i| 1 << (i / 2)))
+                    & ((1 << N) - 1)
             }),
+        )
+    }
+
+    fn new(r: f64, adj_mat: [u32; N]) -> Self {
+        let mut vuln = [0.0; _];
+        for mut node in adj_mat {
+            let strength = 1.0 / node.count_ones() as f64;
+            while node != 0 {
+                vuln[node.trailing_zeros() as usize] += strength;
+                node &= node - 1;
+            }
         }
+        Graph { r, adj_mat, vuln }
     }
 }
 
