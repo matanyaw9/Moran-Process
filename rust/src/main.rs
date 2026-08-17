@@ -28,15 +28,11 @@ fn gauss_seidel_step<const N: usize, const M: usize>(g: &Graph<N>, x: &mut [f64;
     x[M - 1] = 1.0;
 
     let mut change = 0.0;
-    for (mut prev, seg) in [(0, 1..M * 2 / 3), (M - 1, M * 2 / 3 + 1..M)] {
-        let seg = seg.map(|i| i ^ (i >> 1));
+    for seg in [1..M * 2 / 3, M * 2 / 3 + 1..M] {
         let mut weights = [0.0; N];
-        for state in seg {
-            g.adjust_neighbours(
-                &mut weights,
-                prev as u32,
-                (state ^ prev).trailing_zeros() as u8,
-            );
+        for i in seg {
+            let state = i ^ (i >> 1);
+            g.adjust_neighbours(&mut weights, state as u32, i.trailing_zeros() as u8);
             let c = OVER_RLX
                 * (weights
                     .iter()
@@ -47,7 +43,6 @@ fn gauss_seidel_step<const N: usize, const M: usize>(g: &Graph<N>, x: &mut [f64;
                     - x[state]);
             x[state] += c;
             change += c.abs();
-            prev = state;
         }
     }
     change
@@ -61,8 +56,8 @@ pub struct Graph<const N: usize> {
 }
 
 impl<const N: usize> Graph<N> {
-    /// Given `weights` stores the connection weights of `state`, adjusts
-    /// `weights` to store the connection weights of `state ^ 1 << idx`.
+    /// Given `weights` stores the connection weights of `state ^ 1 << idx`,
+    /// adjusts `weights` to store the connection weights of `state`.
     pub fn adjust_neighbours(&self, weights: &mut [f64; N], state: u32, idx: u8) {
         let idx = idx as usize;
         debug_assert!(state < 1 << N);
@@ -71,7 +66,7 @@ impl<const N: usize> Graph<N> {
         let neighbours = self.adj_mat[idx];
         let conn_stength = 1.0 / neighbours.count_ones() as f64;
 
-        if state >> idx & 1 == 0 {
+        if state >> idx & 1 != 0 {
             let mut n = neighbours & !state;
             while n != 0 {
                 weights[n.trailing_zeros() as usize] += conn_stength * self.r;
