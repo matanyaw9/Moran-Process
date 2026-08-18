@@ -663,8 +663,16 @@ class PopulationGraph:
                     # Generate a batch of potential edges (u, v)
                     # We generate 2x what we need to account for collisions/existing edges
                     batch_size = max(edges_needed * 2, 100)
-                    u_list = rng.integers(0, n_nodes, size=batch_size)
-                    v_list = rng.integers(0, n_nodes, size=batch_size)
+                    # .tolist() rather than iterating the arrays directly: it yields
+                    # Python ints, where iterating yields np.int64. Both hash and compare
+                    # equal to an int, so the node dict looks clean and G.nodes reports
+                    # plain ints -- but the numpy object is what gets stored in the edge
+                    # tuple. NetworkX algorithms that compare a node against a tuple then
+                    # broadcast instead of comparing, and raise "truth value of an array
+                    # with more than one element is ambiguous". nx.minimum_cycle_basis
+                    # does exactly that, so it fails on every graph built here.
+                    u_list = rng.integers(0, n_nodes, size=batch_size).tolist()
+                    v_list = rng.integers(0, n_nodes, size=batch_size).tolist()
 
                     for u, v in zip(u_list, v_list):
                         if u != v and not G.has_edge(u, v):
@@ -721,9 +729,12 @@ class PopulationGraph:
             comp_a = sorted(list(comps[0]))
             comp_b = sorted(list(comps[1]))
 
-            # Pick one random node from each distinct group using RNG
-            u = rng.choice(comp_a)
-            v = rng.choice(comp_b)
+            # Pick one random node from each distinct group using RNG.
+            # int() because rng.choice returns np.int64, which would land in the edge
+            # tuple and break node-vs-tuple comparisons downstream (see
+            # random_connected_graph). Node keys are integers in every factory.
+            u = int(rng.choice(comp_a))
+            v = int(rng.choice(comp_b))
             G.add_edge(u, v)
 
         else:
@@ -739,7 +750,8 @@ class PopulationGraph:
                 # rng.choice needs 1D array or int, passing list works but is slower.
                 # Better to pick indices if nodes are standard integers,
                 # but if nodes are strings, choice(nodes) is fine.
-                u, v = rng.choice(nodes, size=2, replace=False)
+                # int() for the same reason as above: rng.choice yields np.int64.
+                u, v = (int(x) for x in rng.choice(nodes, size=2, replace=False))
 
                 # Check undirected existence (u,v) or (v,u)
                 if not G.has_edge(u, v):
