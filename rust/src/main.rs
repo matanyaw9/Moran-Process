@@ -1,7 +1,10 @@
 fn main() {
+    if !std::arch::is_x86_feature_detected!("bmi2") {
+        panic!("CPU does not have pext instruction :(")
+    }
+
     const N: usize = 20;
     let g = Graph::<N>::mammal(2.0);
-
     print!("{:?}", g);
 
     // SAFETY: bit-pattern zero is a valid `f64` and denotes value `0.0`
@@ -63,33 +66,22 @@ impl<const N: usize> Graph<N> {
         debug_assert!(state < 1 << N);
         debug_assert!(idx < N);
 
-        let neighbours = self.adj_mat[idx];
-        let conn_stength = 1.0 / neighbours.count_ones() as f64;
+        let mut n = self.adj_mat[idx];
 
-        if state >> idx & 1 != 0 {
-            let mut n = neighbours & !state;
-            while n != 0 {
-                weights[n.trailing_zeros() as usize] += conn_stength * self.r;
-                n &= n - 1;
-            }
-            n = neighbours & state;
-            while n != 0 {
-                weights[n.trailing_zeros() as usize] -= conn_stength;
-                n &= n - 1;
-            }
-            weights[idx] = self.vuln[idx] - weights[idx] / self.r;
+        let epidemic = state >> idx & 1 != 0;
+        let x = if epidemic { -1.0 } else { 1.0 } / n.count_ones() as f64;
+        let y = -self.r * x;
+        weights[idx] = if epidemic {
+            self.vuln[idx] - weights[idx] / self.r
         } else {
-            let mut n = neighbours & !state;
-            while n != 0 {
-                weights[n.trailing_zeros() as usize] -= conn_stength * self.r;
-                n &= n - 1;
-            }
-            n = neighbours & state;
-            while n != 0 {
-                weights[n.trailing_zeros() as usize] += conn_stength;
-                n &= n - 1;
-            }
-            weights[idx] = (self.vuln[idx] - weights[idx]) * self.r;
+            (self.vuln[idx] - weights[idx]) * self.r
+        };
+        // SAFETY: CPU feature BMI2 was checked for in main function
+        let mut changes = unsafe { std::arch::x86_64::_pext_u32(state, n) };
+        while n != 0 {
+            weights[n.trailing_zeros() as usize] += if changes & 1 != 0 { x } else { y };
+            changes >>= 1;
+            n &= n - 1;
         }
     }
 
@@ -125,10 +117,10 @@ impl<const N: usize> std::fmt::Debug for Graph<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "r = {}", self.r)?;
         for &line in &self.adj_mat {
-            for i in 0..N - 1 {
-                write!(f, "{}, ", (line >> i) & 1)?;
+            for i in 0..N {
+                write!(f, "{} ", if line >> i & 1 != 0 { '#' } else { '.' })?;
             }
-            writeln!(f, "{}", line >> (N - 1))?;
+            writeln!(f)?;
         }
         Ok(())
     }
