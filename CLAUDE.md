@@ -88,10 +88,24 @@ Evolves topologies whose fitness is **measured by simulation**, not predicted by
 (the ML-predicted version is `notebooks/extreme_graphs.ipynb`, kept for comparison). Full
 rationale and the measurements behind every constant: `GA_SIMULATION_PLAN.md`.
 
+- **A run is one angle.** Fitness is `w_prob*(rho-rho_c)/SD_PROB + w_time*log(T/T_c)/SD_LOG_TIME`
+  with `(w_prob, w_time) = (cos theta, sin theta)`, unit length, so the score is the projection
+  of a graph onto the search direction in random-graph SDs. theta=0 seeks high fixation
+  probability, 90 long time, 180 low probability, 270 short time; the diagonals are the
+  combinations, and 315 (high prob AND short time) is the hard one, because among random
+  (31, 34) graphs the two metrics are positively correlated (+0.35). Every run is a
+  **maximization**: direction lives in theta and nowhere else. theta is normalized to
+  [0, 360), so -45 and 315 are the same run and land in the same directory.
 - One **driver job** per GA run holds the loop and waits on LSF, using ~no CPU itself. Launch
-  with `ga_search.submit_driver(...)` or the METRICS x OBJECTIVES matrix (3 x 2 = 6 runs)
-  with `submit_all_runs(...)`, or the weighted corners with `submit_corner_runs(...)`. Never run
-  the loop in a notebook: it takes hours.
+  with `ga_search.submit_theta_runs(ga_runs_dir, prefix, thetas, replicates=...)`, or a single
+  `submit_driver(run_dir, theta)`. `CORNER_THETAS` is `(45, 135, 225, 315)`. Never run the loop
+  in a notebook: it takes hours.
+  - The predecessor was a `--metric {mean_steps, prob_fixation, weighted}` x
+    `--objective {maximize, minimize}` matrix plus free weights, which wrote direction in three
+    redundant places. They disagreed as soon as `--objective minimize` met a weighted run, and
+    both weighted runs of such a launch came out labelled with the same corner. Its four
+    single-metric runs are the axis-aligned thetas, so nothing was lost. Run directories from
+    before the change do not load.
 - Each generation is its own **standard batch directory** under
   `simulation_data/ga_runs/<run>/generations/gen_NNN/`, so every existing reader works on it
   unchanged. `submit_jobs(post_batch="none")`: verify, the violin cache and job speed serve
@@ -106,10 +120,11 @@ rationale and the measurements behind every constant: `GA_SIMULATION_PLAN.md`.
   estimate is never re-tested and sits at the top of the ranking permanently.
 - **`n_repeats` is set by the noisier metric, judged by selection efficiency** rather than by
   raw S/N: `rho = 1/sqrt(1 + (SEM/SD_between)^2)`, the correlation between measured and true
-  fitness, to which the per-generation response is proportional. 100K holds `prob_fixation` at
-  rho ~ 0.85 for 100 generations. `plot_selection_efficiency` computes it from
-  `ga_history.csv` at no simulation cost. Watch `mean_steps` there: its SEM is proportional to
-  the mean, so a run that succeeds at maximizing it inflates its own noise floor.
+  fitness, to which the per-generation response is proportional. Measured: 1e6 gives
+  rho ~ 0.99, 100K holds `prob_fixation` at rho ~ 0.85 for 100 generations, 1K gives ~0.39.
+  `plot_selection_efficiency` computes it from `ga_history.csv` at no simulation cost. Watch
+  the time term there: its SEM is proportional to the mean, so a run that succeeds at pushing
+  time up inflates its own noise floor in step with its own signal.
 - **Runs are reproducible from their seed**: `batch_seed = seed*100003 + generation`, and
   selection breaks ties on `wl_hash` (`prob_fixation` is k/n, so exact ties are routine and
   hit the elite cutoff in ~7% of generations).
@@ -126,8 +141,19 @@ rationale and the measurements behind every constant: `GA_SIMULATION_PLAN.md`.
 - **Notifications**: one message when *every* run in a launch has ended, via a watcher job
   holding `-w ended(...)` on all drivers. Set `NTFY_TOPIC` (letters, digits, `-`, `_` only)
   in `~/.bashrc` and restart the Jupyter server. Failures notify per run, immediately.
+- **Color encodes direction**: `colors.theta_color` maps hue straight onto theta, so a run is
+  the same color in every figure and a sweep of directions reads as a color wheel. HSV with
+  fixed S and V rather than a cyclic matplotlib map, whose lightness cycle would make two of
+  the directions vanish against the page or the gray random cloud.
 - Readers: `analysis_utils/ga_io.py` (history, state, `ga_progress`), figures:
-  `analysis_utils/ga_plots.py`. Notebook: `notebooks/ga_simulation.ipynb` (launch + read only).
+  `analysis_utils/ga_plots.py`. `plot_ga_winners_scatter` puts the winners in the joint
+  (time, probability) plane over the random cloud and draws each run's objective iso-line
+  through its own best; a run that worked leaves the whole cloud on the losing side, which is
+  the support-point property made visible. Notebook: `notebooks/ga_simulation.ipynb`
+  (launch + read only; phase-1 scope, no ML comparison or replicate section).
+- `ga_search.preview_launch(...)` reports shards, simulations, core-hours and wall clock for a
+  set of knobs before anything is submitted. It calls `_size_array` itself, so the worker
+  counts it prints are the ones the driver will request.
 
 **Spanning several batches: stitch at read time, do not build a combined batch.** Both readers take a single batch directory **or a list of them**:
 

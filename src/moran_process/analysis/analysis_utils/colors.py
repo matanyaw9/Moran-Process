@@ -7,6 +7,7 @@ sits at the bottom of the dependency graph (``plots`` pulls from here).
 
 import seaborn as sns
 import matplotlib.colors as mcolors
+import numpy as np
 import hashlib
 
 __all__ = [
@@ -16,6 +17,8 @@ __all__ = [
     "DEFAULT_FIG_SIZE",
     "generate_robust_color_dict",
     "fill_missing_colors",
+    "theta_color",
+    "theta_color_dict",
 ]
 
 
@@ -48,14 +51,6 @@ CATEGORY_COLOR_DICT = {
     "minimize prob_fixation": "#54278F",  # Deep Indigo
     "maximize mean_steps": "#A50F15",  # Blood Red
     "minimize mean_steps": "#D94801",  # Burnt Orange
-    # --- COMBINED OBJECTIVE (ga_search --metric weighted) ---
-    # Named for the corner they chase, since direction lives in the weights rather
-    # than in maximize/minimize. Greens, so a combined-objective run is instantly
-    # distinguishable from the single-metric blues and reds it is plotted beside.
-    "high_prob low_time": "#00701A",  # Forest Green -- the corner fighting the
-    "low_prob high_time": "#78C679",  # Sage Green      +0.35 natural correlation
-    "high_prob high_time": "#41AB5D",  # Medium Green
-    "low_prob low_time": "#C7E9C0",  # Pale Green
 }
 
 # The GA now targets RESIDUALS, so its categories carry a target suffix -- e.g.
@@ -158,6 +153,39 @@ def _sort_categories(categories):
     last = [c for c in LAST if c in cat_set]
     middle = sorted(c for c in cat_set if c not in BIOLOGICAL and c not in LAST)
     return bio + middle + last
+
+
+def theta_color(theta_deg, saturation=0.72, value=0.80):
+    """Color for a GA search direction. Hue IS the angle.
+
+    A GA run's direction is an angle, and angles are cyclic, so the color encoding has to
+    be cyclic too: theta=0 and theta=359 are neighbours and must not be opposite ends of a
+    gradient. Mapping hue directly to theta gives that for free, and makes the legend
+    redundant on the phase-2 figure -- a winner's color says which way its run was pushing,
+    so a boundary traced by twelve runs reads as a color wheel around the cloud.
+
+    HSV with fixed saturation and value rather than matplotlib's cyclic maps ('twilight',
+    'twilight_shifted'): those are cyclic in lightness as well as hue, so two of the twelve
+    directions would come out near-white or near-black and vanish against the page or the
+    gray random cloud. Holding V and S fixed costs some perceptual uniformity and buys
+    twelve markers that are all equally visible.
+    """
+    hue = float(np.mod(theta_deg, 360.0)) / 360.0
+    return mcolors.to_hex(mcolors.hsv_to_rgb((hue, saturation, value)))
+
+
+def theta_color_dict(frame, theta_column="theta", category_column="category"):
+    """``{category: color}`` for every direction present in a GA frame.
+
+    Rows whose theta is missing (a run whose state file predates the field, or a
+    non-GA category sharing the axes) are skipped rather than given a default, so the
+    caller's fallback map still decides what happens to them.
+    """
+    pairs = frame[[category_column, theta_column]].dropna().drop_duplicates()
+    return {
+        row[category_column]: theta_color(row[theta_column])
+        for _, row in pairs.iterrows()
+    }
 
 
 def generate_robust_color_dict(df, existing_colors, default_palette="husl"):

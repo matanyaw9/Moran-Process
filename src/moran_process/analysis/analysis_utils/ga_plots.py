@@ -4,28 +4,47 @@ A separate module from ``plots`` for the same reason ``plots`` was split out of 
 original monolithic ``analysis_utils``: that file is already ~1600 lines, and these
 figures read a different artefact (``ga_history.csv``) than everything in it.
 
-``plot_ga_history`` is deliberately the same figure as ``plot_multi_model_history`` in
+``plot_ga_history`` keeps the conventions of ``plot_multi_model_history`` in
 ``notebooks/extreme_graphs.ipynb``, so the ML-driven and simulation-driven searches can be
-put side by side. Every convention is preserved: left axis fixation time, right axis
-fixation probability, solid for time and dashed for probability, a thicker line for the
-metric being optimized, complete-graph baselines drawn as the residual origin, and a
+put side by side: left axis fixation time, right axis fixation probability, solid for time
+and dashed for probability, complete-graph baselines drawn as the residual origin, and a
 sorted unified legend below the axes.
 
 What is added is what measurement makes available and prediction did not: the spread
 across survivors, and error bars at the standard error of the measurement. A predicted
 fitness has no error bar, so the ML figure could never show whether its trajectory
 exceeded the noise floor. This one can.
+
+**Color encodes the search direction.** A run is defined by an angle theta (see
+``pipeline.ga_search``), and hue is mapped straight onto it, so the same direction is the
+same color in every figure here and a sweep of directions reads as a color wheel. The
+older convention -- a hand-picked color per named objective, and a thicker line for
+"the metric this run optimized" -- does not survive the move to theta, because every run
+now optimizes a combination of both metrics and there is no un-optimized one to gray out.
 """
 
 import os
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
 
-from .colors import CATEGORY_COLOR_DICT, generate_robust_color_dict
-from .ga_io import final_elite_properties, load_ga_history, load_ga_state
+from .colors import (
+    CATEGORY_COLOR_DICT,
+    generate_robust_color_dict,
+    theta_color,
+    theta_color_dict,
+)
+from .ga_io import (
+    _run_dirs as _ga_io_run_dirs,
+    final_elite_properties,
+    final_population_stats,
+    load_elite_population,
+    load_ga_history,
+    load_ga_state,
+)
 from .plots import _resolve_figure_path
 from .theory import analytic_moran_fc_fixation_prob, analytic_moran_fc_fixation_time
 
@@ -33,8 +52,14 @@ __all__ = [
     "plot_ga_history",
     "plot_ga_runs_comparison",
     "plot_ga_winners_in_context",
+    "plot_ga_winners_scatter",
+    "plot_ga_trails",
+    "plot_ga_explorer_plotly",
+    "plot_elite_grid",
+    "plot_population",
     "plot_replicate_agreement",
     "plot_selection_efficiency",
+    "plot_selection_response",
     "plot_ml_vs_simulation",
     "plot_ml_vs_simulation_scatter",
     "plot_ml_vs_simulation_scatter_plotly",
@@ -45,6 +70,13 @@ __all__ = [
 N_NODES = 31
 N_EDGES = 34
 R_VALUE = 1.1
+
+# The residual origin every figure here measures against. Recomputed from `theory` rather
+# than imported from `pipeline.ga_search`, which would drag the whole submission stack
+# (ProcessLab, joblib, polars) into a plotting import; the two call the same formula with
+# the same constants, so they cannot disagree.
+RHO_COMPLETE_PLOT = float(analytic_moran_fc_fixation_prob(N_NODES, R_VALUE))
+T_COMPLETE_PLOT = float(analytic_moran_fc_fixation_time(N_NODES, R_VALUE))
 
 _METRIC_LABEL = {
     "mean_steps": "Mean Fixation Time (steps)",
@@ -63,6 +95,21 @@ _METRIC_LINESTYLE = {"mean_steps": "-", "prob_fixation": "--"}
 _MARKER_BY_FAMILY = {"LR": "o", "XGBOOST": "s", "simulation": "D"}
 _PLOTLY_MARKER_BY_FAMILY = {"LR": "circle", "XGBOOST": "square", "simulation": "diamond"}
 _FALLBACK_MARKER, _PLOTLY_FALLBACK_MARKER = "^", "triangle-up"
+
+
+def _ga_colors(frame):
+    """Category -> color for a GA frame, hue driven by the search direction.
+
+    One resolver for every figure in this module, so a given theta is the same color in
+    the trajectory plot, the comparison plot and the winners scatter. Falls back to the
+    hand-picked map (and then to husl) for any category without a theta, which is how the
+    respiratory and random categories keep their established colors when they share axes
+    with GA runs.
+    """
+    colors = generate_robust_color_dict(frame, CATEGORY_COLOR_DICT)
+    if "theta" in frame:
+        colors.update(theta_color_dict(frame))
+    return colors
 
 
 def _format_steps(value, _position=None):
@@ -196,8 +243,7 @@ def plot_ga_history(
     """
     history = load_ga_history(run_dir, survivors_only=True)
     state = load_ga_state(run_dir)
-    metric = state["metric"]
-    objective = state["objective"]
+    theta = state["theta"]
     trajectory = _survivor_trajectory(history)
 
     rho_complete = float(analytic_moran_fc_fixation_prob(N_NODES, R_VALUE))
@@ -211,34 +257,29 @@ def plot_ga_history(
     )
     ax_prob.set_ylabel(_METRIC_LABEL["prob_fixation"], fontweight="bold")
 
-    # A weighted run optimizes a combination, so its category names the corner it
-    # chases rather than "objective metric", and BOTH traces are the optimized one.
-    combined = metric == "weighted"
-    # From the state, which records it, with a fallback for runs written before the
-    # field existed.
-    category = state.get("category") or f"{objective} {metric}"
-    color = CATEGORY_COLOR_DICT.get(category, "#2ca02c")
+    # Every run optimizes a combination of both metrics, so BOTH traces are the optimized
+    # one and both take the run's color. Which of the two the search actually leans on is
+    # the weights' business, and the subtitle states them rather than the linewidth
+    # implying them.
+    category = state["category"]
+    color = theta_color(theta)
     lines = []
     for this_metric in ("mean_steps", "prob_fixation"):
         axis = ax_time if this_metric == "mean_steps" else ax_prob
-        is_main = combined or this_metric == metric
-        # The optimized metric takes the run's category color; the other is drawn in gray
-        # so the figure never implies the search was chasing it.
-        line_color = color if is_main else "#9e9e9e"
         x = trajectory["generation"]
         y = trajectory[f"{this_metric}_mean"]
 
         if show_spread:
             axis.fill_between(
                 x, trajectory[f"{this_metric}_lo"], trajectory[f"{this_metric}_hi"],
-                color=line_color, alpha=0.12, linewidth=0,
+                color=color, alpha=0.12, linewidth=0,
             )
         container = axis.errorbar(
             x, y, yerr=trajectory[f"{this_metric}_sem"],
-            color=line_color, linestyle=_METRIC_LINESTYLE[this_metric],
-            linewidth=3.5 if is_main else 1.8,
+            color=color, linestyle=_METRIC_LINESTYLE[this_metric],
+            linewidth=3.0,
             elinewidth=0.8, capsize=0, errorevery=max(1, len(x) // 40),
-            label=f"{_METRIC_LABEL[this_metric]}{' (optimized)' if is_main else ''}",
+            label=_METRIC_LABEL[this_metric],
         )
         # The container, not container.lines[0]: errorbar() puts the label on the container,
         # so the bare Line2D inside it is labelled '_nolegend_' and the legend rendered two
@@ -263,20 +304,16 @@ def plot_ga_history(
     ax_time.grid(True, linestyle=":", alpha=0.7)
     ax_time.set_title(
         "Evolution of Topologies (measured)\n"
-        + (
-            f"Optimizing: {category}  |  "
-            if combined
-            else f"Optimizing: {objective.title()} {_METRIC_LABEL[metric]}  |  "
-        )
+        + f"{category} ({state.get('quadrant', '')})  |  "
+        + f"w=({state.get('weight_prob', float('nan')):+.2f}, "
+        + f"{state.get('weight_time', float('nan')):+.2f})  |  "
         + f"N={N_NODES}, r={R_VALUE}, {state.get('generations', '?')} generations  |  "
         + f"{_sims_note(history['n_grouped'])} simulations per graph",
         fontsize=14, pad=15,
     )
     fig.tight_layout()
 
-    path = _resolve_figure_path(
-        figures_dir, "plot_ga_history", objective=objective, metric=metric
-    )
+    path = _resolve_figure_path(figures_dir, "plot_ga_history", theta=f"{theta:03.0f}")
     if path:
         fig.savefig(path, bbox_inches="tight", dpi=150, facecolor="white")
         print(f"Saved: {path}")
@@ -295,22 +332,24 @@ def plot_ga_runs_comparison(run_dirs, figures_dir=None, figsize=(13, 6), logscal
     rho_complete = float(analytic_moran_fc_fixation_prob(N_NODES, R_VALUE))
     t_complete = float(analytic_moran_fc_fixation_time(N_NODES, R_VALUE))
 
+    colors = _ga_colors(history)
+    # Sorted by angle rather than by name, so the legend and the drawing order walk the
+    # circle in order. Alphabetical on "theta=045, theta=135, ..." happens to agree, but
+    # only because the label is zero-padded; sorting on the number says what is meant.
+    by_theta = sorted(history.groupby("run"), key=lambda item: item[1]["theta"].iloc[0])
+
     fig, axes = plt.subplots(1, 2, figsize=figsize)
     for metric, axis in zip(("mean_steps", "prob_fixation"), axes):
-        for run, group in history.groupby("run"):
+        for run, group in by_theta:
             category = group["category"].iloc[0]
             trajectory = _survivor_trajectory(group)
-            # A weighted run optimizes a combination of both, so neither trace is
-            # the incidental one; without this both would be drawn dotted and thin,
-            # reading as "this run was not chasing either of these".
-            run_metric = group["metric"].iloc[0]
-            optimizes_this = run_metric in (metric, "weighted")
+            # Every run optimizes a combination of both metrics, so neither panel shows an
+            # incidental quantity: both are drawn solid and equal. How hard a given run
+            # pushes on this particular axis is its weight, which is the legend's job.
             axis.plot(
                 trajectory["generation"], trajectory[f"{metric}_mean"],
-                color=CATEGORY_COLOR_DICT.get(category, "#2ca02c"),
-                linestyle="-" if optimizes_this else ":",
-                linewidth=3.0 if optimizes_this else 1.4,
-                alpha=1.0 if optimizes_this else 0.55,
+                color=colors.get(category, "#2ca02c"),
+                linewidth=2.6,
                 label=category,
             )
         baseline = t_complete if metric == "mean_steps" else rho_complete
@@ -338,7 +377,7 @@ def plot_ga_runs_comparison(run_dirs, figures_dir=None, figsize=(13, 6), logscal
         bbox_to_anchor=(0.5, -0.06), fancybox=True,
     )
     fig.suptitle(
-        "Simulation-driven GA: all runs (solid = the metric that run optimized)\n"
+        "Simulation-driven GA: all runs, colored by search direction\n"
         f"{history['run'].nunique()} runs  |  N={N_NODES}, E={N_EDGES}, r={R_VALUE}  |  "
         f"{_sims_note(history['n_grouped'])} simulations per graph",
         fontsize=14,
@@ -391,14 +430,14 @@ def plot_replicate_agreement(
             f"graph_props.csv has no column(s) {missing}. Available structural columns: "
             f"{sorted(c for c in elites.columns if c not in ('run', 'category'))}"
         )
-    colors = generate_robust_color_dict(elites, CATEGORY_COLOR_DICT)
+    colors = _ga_colors(elites)
 
     # A single-replicate launch has no -repN suffix, so label those by run instead of
-    # dropping them: the figure is still the right way to compare four runs side by side.
-    # The shared launch prefix ("2026_07_28-long-100-gen-run-") is stripped first, since it
-    # is identical on every tick and would otherwise take more width than the labels.
+    # dropping them: the figure is still the right way to compare several runs side by
+    # side. The shared launch prefix ("2026_08_19-phase1-") is stripped first, since it is
+    # identical on every tick and would otherwise take more width than the labels.
     # Truncated at the last separator, because commonprefix works per character and would
-    # otherwise eat the shared 'm' of maximize/minimize and leave 'aximize-mean_steps'.
+    # otherwise eat the shared digits of "theta045"/"theta135" and leave a ragged stub.
     prefix = os.path.commonprefix(sorted(elites["run"].unique()))
     prefix = prefix[: prefix.rfind("-") + 1]
     elites["label"] = np.where(
@@ -411,18 +450,19 @@ def plot_replicate_agreement(
 
     for index, (label, group) in enumerate(elites.groupby("label")):
         category = group["category"].iloc[0]
-        metric = group["metric"].iloc[0]
         color = colors[category]
         offsets = np.linspace(-0.18, 0.18, len(group)) if len(group) > 1 else [0.0]
         ax_fitness.plot(
-            index + np.asarray(offsets), group[metric] / group[metric].mean(),
+            index + np.asarray(offsets), group["weighted"] / group["weighted"].mean(),
             linestyle="none", marker="o", markersize=5,
             markerfacecolor=color, markeredgecolor=color, alpha=0.75,
         )
 
-    # Fitness is shown relative to each group's own mean because the four objectives live
-    # on scales three orders of magnitude apart. Within a category the replicates then sit
-    # on a common scale, and agreement is "do the clouds line up at 1.0".
+    # Fitness is shown relative to each group's own mean. Every run now scores in the same
+    # unit (random-graph SDs along its own direction), but those scores still differ
+    # several-fold between directions, since some directions are far more reachable than
+    # others. Within a direction the replicates then sit on a common scale, and agreement
+    # is "do the clouds line up at 1.0".
     ax_fitness.axhline(1.0, color="#7f7f7f", linestyle=":", linewidth=1.2)
     ax_fitness.set_xticks(range(elites["label"].nunique()))
     ax_fitness.set_xticklabels(sorted(elites["label"].unique()), rotation=30, ha="right")
@@ -492,19 +532,19 @@ def _selection_efficiency(history):
     """
     rows = []
     for (run, generation), group in history.groupby(["run", "generation"]):
-        metric = group["metric"].iloc[0]
         if len(group) < 3:
             # Generation 0 is the initial population alone; a spread over fewer than a
             # handful of graphs is not an estimate of anything.
             continue
-        sd = float(group[metric].std())
-        sem = float(group[f"{metric}_sem"].mean())
+        sd = float(group["weighted"].std())
+        sem = float(group["weighted_sem"].mean())
         if not np.isfinite(sd) or sd <= 0 or not np.isfinite(sem):
             continue
         rows.append({
             "run": run,
             "generation": generation,
             "category": group["category"].iloc[0],
+            "theta": group["theta"].iloc[0],
             "sd_between": sd,
             "sem": sem,
             "rho": 1.0 / np.sqrt(1.0 + (sem / sd) ** 2),
@@ -537,7 +577,7 @@ def plot_selection_efficiency(run_dirs, figures_dir=None, figsize=(13, 5.5)):
             "No generation had enough candidates to estimate rho. A run that has only "
             "finished generation 0 has nothing to plot here yet."
         )
-    colors = generate_robust_color_dict(efficiency, CATEGORY_COLOR_DICT)
+    colors = _ga_colors(efficiency)
 
     fig, (ax_rho, ax_parts) = plt.subplots(1, 2, figsize=figsize)
     for category, group in efficiency.groupby("category"):
@@ -590,6 +630,148 @@ def plot_selection_efficiency(run_dirs, figures_dir=None, figsize=(13, 5.5)):
 
     path = _resolve_figure_path(
         figures_dir, "plot_selection_efficiency", n_runs=efficiency["run"].nunique()
+    )
+    if path:
+        fig.savefig(path, bbox_inches="tight", dpi=150, facecolor="white")
+        print(f"Saved: {path}")
+    return fig
+
+
+def _selection_response(history, smooth):
+    """Per-generation gain in mean survivor score, and how many elites were replaced.
+
+    Two independent readings of "is selection still doing anything":
+
+    * ``delta`` -- the change in the surviving elites' mean score from one generation to
+      the next. This is the realized response to selection. It is what actually matters,
+      and it is noisy, so it is also reported smoothed.
+    * ``n_new`` -- how many of the surviving elites are newly arrived children rather than
+      returning incumbents. Zero means no child managed to displace an elite, which is a
+      frozen search regardless of what the fitness numbers do.
+
+    ``sem_delta`` is the noise floor to read ``delta`` against: sqrt(2) x the standard
+    error of a generation's mean, since a difference of two means combines two errors. It
+    is an OVERESTIMATE, because consecutive generations share their elites (elites are
+    re-simulated every generation) so the two means are positively correlated and the true
+    error on their difference is smaller. Overestimating is the safe direction: it makes
+    the "is this gain real" test conservative.
+    """
+    rows = []
+    for run, group in history.groupby("run"):
+        per_gen = group.groupby("generation")
+        mean = per_gen["weighted"].mean()
+        # Error on the mean of k survivors, combining their individual measurement errors.
+        sem = per_gen["weighted_sem"].apply(
+            lambda s: float(np.sqrt(np.nansum(np.square(s.to_numpy(dtype=float))))) / len(s)
+        )
+        new = per_gen["is_new"].sum()
+        frame = pd.DataFrame({
+            "run": run,
+            "category": group["category"].iloc[0],
+            "theta": group["theta"].iloc[0],
+            "generation": mean.index,
+            "mean_score": mean.to_numpy(),
+            "delta": mean.diff().to_numpy(),
+            "sem_delta": (np.sqrt(2) * sem).to_numpy(),
+            "n_new": new.to_numpy(),
+            "gain": (mean - mean.iloc[0]).to_numpy(),
+        })
+        frame["delta_smooth"] = (
+            frame["delta"].rolling(smooth, center=True, min_periods=1).mean()
+        )
+        rows.append(frame)
+    return pd.concat(rows, ignore_index=True)
+
+
+def plot_selection_response(
+    run_dirs, smooth=5, figures_dir=None, figsize=(13.5, 5.5), show_runs=True
+):
+    """Is the population still IMPROVING, generation by generation?
+
+    ``plot_selection_efficiency`` asks whether the ranking was trustworthy.
+    This asks the complementary question -- whether that ranking was still buying anything.
+    A search can have excellent rho and be completely stuck, if every candidate is already
+    as good as its parent.
+
+    Left: the per-generation change in the surviving elites' mean score, smoothed over
+    ``smooth`` generations. The gray band is the measurement noise floor on that
+    difference; a curve inside the band is a population whose apparent movement cannot be
+    distinguished from remeasurement error. Selection has stopped paying when the curve
+    settles onto zero AND stays inside the band.
+
+    Right: how many of the ``pop_size`` elites each generation are newly arrived children.
+    This is the mechanical version of the same question and needs no error bar: if nothing
+    displaces an incumbent, nothing is happening, whatever the scores say. It usually
+    decays toward a small nonzero number rather than to zero, because re-simulating the
+    elites means an incumbent can lose its place to measurement noise alone.
+    """
+    history = load_ga_history(run_dirs, survivors_only=True)
+    response = _selection_response(history, smooth)
+    colors = _ga_colors(response)
+
+    fig, (ax_delta, ax_new) = plt.subplots(1, 2, figsize=figsize)
+
+    # Noise floor first, so the curves sit on top of it.
+    floor = response.groupby("generation")["sem_delta"].median()
+    ax_delta.fill_between(
+        floor.index, -floor, floor, color="#bdbdbd", alpha=0.35, linewidth=0,
+        label="measurement noise on the change",
+    )
+
+    for (category, theta), group in sorted(
+        response.groupby(["category", "theta"]), key=lambda kv: kv[0][1]
+    ):
+        color = colors[category]
+        if show_runs:
+            for _, run_group in group.groupby("run"):
+                ax_delta.plot(run_group["generation"], run_group["delta_smooth"],
+                              color=color, linewidth=1.0, alpha=0.55)
+                ax_new.plot(run_group["generation"],
+                            run_group["n_new"].rolling(smooth, center=True,
+                                                       min_periods=1).mean(),
+                            color=color, linewidth=1.0, alpha=0.55)
+        else:
+            for axis, column in ((ax_delta, "delta_smooth"), (ax_new, "n_new")):
+                mean = group.groupby("generation")[column].mean()
+                axis.plot(mean.index, mean, color=color, linewidth=1.8, label=category)
+        if show_runs:
+            ax_delta.plot([], [], color=color, linewidth=1.8, label=category)
+
+    ax_delta.axhline(0, color="#333333", linestyle="-", linewidth=1.0, zorder=1)
+    ax_delta.set_ylabel("Gain per generation (random-graph SDs)", fontweight="bold")
+    ax_delta.set_title(
+        f"Response to selection, smoothed over {smooth} generations\n"
+        "inside the gray band = indistinguishable from remeasurement",
+        fontsize=11,
+    )
+    ax_new.set_ylabel("New elites per generation", fontweight="bold")
+    ax_new.set_title(
+        "Elites displaced by their own children\n"
+        "flat near zero = the population has stopped moving",
+        fontsize=11,
+    )
+    for axis in (ax_delta, ax_new):
+        axis.set_xlabel("Generation", fontweight="bold")
+        axis.grid(True, linestyle=":", alpha=0.7)
+        axis.set_axisbelow(True)
+
+    handles, labels = ax_delta.get_legend_handles_labels()
+    unique = {}
+    for handle, label in zip(handles, labels):
+        unique.setdefault(label, handle)
+    fig.legend(list(unique.values()), list(unique), loc="center left",
+               bbox_to_anchor=(1.0, 0.5), fontsize=8, frameon=False)
+
+    fig.suptitle(
+        "Was selection still buying anything?\n"
+        f"{response['run'].nunique()} runs, {response['category'].nunique()} directions  |  "
+        f"N={N_NODES}, E={N_EDGES}, r={R_VALUE}",
+        fontweight="bold",
+    )
+    fig.tight_layout()
+
+    path = _resolve_figure_path(
+        figures_dir, "plot_selection_response", n_runs=response["run"].nunique()
     )
     if path:
         fig.savefig(path, bbox_inches="tight", dpi=150, facecolor="white")
@@ -670,6 +852,588 @@ def plot_ga_winners_in_context(
     fig.tight_layout()
 
     path = _resolve_figure_path(figures_dir, "plot_ga_winners_in_context", metric=metric)
+    if path:
+        fig.savefig(path, bbox_inches="tight", dpi=150, facecolor="white")
+        print(f"Saved: {path}")
+    return fig
+
+
+def _reference_cloud(reference_stats):
+    """The size-matched random graphs, and the respiratory graphs, at the GA's r.
+
+    Split out because two figures now draw the same background and a second copy of the
+    filter is a second place for it to drift out of step with the search space.
+    Returns (cloud, organs); organs is every non-random category, which for the reference
+    batch means the respiratory graphs plus the structural controls.
+    """
+    at_r = reference_stats[np.isclose(reference_stats["r"], R_VALUE)]
+    sized = at_r[(at_r["n_nodes"] == N_NODES) & (at_r["n_edges"] == N_EDGES)]
+    cloud = sized[sized["category"] == "Random"]
+    if cloud.empty:
+        raise ValueError(
+            f"No random ({N_NODES}, {N_EDGES}) graphs at r={R_VALUE} in reference_stats. "
+            f"The winners would have nothing to be extreme relative to."
+        )
+    return cloud, at_r
+
+
+def _draw_cloud(ax, cloud):
+    """The gray random-graph background, identical in every figure that shows it."""
+    ax.scatter(
+        cloud["mean_steps"], cloud["prob_fixation"],
+        s=18, color="#cccccc", edgecolor="none", zorder=1,
+        label=f"random ({N_NODES}, {N_EDGES}) graphs, n={len(cloud)}\n"
+              f"({_sims_note(cloud['n_grouped'])} sims each)",
+    )
+
+
+def _draw_organs(ax, at_r, categories):
+    """Star markers for the named real topologies, annotated when not size-matched."""
+    organs = at_r[at_r["category"].isin(categories)]
+    for _, row in organs.iterrows():
+        note = (
+            "" if (row["n_nodes"], row["n_edges"]) == (N_NODES, N_EDGES)
+            else f"  [{int(row['n_nodes'])}, {int(row['n_edges'])}]"
+        )
+        ax.scatter(
+            row["mean_steps"], row["prob_fixation"],
+            s=230, marker="*",
+            facecolor=CATEGORY_COLOR_DICT.get(row["category"], "#000000"),
+            edgecolor="white", linewidth=1.0, zorder=7,
+            label=f"{row['graph_name']}{note}",
+        )
+    return organs
+
+
+def _dedup_legend(ax, **kwargs):
+    """Legend with one entry per label. A sweep draws one series per RUN but names
+    DIRECTIONS, so 36 entries would describe 12 things and overflow the axes."""
+    handles, labels = ax.get_legend_handles_labels()
+    unique = {}
+    for handle, label in zip(handles, labels):
+        unique.setdefault(label, handle)
+    ax.legend(list(unique.values()), list(unique), **kwargs)
+
+
+def plot_ga_trails(
+    run_dirs,
+    reference_stats,
+    every=5,
+    figures_dir=None,
+    figsize=(12, 8),
+    logscale=True,
+    respiratory=("Avian", "Mammalian", "Fish"),
+):
+    """The PATH each search took through the (fixation time, probability) plane.
+
+    ``plot_ga_winners_scatter`` shows where the searches ended. This shows how they got
+    there: one trail per run, each point the mean over that generation's surviving elites,
+    so 36 runs starting from statistically identical random populations fan out from the
+    middle of the random cloud and end at the boundary. The colors are the search
+    directions, so the figure reads as the objective pulling each population outward.
+
+    Averaging over survivors rather than over all candidates is deliberate: the candidate
+    pool at generation N includes that generation's untested mutants, most of which are
+    worse, so its mean lags the population that selection actually kept.
+
+    ``every`` subsamples generations (the first and last are always drawn). At 100
+    generations x 36 runs the full trail is 3600 points, which renders as a hairball; every
+    5th generation keeps the shape and loses only the jitter.
+    """
+    cloud, at_r = _reference_cloud(reference_stats)
+    history = load_ga_history(run_dirs, survivors_only=True)
+    colors = _ga_colors(history)
+
+    fig, ax = plt.subplots(figsize=figsize)
+    _draw_cloud(ax, cloud)
+
+    # Angle order, so overlapping trails stack in a predictable sequence rather than an
+    # alphabetical one, and the legend walks the circle.
+    by_theta = sorted(history.groupby("run"), key=lambda kv: kv[1]["theta"].iloc[0])
+
+    for run, group in by_theta:
+        category = group["category"].iloc[0]
+        color = colors[category]
+        trail = (
+            group.groupby("generation")[["mean_steps", "prob_fixation"]]
+            .mean()
+            .sort_index()
+        )
+        keep = trail.index.isin(trail.index[::every]) | (trail.index == trail.index[-1])
+        trail = trail[keep]
+
+        ax.plot(
+            trail["mean_steps"], trail["prob_fixation"],
+            color=color, linewidth=1.4, alpha=0.75, zorder=4, label=category,
+        )
+        # Where it started and where it ended. The start markers all pile up in the middle
+        # of the cloud by construction (every run begins from random graphs), which is
+        # precisely the point: the fan-out is the search, not the starting condition.
+        ax.plot(*trail.iloc[0][["mean_steps", "prob_fixation"]], marker="o",
+                markersize=4, color=color, alpha=0.9, zorder=5)
+        ax.plot(*trail.iloc[-1][["mean_steps", "prob_fixation"]], marker="D",
+                markersize=8, color=color, markeredgecolor="black",
+                markeredgewidth=1.0, zorder=6)
+
+    organs = _draw_organs(ax, at_r, respiratory)
+
+    drawn = pd.concat([cloud, history, organs])
+    ax.set_xlim(drawn["mean_steps"].min() * 0.85, drawn["mean_steps"].max() * 1.18)
+    span = drawn["prob_fixation"].max() - drawn["prob_fixation"].min()
+    ax.set_ylim(drawn["prob_fixation"].min() - 0.08 * span,
+                drawn["prob_fixation"].max() + 0.08 * span)
+
+    ax.set_xlabel(_scale_steps_axis(ax, which="x", logscale=logscale), fontweight="bold")
+    ax.set_ylabel(_METRIC_LABEL["prob_fixation"], fontweight="bold")
+    n_dir = history["category"].nunique()
+    last = int(history["generation"].max())
+    ax.set_title(
+        "The path each search took\n"
+        f"{n_dir} directions, {history['run'].nunique()} runs, "
+        f"generations 0-{last} every {every}  |  "
+        f"circle = generation 0, diamond = final  |  "
+        f"N={N_NODES}, E={N_EDGES}, r={R_VALUE}",
+        fontsize=13, pad=12,
+    )
+    ax.grid(True, linestyle=":", alpha=0.6)
+    ax.set_axisbelow(True)
+    _dedup_legend(ax, loc="center left", bbox_to_anchor=(1.01, 0.5), fontsize=8,
+                  frameon=False, labelspacing=0.6)
+    fig.tight_layout()
+
+    path = _resolve_figure_path(
+        figures_dir, "plot_ga_trails", n_runs=history["run"].nunique(), every=every
+    )
+    if path:
+        fig.savefig(path, bbox_inches="tight", dpi=150, facecolor="white")
+        print(f"Saved: {path}")
+    return fig
+
+
+def plot_ga_explorer_plotly(
+    run_dirs, reference_stats, trails=True, every=5, height=760, width=1150,
+    logscale=True, respiratory=("Avian", "Mammalian", "Fish"),
+):
+    """Interactive twin of the winners scatter and the trails, in one figure.
+
+    What the static versions cannot do with 36 overlapping series: hover any point for the
+    graph that produced it, and click a legend entry to isolate one direction. With twelve
+    directions x three replicates that is the difference between a figure you present and a
+    figure you can actually interrogate.
+
+    ``trails=True`` adds each run's generation-by-generation path as a line, so one click
+    isolates a direction and shows both where it ended and how it got there. Trails are
+    added first so plotly paints them under the markers; unlike matplotlib there is no
+    zorder, only insertion order.
+
+    plotly is imported inside the function following the precedent below: it is a hard
+    dependency but a slow import, and ``analysis_utils/__init__`` pulls this module in
+    eagerly, so a module-level import would tax every reader-only import too.
+    """
+    import plotly.graph_objects as go
+
+    cloud, at_r = _reference_cloud(reference_stats)
+    history = load_ga_history(run_dirs, survivors_only=True)
+    winners = final_population_stats(run_dirs)
+    colors = _ga_colors(history)
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=cloud["mean_steps"], y=cloud["prob_fixation"], mode="markers",
+        name=f"random ({N_NODES}, {N_EDGES}), n={len(cloud)}",
+        marker=dict(size=5, color="#cccccc"),
+        text=cloud["graph_name"],
+        hovertemplate="%{text}<br>T=%{x:.0f}<br>rho=%{y:.4f}<extra></extra>",
+    ))
+
+    ordered = sorted(history["category"].unique(),
+                     key=lambda c: history.loc[history["category"] == c, "theta"].iloc[0])
+
+    if trails:
+        for category in ordered:
+            block = history[history["category"] == category]
+            for run, group in block.groupby("run"):
+                trail = (group.groupby("generation")[["mean_steps", "prob_fixation"]]
+                         .mean().sort_index())
+                keep = trail.index.isin(trail.index[::every]) | (trail.index == trail.index[-1])
+                trail = trail[keep]
+                fig.add_trace(go.Scatter(
+                    x=trail["mean_steps"], y=trail["prob_fixation"], mode="lines",
+                    name=category, legendgroup=category, showlegend=False,
+                    line=dict(color=colors[category], width=1.2),
+                    opacity=0.55,
+                    customdata=trail.index,
+                    hovertemplate=(f"{run}<br>generation %{{customdata}}"
+                                   "<br>T=%{x:.0f}<br>rho=%{y:.4f}<extra></extra>"),
+                ))
+
+    for category in ordered:
+        group = winners[winners["category"] == category]
+        fig.add_trace(go.Scatter(
+            x=group["mean_steps"], y=group["prob_fixation"], mode="markers",
+            name=category, legendgroup=category,
+            marker=dict(size=9, symbol="diamond", color=colors[category],
+                        line=dict(color="white", width=0.8)),
+            customdata=np.stack([group["graph_name"], group["run"],
+                                 group["weighted"]], axis=-1),
+            hovertemplate=("%{customdata[0]}<br>%{customdata[1]}"
+                           "<br>score=%{customdata[2]:.2f} SD"
+                           "<br>T=%{x:.0f}<br>rho=%{y:.4f}<extra></extra>"),
+        ))
+
+    organs = at_r[at_r["category"].isin(respiratory)]
+    for _, row in organs.iterrows():
+        note = ("" if (row["n_nodes"], row["n_edges"]) == (N_NODES, N_EDGES)
+                else f" [{int(row['n_nodes'])},{int(row['n_edges'])}]")
+        fig.add_trace(go.Scatter(
+            x=[row["mean_steps"]], y=[row["prob_fixation"]], mode="markers",
+            name=f"{row['graph_name']}{note}",
+            marker=dict(size=17, symbol="star",
+                        color=CATEGORY_COLOR_DICT.get(row["category"], "#000000"),
+                        line=dict(color="white", width=1)),
+            hovertemplate=(f"{row['graph_name']}{note}"
+                           "<br>T=%{x:.0f}<br>rho=%{y:.4f}<extra></extra>"),
+        ))
+
+    fig.update_layout(
+        title=(f"GA explorer: {history['category'].nunique()} directions, "
+               f"{history['run'].nunique()} runs"
+               + ("  |  lines = search path, diamonds = final elites" if trails else "")
+               + "<br><sup>click a legend entry to isolate a direction, "
+                 "double-click to isolate it alone</sup>"),
+        xaxis_title="Mean Fixation Time (steps)"
+                    + (", log scale" if logscale else ""),
+        yaxis_title="Fixation Probability",
+        xaxis_type="log" if logscale else "linear",
+        height=height, width=width, hovermode="closest",
+        template="plotly_white",
+    )
+    return fig
+
+
+def plot_population(
+    ga_runs_dir, prefix, theta, replicate=None, n=None, figures_dir=None,
+    per_row=5, size=2.8, with_labels=False,
+):
+    """Draw the final elite population of one direction. The everyday inspection call.
+
+    ``plot_elite_grid`` shows one graph from every run; this shows every graph from one
+    run, which is the other axis of the same question: a direction whose 20 elites are all
+    the same shape has converged, and one whose elites are a mixed bag has not.
+
+    ``theta`` is matched after normalization, so 315 and -45 both find the same runs.
+    ``replicate=None`` draws every replicate of that direction stacked, each labelled;
+    pass an integer for one. ``n`` limits how many elites are drawn per run (default all).
+
+    Raises rather than returning empty when the direction matches nothing, and says which
+    directions DO exist -- a silent empty figure is indistinguishable from a run that found
+    nothing.
+    """
+    from moran_process.pipeline.ga_search import normalize_theta
+
+    ga_runs_dir = Path(ga_runs_dir)
+    wanted = normalize_theta(theta)
+    matched = []
+    for run_dir in sorted(p for p in ga_runs_dir.iterdir()
+                          if p.name.startswith(prefix) and (p / "ga_config.json").exists()):
+        state = load_ga_state(run_dir) or {}
+        if state.get("theta") is None or not np.isclose(state["theta"], wanted):
+            continue
+        if replicate is not None and not run_dir.name.endswith(f"-rep{replicate}"):
+            continue
+        matched.append((run_dir, state))
+
+    if not matched:
+        available = sorted({
+            (load_ga_state(p) or {}).get("theta")
+            for p in ga_runs_dir.iterdir()
+            if p.name.startswith(prefix) and (p / "ga_config.json").exists()
+        } - {None})
+        raise ValueError(
+            f"No run at theta={wanted:g}"
+            + (f" replicate {replicate}" if replicate is not None else "")
+            + f" under prefix {prefix!r}. Directions present: "
+            + ", ".join(f"{t:g}" for t in available)
+        )
+
+    panels = []
+    for run_dir, state in matched:
+        population = load_elite_population(run_dir)[:n]
+        for index, graph in enumerate(population):
+            panels.append((run_dir.name, state, index, graph))
+
+    n_rows = int(np.ceil(len(panels) / per_row))
+    fig, axes = plt.subplots(n_rows, per_row, figsize=(size * per_row, size * n_rows))
+    axes = np.atleast_1d(axes).ravel()
+    color = theta_color(wanted)
+
+    for axis, (run, state, index, graph) in zip(axes, panels):
+        graph.draw(ax=axis, with_labels=with_labels, descriptive=False)
+        tag = run.rsplit("-", 1)[-1] if "-rep" in run else run
+        axis.set_title(f"{tag}  #{index + 1}\n{graph.name}", fontsize=8, color=color)
+        axis.set_xticks([]); axis.set_yticks([])
+    for axis in axes[len(panels):]:
+        axis.axis("off")
+
+    state = matched[0][1]
+    fig.suptitle(
+        f"Final population: {state.get('category', f'theta={wanted:g}')} "
+        f"({state.get('quadrant', '')})  |  "
+        f"{len(matched)} replicate(s), {len(panels)} graphs  |  "
+        f"N={N_NODES}, E={N_EDGES}, r={R_VALUE}",
+        fontweight="bold", fontsize=13, color=color,
+    )
+    fig.tight_layout()
+
+    path = _resolve_figure_path(
+        figures_dir, "plot_population", theta=f"{wanted:03.0f}",
+        rep="all" if replicate is None else replicate,
+    )
+    if path:
+        fig.savefig(path, bbox_inches="tight", dpi=130, facecolor="white")
+        print(f"Saved: {path}")
+    return fig
+
+
+def plot_elite_grid(
+    run_dirs, figures_dir=None, per_row=3, size=3.2, rank=0, with_labels=False
+):
+    """Every run's best topology on one sheet, grouped so replicates sit side by side.
+
+    The 36 individual PNGs answer "what does this one look like"; this answers the question
+    the sweep was designed around -- did independent searches in the SAME direction arrive
+    at the same KIND of graph. Replicates of one direction share a row, so convergence (or
+    its absence) is a horizontal comparison rather than a hunt through a folder.
+
+    ``rank`` picks which elite to draw: 0 is the best, 1 the runner-up, and so on. Drawing
+    rank 1 as well is a cheap check that a direction's answer is a family of graphs rather
+    than one lucky topology.
+    """
+    run_dirs = _ga_io_run_dirs(run_dirs)
+    entries = []
+    for run_dir in run_dirs:
+        state = load_ga_state(run_dir) or {}
+        population = load_elite_population(run_dir)
+        if rank < len(population):
+            entries.append((state.get("theta", np.inf), run_dir.name,
+                            state.get("category", run_dir.name), population[rank]))
+    entries.sort(key=lambda e: (e[0], e[1]))
+
+    n_rows = int(np.ceil(len(entries) / per_row))
+    fig, axes = plt.subplots(n_rows, per_row,
+                             figsize=(size * per_row, size * n_rows))
+    axes = np.atleast_1d(axes).ravel()
+
+    for axis, (theta, run, category, graph) in zip(axes, entries):
+        graph.draw(ax=axis, with_labels=with_labels, descriptive=False)
+        # The replicate tag, not the whole run name: the prefix is identical on all of
+        # them and would take more width than the part that differs.
+        replicate = run.rsplit("-", 1)[-1] if "-rep" in run else ""
+        axis.set_title(f"{category}  {replicate}", fontsize=9,
+                       color=theta_color(theta) if np.isfinite(theta) else "#333333",
+                       fontweight="bold")
+        axis.set_xticks([]); axis.set_yticks([])
+    for axis in axes[len(entries):]:
+        axis.axis("off")
+
+    fig.suptitle(
+        f"Best topology per run ({'winner' if rank == 0 else f'rank {rank + 1}'})  |  "
+        f"{len(entries)} runs, N={N_NODES}, E={N_EDGES}, r={R_VALUE}",
+        fontweight="bold", fontsize=13,
+    )
+    fig.tight_layout()
+
+    path = _resolve_figure_path(
+        figures_dir, "plot_elite_grid", n_runs=len(entries), rank=rank
+    )
+    if path:
+        fig.savefig(path, bbox_inches="tight", dpi=130, facecolor="white")
+        print(f"Saved: {path}")
+    return fig
+
+
+def _run_thetas(run_dirs):
+    """``{run_name: theta_deg}``, read from each run's state.
+
+    From ga_state.json rather than ga_config.json because the state holds theta already
+    normalized to [0, 360), which is the form every consumer here wants. A run with no
+    state yet is simply absent rather than defaulted, so a caller drawing per-direction
+    decoration draws nothing for it instead of drawing it in the wrong direction.
+    """
+    thetas = {}
+    for run_dir in _ga_io_run_dirs(run_dirs):
+        state = load_ga_state(run_dir) or {}
+        if state.get("theta") is not None:
+            thetas[run_dir.name] = float(state["theta"])
+    return thetas
+
+
+def _support_line(w_prob, w_time, prob_fixation, mean_steps, half_length=8.0):
+    """The objective's iso-line through one point, back in (mean_steps, prob) coordinates.
+
+    The objective is linear in the standardized pair u = (rho - rho_c)/SD_PROB,
+    v = log(T/T_c)/SD_LOG_TIME, so its level sets are straight lines there -- and since
+    both coordinates are affine in (prob_fixation, log T), they stay straight on a log time
+    axis too. Drawn through the winner, the line is the *supporting* line of the search: if
+    the run did its job, every other graph in the plot lies on the losing side of it, which
+    is the visual form of "the winner maximizes w . (u, v)".
+
+    ``half_length`` is in standardized-SD units along the line, and is deliberately much
+    larger than the plotted region so the caller can just set the axis limits and let
+    matplotlib clip.
+    """
+    # Imported inside the function: ga_search pulls ProcessLab, joblib and the whole
+    # submission stack behind it, and this module is imported to look at figures.
+    from moran_process.pipeline.ga_search import (
+        RHO_COMPLETE, SD_LOG_TIME_RESIDUAL, SD_PROB_RESIDUAL, T_COMPLETE,
+    )
+
+    u0 = (prob_fixation - RHO_COMPLETE) / SD_PROB_RESIDUAL
+    v0 = np.log(mean_steps / T_COMPLETE) / SD_LOG_TIME_RESIDUAL
+    norm = np.hypot(w_prob, w_time) or 1.0
+    # Tangent to the level set is the normal rotated by 90 degrees.
+    du, dv = -w_time / norm, w_prob / norm
+
+    s = np.array([-half_length, half_length])
+    rho = RHO_COMPLETE + (u0 + du * s) * SD_PROB_RESIDUAL
+    steps = T_COMPLETE * np.exp((v0 + dv * s) * SD_LOG_TIME_RESIDUAL)
+    return steps, rho
+
+
+def plot_ga_winners_scatter(
+    run_dirs,
+    reference_stats,
+    figures_dir=None,
+    figsize=(12, 8),
+    logscale=True,
+    show_support_lines=True,
+    show_hull=False,
+    respiratory=("Avian", "Mammalian", "Fish"),
+):
+    """GA winners in the (fixation time, fixation probability) plane, over the random cloud.
+
+    The 2-D companion to ``plot_ga_winners_in_context``, which draws one metric at a time
+    and so cannot show the thing a weighted run is actually optimizing: a *direction* in
+    the joint plane. ``plot_ml_vs_simulation_scatter`` draws the same plane but requires an
+    ML batch to compare against, which a validation launch does not have.
+
+    What this adds beyond a scatter:
+
+    * ``show_support_lines`` draws each weighted run's objective iso-line through its own
+      best winner. Maximizing a linear objective returns a support point of the achievable
+      set, so a run that worked leaves the entire random cloud on one side of its line.
+      This is the check that winners land where the objective says they should, and it is
+      read off the figure rather than taken on trust.
+    * ``show_hull`` outlines the convex hull of all winners together. With a single pair of
+      opposed directions that is just a segment and is off by default; over a circle of
+      directions it is the boundary those runs were launched to trace.
+    * ``respiratory`` marks the real organ graphs. Only the avian graph is (31, 34); the
+      mammalian and fish graphs are a different size, so their marker is annotated with it
+      rather than being allowed to imply a like-for-like comparison.
+    """
+    cloud, at_r = _reference_cloud(reference_stats)
+
+    from moran_process.pipeline.ga_search import theta_weights
+
+    winners = final_population_stats(run_dirs)
+    thetas = _run_thetas(run_dirs)
+    colors = _ga_colors(winners)
+
+    fig, ax = plt.subplots(figsize=figsize)
+    _draw_cloud(ax, cloud)
+
+    # Walked in angle order so the legend reads around the circle rather than around the
+    # alphabet, which is what makes a K-direction sweep legible as a sweep.
+    by_theta = sorted(
+        winners.groupby("run"), key=lambda item: thetas.get(item[0], float("inf"))
+    )
+    for run, group in by_theta:
+        category = group["category"].iloc[0]
+        color = colors[category]
+        best = group.loc[group["rank"].idxmin()]
+        ax.scatter(
+            group["mean_steps"], group["prob_fixation"],
+            s=55, marker="D", facecolor=color, edgecolor="white", linewidth=0.6,
+            alpha=0.85, zorder=5, label=f"{category}  ({len(group)} elites)",
+        )
+        ax.scatter(
+            best["mean_steps"], best["prob_fixation"],
+            s=170, marker="D", facecolor=color, edgecolor="black", linewidth=1.4,
+            zorder=6,
+        )
+        if show_support_lines and run in thetas:
+            steps, rho = _support_line(
+                *theta_weights(thetas[run]),
+                best["prob_fixation"], best["mean_steps"],
+            )
+            ax.plot(steps, rho, color=color, linewidth=1.2, linestyle="--", alpha=0.8,
+                    zorder=3)
+
+    if show_hull and len(winners) >= 3:
+        from scipy.spatial import ConvexHull
+
+        # Hulled in (log T, rho): that is the plane the objective is linear in, so this
+        # outline is exactly the set of points some weight vector could have selected.
+        points = np.column_stack([
+            np.log10(winners["mean_steps"].to_numpy(dtype=float)),
+            winners["prob_fixation"].to_numpy(dtype=float),
+        ])
+        hull = ConvexHull(points)
+        loop = np.append(hull.vertices, hull.vertices[0])
+        ax.plot(
+            10 ** points[loop, 0], points[loop, 1],
+            color="#333333", linewidth=1.3, linestyle="-", alpha=0.55, zorder=4,
+            label="convex hull of all winners",
+        )
+
+    organs = _draw_organs(ax, at_r, respiratory)
+
+    # Limits from every point actually drawn -- the organ graphs included, or the avian
+    # star sits on the axis line. Set explicitly rather than autoscaled because the support
+    # lines run far beyond the region on purpose and would otherwise drag the axes with them.
+    drawn = pd.concat([cloud, winners, organs])
+    ax.set_xlim(drawn["mean_steps"].min() * 0.85, drawn["mean_steps"].max() * 1.18)
+    span = drawn["prob_fixation"].max() - drawn["prob_fixation"].min()
+    ax.set_ylim(
+        drawn["prob_fixation"].min() - 0.12 * span,
+        drawn["prob_fixation"].max() + 0.12 * span,
+    )
+
+    # The residual origin, drawn only if it is inside the region. At (31, 34) the complete
+    # graph is ~4x faster than anything plotted here, so on this figure the crosshair is
+    # usually off-scale entirely and an invisible annotation is worse than none: it reads
+    # as though the origin were somewhere in view.
+    if ax.get_xlim()[0] <= T_COMPLETE_PLOT <= ax.get_xlim()[1]:
+        ax.axvline(T_COMPLETE_PLOT, color="#7f7f7f", linestyle=":", linewidth=1.2, zorder=2)
+    if ax.get_ylim()[0] <= RHO_COMPLETE_PLOT <= ax.get_ylim()[1]:
+        ax.axhline(RHO_COMPLETE_PLOT, color="#7f7f7f", linestyle=":", linewidth=1.2, zorder=2)
+
+    ax.set_xlabel(_scale_steps_axis(ax, which="x", logscale=logscale), fontweight="bold")
+    ax.set_ylabel(_METRIC_LABEL["prob_fixation"], fontweight="bold")
+    # Counted, not divided. runs/directions is 31/12 here, and integer division would
+    # print "2 replicates" for a sweep that has 3 of most directions and 2 of a few.
+    n_directions = winners["category"].nunique()
+    per = winners.groupby("category")["run"].nunique()
+    reps = f"{per.min()}" if per.min() == per.max() else f"{per.min()}-{per.max()}"
+    ax.set_title(
+        "Where the GA winners sit in the joint plane\n"
+        f"{n_directions} search directions, {reps} replicates each "
+        f"({winners['run'].nunique()} runs)  |  "
+        f"N={N_NODES}, E={N_EDGES}, r={R_VALUE}  |  "
+        f"{_sims_note(winners['n_grouped'])} sims/graph"
+        + ("  |  dashed = objective iso-line through each best"
+           if show_support_lines and thetas else ""),
+        fontsize=13, pad=12,
+    )
+    ax.grid(True, linestyle=":", alpha=0.6)
+    ax.set_axisbelow(True)
+    _dedup_legend(ax, loc="center left", bbox_to_anchor=(1.01, 0.5), fontsize=8,
+                  frameon=False, labelspacing=0.6)
+    fig.tight_layout()
+
+    path = _resolve_figure_path(
+        figures_dir, "plot_ga_winners_scatter", n_runs=winners["run"].nunique()
+    )
     if path:
         fig.savefig(path, bbox_inches="tight", dpi=150, facecolor="white")
         print(f"Saved: {path}")

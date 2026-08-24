@@ -17,6 +17,7 @@ from .constants import HASH_DTYPES
 
 __all__ = [
     "load_ga_history",
+    "load_ga_config",
     "load_ga_state",
     "ga_progress",
     "load_ga_runs",
@@ -45,6 +46,25 @@ def load_ga_state(run_dir):
     return json.loads(path.read_text())
 
 
+def load_ga_config(run_dir):
+    """The run's launch arguments as written at submit time (``ga_config.json``).
+
+    Separate from ``load_ga_state`` because the two answer different questions: the state
+    is rewritten every generation and says where the run *is*, the config is written once
+    and says what it was *asked* to do. The weights of a ``--metric weighted`` run live
+    only here, and a figure that has to draw the objective (an iso-line, a search
+    direction) needs them; ``ga_state.json`` records the resulting category name but not
+    the numbers behind it.
+
+    Returns None if the file is absent, which for a run directory that exists at all means
+    it was written by a pre-config version rather than that anything went wrong.
+    """
+    path = Path(run_dir) / "ga_config.json"
+    if not path.exists():
+        return None
+    return json.loads(path.read_text())
+
+
 def load_ga_history(run_dirs, survivors_only=False):
     """Per-(generation, candidate) history for one or more runs, with a ``run`` column.
 
@@ -66,21 +86,16 @@ def load_ga_history(run_dirs, survivors_only=False):
             )
         frame = pd.read_csv(path, dtype=HASH_DTYPES)
         frame["run"] = run_dir.name
-        state = load_ga_state(run_dir)
-        frame["metric"] = state["metric"] if state else None
-        frame["objective"] = state["objective"] if state else None
-        # Attached here, once, rather than re-derived by each figure as
-        # objective + " " + metric. That derivation is right for a single-metric run and
-        # wrong for a weighted one, where it yields "maximize weighted" for every corner
-        # alike -- so two runs chasing opposite corners would share a color and a legend
-        # entry, and the figure contrasting them would show them as the same thing.
-        # ga_search records the real category in the state; the fallback covers runs
-        # written before it did.
-        frame["category"] = (state or {}).get("category") or (
-            f"{frame['objective'].iloc[0]} {frame['metric'].iloc[0]}"
-            if state
-            else None
-        )
+        state = load_ga_state(run_dir) or {}
+        # The search direction, carried on every row so a figure can group, color or sort
+        # by it without reopening each run's state file. `category` ("theta=315") is the
+        # label; `theta` is the number, which is what a cyclic colormap and any angular
+        # sort actually need.
+        frame["theta"] = state.get("theta")
+        frame["category"] = state.get("category")
+        frame["quadrant"] = state.get("quadrant")
+        frame["weight_prob"] = state.get("weight_prob")
+        frame["weight_time"] = state.get("weight_time")
         frames.append(frame)
 
     history = pd.concat(frames, ignore_index=True)
@@ -243,7 +258,7 @@ def final_elite_properties(run_dirs):
     these columns.
 
     A ``replicate`` column is parsed off the ``-repN`` directory suffix that
-    ``ga_search.submit_all_runs`` writes, and is None for a single-replicate run.
+    ``ga_search.submit_theta_runs`` writes, and is None for a single-replicate run.
     """
     elites = final_population_stats(run_dirs)
     by_run = {d.name: d for d in _run_dirs(run_dirs)}
@@ -271,6 +286,6 @@ def final_elite_properties(run_dirs):
     merged = pd.concat(frames, ignore_index=True)
     suffix = merged["run"].str.extract(r"-rep(\d+)$")[0]
     merged["replicate"] = pd.to_numeric(suffix, errors="coerce").astype("Int64")
-    # Already carried by load_ga_history, which reads it from the run's state; the
-    # objective+metric form would flatten every weighted run to "maximize weighted".
+    # 'category' and 'theta' are already carried by load_ga_history, which reads them
+    # from the run's state rather than parsing them back out of the directory name.
     return merged
