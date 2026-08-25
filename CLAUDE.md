@@ -31,7 +31,8 @@ The simulation pipeline has three layers:
 
 **1. Graph Layer: `core/population_graph.py`**
 - `PopulationGraph` wraps a NetworkX graph and computes a Weisfeiler-Lehman hash (`wl_hash`) for deduplication. Construction has NO database side effect.
-- Factory classmethods: `complete_graph`, `cycle_graph`, `mammalian_lung_graph`, `avian_graph`, `fish_graph`, `random_connected_graph`.
+- Factory classmethods: `complete_graph`, `cycle_graph`, `line_graph`, `star_graph`, `mammalian_lung_graph`, `avian_graph`, `fish_graph`, `random_connected_graph`.
+- `cycle_graph`, `line_graph`, `star_graph`, `mammalian_lung_graph` and `avian_graph` take `directed=True`, which names the graph `directed_*`. Offspring then flow along edge direction only (`to_simulation_struct` uses successors), and both engines treat a reproducer with out-degree 0 as a wasted step rather than an error. Single-source topologies (directed star/line/tree) abolish selection: a mutant fixates iff it is born at the source, so rho = 1/N at every r. The directed cycle is isothermal and is the natural control. Directed variants that are weakly but not strongly connected have undefined distance metrics, recorded as None (see the `distances_defined` guard).
 - Registration is per batch: `PopulationGraph.batch_register(zoo, batch_dir)` writes `<batch_dir>/graph_props.csv` (dedup by WL hash). CLI: `python -m moran_process.core.population_graph --register --batch-dir ... --graph-zoo-path ...`.
 - `save()`/`load()` use pickle for HPC serialization.
 - `core/graph_zoo.py` defines `GraphZoo`, an ordered collection of graphs (the pipeline often serializes a plain `list[PopulationGraph]` via joblib instead).
@@ -55,6 +56,7 @@ The simulation pipeline has three layers:
 - Reads `LSB_JOBINDEX` and processes the manifest rows whose `worker_id` equals that index.
 - Writes per-job results to `<batch_dir>/tmp/results/raw_results_job_<idx>.parquet` (one row-group per task).
 - `--engine {cpp,python}` (default `cpp`) selects the simulation engine via `_resolve_engine()`.
+- `--max-steps` (default 1e6, the engine default) caps each run and is recorded in `batch_info.json`. A run that hits the cap is written as `(fixation=False, steps=max_steps)`, which is **indistinguishable from an extinction**: it depresses `prob_fixation`, and since `mean_steps` is conditional on fixation it drops the longest runs out of the mean entirely. So the worker also writes a `censored` column, exact rather than heuristic because both engines break out of the loop before incrementing `steps`. `build_graph_statistics` rolls it up as `n_censored`; the column is **absent**, not zero, for shards predating it, so a batch never claims it found no censoring when it was never measured. **`n_censored > 0` means both headline statistics are biased low at those graphs**: raise `--max-steps` and re-run rather than correcting after the fact. Raise it for large N or strongly suppressive graphs, where absorption takes longer than 1e6 steps.
 - For local debugging: pass `--job-index 1` explicitly.
 
 **4. Post-Simulation Layer: four independent jobs, chained by LSF dependencies**
@@ -85,8 +87,8 @@ Two batch kinds are classified and reported, so "works on any batch" includes sa
 
 **5. Genetic Search Layer: `pipeline/ga_search.py`**
 Evolves topologies whose fitness is **measured by simulation**, not predicted by a regressor
-(the ML-predicted version is `notebooks/extreme_graphs.ipynb`, kept for comparison). Full
-rationale and the measurements behind every constant: `GA_SIMULATION_PLAN.md`.
+(the ML-predicted version is `notebooks/extreme_graphs.ipynb`, kept for comparison). Every
+constant in `ga_search.py` carries the batch it was measured on in a comment beside it.
 
 - **A run is one angle.** Fitness is `w_prob*(rho-rho_c)/SD_PROB + w_time*log(T/T_c)/SD_LOG_TIME`
   with `(w_prob, w_time) = (cos theta, sin theta)`, unit length, so the score is the projection
@@ -106,8 +108,11 @@ rationale and the measurements behind every constant: `GA_SIMULATION_PLAN.md`.
     both weighted runs of such a launch came out labelled with the same corner. Its four
     single-metric runs are the axis-aligned thetas, so nothing was lost. Run directories from
     before the change do not load.
+- A run lives at `simulation_data/ga_runs/<prefix>-theta<NNN>/rep<K>/` (`run_dir_for`),
+  nested so every replicate of one direction is a single glob away; `run_label` flattens
+  that back to `<prefix>-theta<NNN>-rep<K>` for job names and the `run` column.
 - Each generation is its own **standard batch directory** under
-  `simulation_data/ga_runs/<run>/generations/gen_NNN/`, so every existing reader works on it
+  `<run>/generations/gen_NNN/`, so every existing reader works on it
   unchanged. `submit_jobs(post_batch="none")`: verify, the violin cache and job speed serve
   figures on large one-off batches and are pure latency here, and **the driver runs the
   rollup itself** rather than chaining an aggregate job. Measured, a GA generation's
@@ -147,7 +152,7 @@ rationale and the measurements behind every constant: `GA_SIMULATION_PLAN.md`.
   the directions vanish against the page or the gray random cloud.
 - Readers: `analysis_utils/ga_io.py` (history, state, `ga_progress`), figures:
   `analysis_utils/ga_plots.py`. `plot_ga_winners_scatter` puts the winners in the joint
-  (time, probability) plane over the random cloud and draws each run's objective iso-line
+  (probability, time) plane over the random cloud and draws each run's objective iso-line
   through its own best; a run that worked leaves the whole cloud on the losing side, which is
   the support-point property made visible. Notebook: `notebooks/ga_simulation.ipynb`
   (launch + read only; phase-1 scope, no ML comparison or replicate section).
