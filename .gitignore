@@ -20,3 +20,5 @@ images/
 # generated takeover GIFs / figures from notebooks
 notebooks/figures/
 /figures/
+src/moran_process/numeric/target/
+src/moran_process/numeric/numeric.so
