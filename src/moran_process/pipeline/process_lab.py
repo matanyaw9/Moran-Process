@@ -71,6 +71,7 @@ class ProcessLab:
         print_time=True,
         output_path=None,
         engine="cpp",
+        max_steps=1_000_000,
     ):
         """
         Run comparative study across multiple graphs and selection coefficients.
@@ -109,7 +110,11 @@ class ProcessLab:
 
             for r in r_values:
                 for _ in range(n_repeats):
-                    sim = MoranProcess(graph_core=graph_core, selection_coefficient=r)
+                    sim = MoranProcess(
+                        graph_core=graph_core,
+                        selection_coefficient=r,
+                        max_steps=max_steps,
+                    )
                     sim.initialize_random_mutant()
                     raw_result = sim.run()
 
@@ -119,6 +124,9 @@ class ProcessLab:
                         "fixation": raw_result["fixation"],
                         "steps": raw_result["steps"],
                         "duration": raw_result["duration"],
+                        # Exact: both engines break before incrementing `steps`,
+                        # so steps == max_steps iff the cap stopped the run.
+                        "censored": raw_result["steps"] >= max_steps,
                     }
                     all_results.append(record)
                     if print_time:
@@ -190,6 +198,7 @@ class ProcessLab:
         notes="",
         batch_seed=None,
         engine="cpp",
+        max_steps=1_000_000,
         zoo_config=None,
         post_batch="all",
     ):
@@ -323,6 +332,8 @@ class ProcessLab:
             str(tmp_dir),
             "--engine",
             str(engine),
+            "--max-steps",
+            str(max_steps),
         ]
         cmd = cmd_job + cmd_process
         bsub_command = " ".join(cmd)
@@ -353,6 +364,7 @@ class ProcessLab:
             total_simulations=n_graphs * len(r_values) * n_repeats,
             batch_seed=batch_seed,
             engine=engine,
+            max_steps=max_steps,
             n_graphs=n_graphs,
             graph_types=graph_types,
             node_sizes=node_sizes,

@@ -267,6 +267,13 @@ GROUP_KEYS = ["wl_hash", "r"]
 # is what makes the map-reduce exact (see _aggregate_chunked).
 _PARTIAL_COLS = ["_fix_sum", "_n_total", "_steps_sum", "_steps_n", "_steps_sq_sum"]
 
+# Counted only when the shards carry it. worker_lsf writes a 'censored' column (True when
+# max_steps stopped the run rather than absorption); shards written before that change
+# have no such column, and there is no way to recover the ceiling they ran under from the
+# rows alone. Absent is therefore reported as an ABSENT n_censored column rather than as
+# zero: a batch that was never measured for censoring must not claim it found none.
+_CENSORED_PARTIAL = "_censored_sum"
+
 
 def _expand_shards(results_source):
     """Return the list of files a results source refers to (glob -> sorted file list)."""
@@ -319,6 +326,12 @@ def _aggregate_chunked(files, progress_every=100):
     """
     import polars as pl
 
+    # One decision for the whole batch: every shard in it was written by the same worker
+    # version, so the first shard's schema settles it without opening the other 999.
+    has_censored = bool(files) and "censored" in scan_results(
+        files[0]
+    ).collect_schema().names()
+
     partials = []
     for i, f in enumerate(files):
         if i > 0 and i % progress_every == 0:
@@ -337,15 +350,21 @@ def _aggregate_chunked(files, progress_every=100):
                     .sum()
                     .alias("_steps_sq_sum"),
                 ]
+                + (
+                    [pl.col("censored").sum().cast(pl.Int64).alias(_CENSORED_PARTIAL)]
+                    if has_censored
+                    else []
+                )
             )
             .collect()
         )
 
     # ~73 rows per shard, so the reduce input is tiny (~73k rows for 1000 shards).
+    partial_cols = _PARTIAL_COLS + ([_CENSORED_PARTIAL] if has_censored else [])
     combined = (
         pl.concat(partials)
         .group_by(GROUP_KEYS)
-        .agg([pl.col(c).sum().alias(c) for c in _PARTIAL_COLS])
+        .agg([pl.col(c).sum().alias(c) for c in partial_cols])
     )
 
     n, s, sq = pl.col("_steps_n"), pl.col("_steps_sum"), pl.col("_steps_sq_sum")
@@ -360,8 +379,13 @@ def _aggregate_chunked(files, progress_every=100):
                 pl.when(n > 1).then(variance.sqrt()).otherwise(None).alias("std_steps"),
                 pl.col("_n_total").alias("n_grouped"),
             ]
+            + (
+                [pl.col(_CENSORED_PARTIAL).alias("n_censored")]
+                if has_censored
+                else []
+            )
         )
-        .drop(_PARTIAL_COLS)
+        .drop(partial_cols)
         .to_pandas()
     )
 
@@ -392,6 +416,13 @@ def build_graph_statistics(
     - Moments (always) -- prob_fixation, mean_steps, std_steps, n_grouped. Each decomposes
       into additive per-shard partials, so these are computed shard-by-shard and combined
       (see _aggregate_chunked). Peak memory is one shard, whatever the batch size.
+    - n_censored (when the shards carry a 'censored' column) -- how many runs were stopped
+      by max_steps instead of absorbing. It matters because such a run is written as
+      (fixation=False, steps=max_steps), which is indistinguishable from an extinction:
+      it depresses prob_fixation and, since mean_steps is conditional on fixation, drops
+      the longest runs out of the mean entirely. So a batch with n_censored > 0 has BOTH
+      headline statistics biased low, at exactly the slowest-absorbing graphs. The column
+      is omitted rather than zeroed for shards predating it -- see _CENSORED_PARTIAL.
     - Order statistics (only if ``include_order_stats``) -- median_steps, q25_steps,
       q75_steps, iqr_steps. An exact quantile needs every value of a group held at once, so
       it does NOT decompose and forces a single group_by over the whole batch. Polars does
@@ -423,6 +454,7 @@ def build_graph_statistics(
         # therefore does the whole batch in one group_by, which polars does not bound
         # (see _aggregate_chunked) -- fine for small batches, fatal for large ones.
         print(f"Aggregating {len(files)} file(s) in ONE pass (order stats requested)...")
+        has_censored = "censored" in scan_results(results_path).collect_schema().names()
         agg_results_df = (
             scan_results(results_path)
             .with_columns(_steps_success_expr())
@@ -441,6 +473,11 @@ def build_graph_statistics(
                         - pl.col("steps_success").quantile(0.25)
                     ).alias("iqr_steps"),
                 ]
+                + (
+                    [pl.col("censored").sum().cast(pl.Int64).alias("n_censored")]
+                    if has_censored
+                    else []
+                )
             )
             .collect(engine="streaming")
             .to_pandas()
