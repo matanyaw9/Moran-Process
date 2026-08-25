@@ -24,6 +24,7 @@ now optimizes a combination of both metrics and there is no un-optimized one to 
 """
 
 import os
+import re
 from pathlib import Path
 
 import numpy as np
@@ -39,7 +40,6 @@ from .colors import (
 )
 from .ga_io import (
     _run_dirs as _ga_io_run_dirs,
-    final_elite_properties,
     final_population_stats,
     load_elite_population,
     load_ga_history,
@@ -51,18 +51,13 @@ from .theory import analytic_moran_fc_fixation_prob, analytic_moran_fc_fixation_
 __all__ = [
     "plot_ga_history",
     "plot_ga_runs_comparison",
-    "plot_ga_winners_in_context",
     "plot_ga_winners_scatter",
     "plot_ga_trails",
     "plot_ga_explorer_plotly",
     "plot_elite_grid",
     "plot_population",
-    "plot_replicate_agreement",
     "plot_selection_efficiency",
     "plot_selection_response",
-    "plot_ml_vs_simulation",
-    "plot_ml_vs_simulation_scatter",
-    "plot_ml_vs_simulation_scatter_plotly",
 ]
 
 # The search space is fixed at avian_r4_l7's size (see pipeline.ga_search), so the
@@ -175,6 +170,23 @@ def _selection_family(source, category):
         if family in category:
             return family
     return "other"
+
+
+_THETA_CATEGORY_RE = re.compile(r"^theta=(-?\d+)$")
+
+
+def _theta_label(category):
+    """Display form of a theta category: ``theta=015`` -> ``θ=15°``.
+
+    Only touches how a category is drawn on a figure. Every other category (a respiratory
+    graph, ``Random``, an ML model name) is returned unchanged, and the underlying string
+    itself -- used for grouping, coloring, and run directory names -- never gains the
+    degree sign, so this is purely cosmetic at render time.
+    """
+    match = _THETA_CATEGORY_RE.match(category)
+    if not match:
+        return category
+    return f"θ={int(match.group(1))}°"
 
 
 def _survivor_trajectory(history):
@@ -304,7 +316,7 @@ def plot_ga_history(
     ax_time.grid(True, linestyle=":", alpha=0.7)
     ax_time.set_title(
         "Evolution of Topologies (measured)\n"
-        + f"{category} ({state.get('quadrant', '')})  |  "
+        + f"{_theta_label(category)} ({state.get('quadrant', '')})  |  "
         + f"w=({state.get('weight_prob', float('nan')):+.2f}, "
         + f"{state.get('weight_time', float('nan')):+.2f})  |  "
         + f"N={N_NODES}, r={R_VALUE}, {state.get('generations', '?')} generations  |  "
@@ -350,7 +362,7 @@ def plot_ga_runs_comparison(run_dirs, figures_dir=None, figsize=(13, 6), logscal
                 trajectory["generation"], trajectory[f"{metric}_mean"],
                 color=colors.get(category, "#2ca02c"),
                 linewidth=2.6,
-                label=category,
+                label=_theta_label(category),
             )
         baseline = t_complete if metric == "mean_steps" else rho_complete
         axis.axhline(baseline, color="#7f7f7f", linestyle=":", linewidth=1.2)
@@ -385,128 +397,6 @@ def plot_ga_runs_comparison(run_dirs, figures_dir=None, figsize=(13, 6), logscal
     fig.tight_layout()
 
     path = _resolve_figure_path(figures_dir, "plot_ga_runs_comparison", n_runs=len(set(history["run"])))
-    if path:
-        fig.savefig(path, bbox_inches="tight", dpi=150, facecolor="white")
-        print(f"Saved: {path}")
-    return fig
-
-
-REPLICATE_PROPERTIES = [
-    "degree_std",
-    "max_degree",
-    "average_clustering",
-    "degree_assortativity",
-    "average_shortest_path_length",
-    "diameter",
-]
-
-
-def plot_replicate_agreement(
-    run_dirs, properties=None, figures_dir=None, figsize=(14, 5.5)
-):
-    """Do independent repeats of the same search arrive at the same kind of graph?
-
-    Left: the fitness each replicate reached, one marker per elite. Right: the structural
-    fingerprint of those elites, z-scored per property across every graph shown, one line
-    per (objective, replicate). Replicates that converged on the same kind of topology
-    trace the same line; replicates that found different solutions to the same problem
-    trace different ones.
-
-    Deliberately not plotted: overlap of ``wl_hash``. It is zero between independent runs
-    and will stay zero, because ~20k visited topologies out of an astronomical space
-    guarantees it. Reporting it would only ever say "the runs disagree completely", which
-    is an artefact of the space's size and not a finding.
-
-    z-scoring is what makes six properties on incompatible scales (a clustering
-    coefficient near 0.1, a diameter near 25) share one axis. It is computed across the
-    graphs in this figure, so the reference is "unusual compared to the other winners",
-    not "unusual compared to random graphs".
-    """
-    properties = list(properties or REPLICATE_PROPERTIES)
-    elites = final_elite_properties(run_dirs)
-    missing = [p for p in properties if p not in elites.columns]
-    if missing:
-        raise KeyError(
-            f"graph_props.csv has no column(s) {missing}. Available structural columns: "
-            f"{sorted(c for c in elites.columns if c not in ('run', 'category'))}"
-        )
-    colors = _ga_colors(elites)
-
-    # A single-replicate launch has no -repN suffix, so label those by run instead of
-    # dropping them: the figure is still the right way to compare several runs side by
-    # side. The shared launch prefix ("2026_08_19-phase1-") is stripped first, since it is
-    # identical on every tick and would otherwise take more width than the labels.
-    # Truncated at the last separator, because commonprefix works per character and would
-    # otherwise eat the shared digits of "theta045"/"theta135" and leave a ragged stub.
-    prefix = os.path.commonprefix(sorted(elites["run"].unique()))
-    prefix = prefix[: prefix.rfind("-") + 1]
-    elites["label"] = np.where(
-        elites["replicate"].isna(),
-        elites["run"].str.slice(len(prefix)).replace("", np.nan).fillna(elites["run"]),
-        elites["category"] + " rep" + elites["replicate"].astype(str),
-    )
-
-    fig, (ax_fitness, ax_shape) = plt.subplots(1, 2, figsize=figsize)
-
-    for index, (label, group) in enumerate(elites.groupby("label")):
-        category = group["category"].iloc[0]
-        color = colors[category]
-        offsets = np.linspace(-0.18, 0.18, len(group)) if len(group) > 1 else [0.0]
-        ax_fitness.plot(
-            index + np.asarray(offsets), group["weighted"] / group["weighted"].mean(),
-            linestyle="none", marker="o", markersize=5,
-            markerfacecolor=color, markeredgecolor=color, alpha=0.75,
-        )
-
-    # Fitness is shown relative to each group's own mean. Every run now scores in the same
-    # unit (random-graph SDs along its own direction), but those scores still differ
-    # several-fold between directions, since some directions are far more reachable than
-    # others. Within a direction the replicates then sit on a common scale, and agreement
-    # is "do the clouds line up at 1.0".
-    ax_fitness.axhline(1.0, color="#7f7f7f", linestyle=":", linewidth=1.2)
-    ax_fitness.set_xticks(range(elites["label"].nunique()))
-    ax_fitness.set_xticklabels(sorted(elites["label"].unique()), rotation=30, ha="right")
-    ax_fitness.set_ylabel("Fitness / group mean", fontweight="bold")
-    ax_fitness.set_title("Did the replicates reach the same fitness?")
-
-    z_scored = elites[properties].apply(
-        lambda column: (column - column.mean()) / (column.std() or 1.0)
-    )
-    z_scored["label"] = elites["label"]
-    z_scored["category"] = elites["category"]
-    x = np.arange(len(properties))
-    for label, group in z_scored.groupby("label"):
-        ax_shape.plot(
-            x, group[properties].mean().to_numpy(),
-            color=colors[group["category"].iloc[0]],
-            linewidth=2.0, marker="o", markersize=5, alpha=0.85, label=label,
-        )
-    ax_shape.axhline(0.0, color="#7f7f7f", linestyle=":", linewidth=1.2)
-    ax_shape.set_xticks(x)
-    ax_shape.set_xticklabels(
-        [p.replace("_", " ") for p in properties], rotation=30, ha="right"
-    )
-    ax_shape.set_ylabel("z-score across the graphs shown", fontweight="bold")
-    ax_shape.set_title("Did they arrive at the same kind of graph?")
-
-    for axis in (ax_fitness, ax_shape):
-        axis.grid(True, linestyle=":", alpha=0.7)
-
-    handles, labels = ax_shape.get_legend_handles_labels()
-    fig.legend(
-        handles, labels, loc="lower center", ncol=4,
-        bbox_to_anchor=(0.5, -0.20), fancybox=True,
-    )
-    fig.suptitle(
-        "Replicate agreement: independent searches, same objective\n"
-        f"{elites['run'].nunique()} runs  |  N={N_NODES}, E={N_EDGES}, r={R_VALUE}",
-        fontweight="bold",
-    )
-    fig.tight_layout()
-
-    path = _resolve_figure_path(
-        figures_dir, "plot_replicate_agreement", n_runs=elites["run"].nunique()
-    )
     if path:
         fig.savefig(path, bbox_inches="tight", dpi=150, facecolor="white")
         print(f"Saved: {path}")
@@ -584,7 +474,7 @@ def plot_selection_efficiency(run_dirs, figures_dir=None, figsize=(13, 5.5)):
         color = colors[category]
         ax_rho.plot(
             group["generation"], group["rho"],
-            color=color, linewidth=2.0, label=category,
+            color=color, linewidth=2.0, label=_theta_label(category),
         )
         first = group.iloc[0]
         ax_parts.plot(
@@ -733,9 +623,10 @@ def plot_selection_response(
         else:
             for axis, column in ((ax_delta, "delta_smooth"), (ax_new, "n_new")):
                 mean = group.groupby("generation")[column].mean()
-                axis.plot(mean.index, mean, color=color, linewidth=1.8, label=category)
+                axis.plot(mean.index, mean, color=color, linewidth=1.8,
+                          label=_theta_label(category))
         if show_runs:
-            ax_delta.plot([], [], color=color, linewidth=1.8, label=category)
+            ax_delta.plot([], [], color=color, linewidth=1.8, label=_theta_label(category))
 
     ax_delta.axhline(0, color="#333333", linestyle="-", linewidth=1.0, zorder=1)
     ax_delta.set_ylabel("Gain per generation (random-graph SDs)", fontweight="bold")
@@ -779,85 +670,6 @@ def plot_selection_response(
     return fig
 
 
-def plot_ga_winners_in_context(
-    run_dirs, reference_stats, metric="mean_steps", figures_dir=None, figsize=(11, 6),
-    logscale=True,
-):
-    """The GA winners against the distribution of random graphs, with avian marked.
-
-    This is the figure the whole experiment exists to produce. ``reference_stats`` is a
-    graph_statistics frame from an ordinary batch (e.g. the respiratory-vs-random batch),
-    filtered here to the same (N, E, r) the search ran at so the comparison is
-    like-for-like.
-    """
-    reference = reference_stats[
-        (reference_stats["n_nodes"] == N_NODES)
-        & (reference_stats["n_edges"] == N_EDGES)
-        & (np.isclose(reference_stats["r"], R_VALUE))
-    ]
-    winners = load_ga_history(run_dirs, survivors_only=True)
-    winners = winners[winners["generation"] == winners.groupby("run")["generation"].transform("max")]
-
-    # A log axis has to change the binning too, not just the scale: 45 linearly spaced bins
-    # rendered on a log axis get visually narrower to the right, so equal-count bars look
-    # like a falling density that is not in the data.
-    use_log = logscale and metric == "mean_steps"
-    values = reference[metric].to_numpy(dtype=float)
-    bins = (
-        np.logspace(np.log10(values.min()), np.log10(values.max()), 46)
-        if use_log and len(values) and values.min() > 0
-        else 45
-    )
-
-    fig, ax = plt.subplots(figsize=figsize)
-    ax.hist(
-        reference[metric], bins=bins, color="#c8c8c8", edgecolor="white",
-        label=f"random ({N_NODES}, {N_EDGES}) graphs, n={len(reference)} "
-              f"({_sims_note(reference['n_grouped'])} sims each)",
-    )
-
-    for run, group in winners.groupby("run"):
-        category = group["category"].iloc[0]
-        for value in group[metric]:
-            ax.axvline(
-                value, color=CATEGORY_COLOR_DICT.get(category, "#2ca02c"),
-                linewidth=1.4, alpha=0.75,
-            )
-        ax.plot([], [], color=CATEGORY_COLOR_DICT.get(category, "#2ca02c"),
-                linewidth=2.5, label=f"GA winners: {category}")
-
-    avian = reference[reference["graph_name"].astype(str).str.startswith("avian")]
-    if not avian.empty:
-        ax.axvline(
-            avian[metric].iloc[0], color=CATEGORY_COLOR_DICT["Avian"],
-            linewidth=3.0, linestyle="--", label="avian_r4_l7",
-        )
-
-    label = (
-        _scale_steps_axis(ax, which="x", logscale=logscale)
-        if metric == "mean_steps"
-        else _METRIC_LABEL[metric]
-    )
-    ax.set_xlabel(label, fontweight="bold")
-    ax.set_ylabel("Number of random graphs", fontweight="bold")
-    ax.set_title(
-        f"Where the GA winners and the avian lung sit among random "
-        f"({N_NODES}, {N_EDGES}) graphs  |  r={R_VALUE}\n"
-        f"{winners['run'].nunique()} GA runs, {len(winners)} winners, "
-        f"{_sims_note(winners['n_grouped'])} simulations per graph",
-        fontsize=13,
-    )
-    ax.legend(fontsize=9)
-    ax.grid(True, linestyle=":", alpha=0.5, axis="y")
-    fig.tight_layout()
-
-    path = _resolve_figure_path(figures_dir, "plot_ga_winners_in_context", metric=metric)
-    if path:
-        fig.savefig(path, bbox_inches="tight", dpi=150, facecolor="white")
-        print(f"Saved: {path}")
-    return fig
-
-
 def _reference_cloud(reference_stats):
     """The size-matched random graphs, and the respiratory graphs, at the GA's r.
 
@@ -880,7 +692,7 @@ def _reference_cloud(reference_stats):
 def _draw_cloud(ax, cloud):
     """The gray random-graph background, identical in every figure that shows it."""
     ax.scatter(
-        cloud["mean_steps"], cloud["prob_fixation"],
+        cloud["prob_fixation"], cloud["mean_steps"],
         s=18, color="#cccccc", edgecolor="none", zorder=1,
         label=f"random ({N_NODES}, {N_EDGES}) graphs, n={len(cloud)}\n"
               f"({_sims_note(cloud['n_grouped'])} sims each)",
@@ -896,13 +708,28 @@ def _draw_organs(ax, at_r, categories):
             else f"  [{int(row['n_nodes'])}, {int(row['n_edges'])}]"
         )
         ax.scatter(
-            row["mean_steps"], row["prob_fixation"],
+            row["prob_fixation"], row["mean_steps"],
             s=230, marker="*",
             facecolor=CATEGORY_COLOR_DICT.get(row["category"], "#000000"),
             edgecolor="white", linewidth=1.0, zorder=7,
             label=f"{row['graph_name']}{note}",
         )
     return organs
+
+
+def _titled(ax, headline, caption, headline_fontsize=15, caption_fontsize=8.5, pad=24):
+    """A short bold headline with the run's parameters as a small line beneath it.
+
+    A reader's eye should land on the QUESTION the figure answers first, not a wall of
+    direction counts and generation ranges competing with it in the same bold font. The
+    parameters are still printed, just no longer at headline weight; ``#666666`` matches
+    the secondary-text gray already used for baseline labels elsewhere in this module.
+    """
+    ax.set_title(headline, fontsize=headline_fontsize, fontweight="bold", pad=pad)
+    ax.text(
+        0.5, 1.0, caption, transform=ax.transAxes,
+        ha="center", va="bottom", fontsize=caption_fontsize, color="#666666",
+    )
 
 
 def _dedup_legend(ax, **kwargs):
@@ -923,8 +750,9 @@ def plot_ga_trails(
     figsize=(12, 8),
     logscale=True,
     respiratory=("Avian", "Mammalian", "Fish"),
+    show_generation_dots=False,
 ):
-    """The PATH each search took through the (fixation time, probability) plane.
+    """The PATH each search took through the (fixation probability, time) plane.
 
     ``plot_ga_winners_scatter`` shows where the searches ended. This shows how they got
     there: one trail per run, each point the mean over that generation's surviving elites,
@@ -939,6 +767,11 @@ def plot_ga_trails(
     ``every`` subsamples generations (the first and last are always drawn). At 100
     generations x 36 runs the full trail is 3600 points, which renders as a hairball; every
     5th generation keeps the shape and loses only the jitter.
+
+    ``show_generation_dots`` marks each of the (``every``-subsampled) points on the line
+    with a small dot. Spacing is the point of it: a stretch where the population moved a
+    lot over those generations leaves its dots far apart, and once the search is mostly
+    converged and a step barely changes the mean, the dots crowd together densely.
     """
     cloud, at_r = _reference_cloud(reference_stats)
     history = load_ga_history(run_dirs, survivors_only=True)
@@ -954,51 +787,60 @@ def plot_ga_trails(
     for run, group in by_theta:
         category = group["category"].iloc[0]
         color = colors[category]
-        trail = (
+        full_trail = (
             group.groupby("generation")[["mean_steps", "prob_fixation"]]
             .mean()
             .sort_index()
         )
-        keep = trail.index.isin(trail.index[::every]) | (trail.index == trail.index[-1])
-        trail = trail[keep]
+        keep = full_trail.index.isin(full_trail.index[::every]) | (
+            full_trail.index == full_trail.index[-1]
+        )
+        trail = full_trail[keep]
 
         ax.plot(
-            trail["mean_steps"], trail["prob_fixation"],
-            color=color, linewidth=1.4, alpha=0.75, zorder=4, label=category,
+            trail["prob_fixation"], trail["mean_steps"],
+            color=color, linewidth=1.4, alpha=0.75, zorder=4, label=_theta_label(category),
         )
+        if show_generation_dots:
+            ax.scatter(
+                trail["prob_fixation"], trail["mean_steps"],
+                s=5, color=color, alpha=0.7, edgecolor="none", zorder=4,
+            )
         # Where it started and where it ended. The start markers all pile up in the middle
         # of the cloud by construction (every run begins from random graphs), which is
         # precisely the point: the fan-out is the search, not the starting condition.
-        ax.plot(*trail.iloc[0][["mean_steps", "prob_fixation"]], marker="o",
+        ax.plot(*trail.iloc[0][["prob_fixation", "mean_steps"]], marker="o",
                 markersize=4, color=color, alpha=0.9, zorder=5)
-        ax.plot(*trail.iloc[-1][["mean_steps", "prob_fixation"]], marker="D",
+        ax.plot(*trail.iloc[-1][["prob_fixation", "mean_steps"]], marker="D",
                 markersize=8, color=color, markeredgecolor="black",
                 markeredgewidth=1.0, zorder=6)
 
     organs = _draw_organs(ax, at_r, respiratory)
 
     drawn = pd.concat([cloud, history, organs])
-    ax.set_xlim(drawn["mean_steps"].min() * 0.85, drawn["mean_steps"].max() * 1.18)
     span = drawn["prob_fixation"].max() - drawn["prob_fixation"].min()
-    ax.set_ylim(drawn["prob_fixation"].min() - 0.08 * span,
+    ax.set_xlim(drawn["prob_fixation"].min() - 0.08 * span,
                 drawn["prob_fixation"].max() + 0.08 * span)
+    ax.set_ylim(drawn["mean_steps"].min() * 0.85, drawn["mean_steps"].max() * 1.18)
 
-    ax.set_xlabel(_scale_steps_axis(ax, which="x", logscale=logscale), fontweight="bold")
-    ax.set_ylabel(_METRIC_LABEL["prob_fixation"], fontweight="bold")
+    ax.set_ylabel(_scale_steps_axis(ax, which="y", logscale=logscale), fontweight="bold")
+    ax.set_xlabel(_METRIC_LABEL["prob_fixation"], fontweight="bold")
     n_dir = history["category"].nunique()
     last = int(history["generation"].max())
-    ax.set_title(
-        "The path each search took\n"
-        f"{n_dir} directions, {history['run'].nunique()} runs, "
-        f"generations 0-{last} every {every}  |  "
-        f"circle = generation 0, diamond = final  |  "
-        f"N={N_NODES}, E={N_EDGES}, r={R_VALUE}",
-        fontsize=13, pad=12,
+    caption = (
+        f"{n_dir} directions, {history['run'].nunique()} runs  |  "
+        f"gen 0-{last}, every {every}  |  circle=start, diamond=final  |  "
+        f"N={N_NODES}, E={N_EDGES}, r={R_VALUE}"
+        + (", dots=one plotted point" if show_generation_dots else "")
     )
+    _titled(ax, "The path each search took", caption)
     ax.grid(True, linestyle=":", alpha=0.6)
     ax.set_axisbelow(True)
-    _dedup_legend(ax, loc="center left", bbox_to_anchor=(1.01, 0.5), fontsize=8,
-                  frameon=False, labelspacing=0.6)
+    # Labels here are short (``theta=15``), unlike the winner-count labels on the scatter
+    # figure, so there is room to size them for readability rather than for fitting many
+    # long entries into the same strip.
+    _dedup_legend(ax, loc="center left", bbox_to_anchor=(1.01, 0.5), fontsize=11,
+                  frameon=False, labelspacing=0.8)
     fig.tight_layout()
 
     path = _resolve_figure_path(
@@ -1013,6 +855,7 @@ def plot_ga_trails(
 def plot_ga_explorer_plotly(
     run_dirs, reference_stats, trails=True, every=5, height=760, width=1150,
     logscale=True, respiratory=("Avian", "Mammalian", "Fish"),
+    show_generation_dots=False,
 ):
     """Interactive twin of the winners scatter and the trails, in one figure.
 
@@ -1025,6 +868,11 @@ def plot_ga_explorer_plotly(
     isolates a direction and shows both where it ended and how it got there. Trails are
     added first so plotly paints them under the markers; unlike matplotlib there is no
     zorder, only insertion order.
+
+    ``show_generation_dots`` marks each of the (``every``-subsampled) points on the trail
+    line with a small dot (see ``plot_ga_trails``). Spacing is the point of it: a stretch
+    where the population moved a lot over those generations leaves its dots far apart, and
+    once the search has mostly converged the dots crowd together.
 
     plotly is imported inside the function following the precedent below: it is a hard
     dependency but a slow import, and ``analysis_utils/__init__`` pulls this module in
@@ -1039,11 +887,11 @@ def plot_ga_explorer_plotly(
 
     fig = go.Figure()
     fig.add_trace(go.Scatter(
-        x=cloud["mean_steps"], y=cloud["prob_fixation"], mode="markers",
+        x=cloud["prob_fixation"], y=cloud["mean_steps"], mode="markers",
         name=f"random ({N_NODES}, {N_EDGES}), n={len(cloud)}",
         marker=dict(size=5, color="#cccccc"),
         text=cloud["graph_name"],
-        hovertemplate="%{text}<br>T=%{x:.0f}<br>rho=%{y:.4f}<extra></extra>",
+        hovertemplate="%{text}<br>rho=%{x:.4f}<br>T=%{y:.0f}<extra></extra>",
     ))
 
     ordered = sorted(history["category"].unique(),
@@ -1053,32 +901,41 @@ def plot_ga_explorer_plotly(
         for category in ordered:
             block = history[history["category"] == category]
             for run, group in block.groupby("run"):
-                trail = (group.groupby("generation")[["mean_steps", "prob_fixation"]]
-                         .mean().sort_index())
-                keep = trail.index.isin(trail.index[::every]) | (trail.index == trail.index[-1])
-                trail = trail[keep]
+                full_trail = (group.groupby("generation")[["mean_steps", "prob_fixation"]]
+                              .mean().sort_index())
+                keep = full_trail.index.isin(full_trail.index[::every]) | (
+                    full_trail.index == full_trail.index[-1]
+                )
+                trail = full_trail[keep]
                 fig.add_trace(go.Scatter(
-                    x=trail["mean_steps"], y=trail["prob_fixation"], mode="lines",
+                    x=trail["prob_fixation"], y=trail["mean_steps"],
+                    mode="lines+markers" if show_generation_dots else "lines",
+                    marker=dict(size=4, color=colors[category]),
                     name=category, legendgroup=category, showlegend=False,
                     line=dict(color=colors[category], width=1.2),
                     opacity=0.55,
                     customdata=trail.index,
                     hovertemplate=(f"{run}<br>generation %{{customdata}}"
-                                   "<br>T=%{x:.0f}<br>rho=%{y:.4f}<extra></extra>"),
+                                   "<br>rho=%{x:.4f}<br>T=%{y:.0f}<extra></extra>"),
                 ))
 
+    # One marker per RUN (its best elite), not one per elite in the final population --
+    # ``plot_ga_trails`` already draws it this way (its final diamond is the run's own
+    # endpoint), and plotting all ~20 elites x 3 replicates per direction here was mostly
+    # points on top of points, not new information.
+    top = winners.loc[winners.groupby("run")["rank"].idxmin()]
     for category in ordered:
-        group = winners[winners["category"] == category]
+        group = top[top["category"] == category]
         fig.add_trace(go.Scatter(
-            x=group["mean_steps"], y=group["prob_fixation"], mode="markers",
-            name=category, legendgroup=category,
+            x=group["prob_fixation"], y=group["mean_steps"], mode="markers",
+            name=_theta_label(category), legendgroup=category,
             marker=dict(size=9, symbol="diamond", color=colors[category],
                         line=dict(color="white", width=0.8)),
             customdata=np.stack([group["graph_name"], group["run"],
                                  group["weighted"]], axis=-1),
             hovertemplate=("%{customdata[0]}<br>%{customdata[1]}"
                            "<br>score=%{customdata[2]:.2f} SD"
-                           "<br>T=%{x:.0f}<br>rho=%{y:.4f}<extra></extra>"),
+                           "<br>rho=%{x:.4f}<br>T=%{y:.0f}<extra></extra>"),
         ))
 
     organs = at_r[at_r["category"].isin(respiratory)]
@@ -1086,25 +943,45 @@ def plot_ga_explorer_plotly(
         note = ("" if (row["n_nodes"], row["n_edges"]) == (N_NODES, N_EDGES)
                 else f" [{int(row['n_nodes'])},{int(row['n_edges'])}]")
         fig.add_trace(go.Scatter(
-            x=[row["mean_steps"]], y=[row["prob_fixation"]], mode="markers",
+            x=[row["prob_fixation"]], y=[row["mean_steps"]], mode="markers",
             name=f"{row['graph_name']}{note}",
             marker=dict(size=17, symbol="star",
                         color=CATEGORY_COLOR_DICT.get(row["category"], "#000000"),
                         line=dict(color="white", width=1)),
             hovertemplate=(f"{row['graph_name']}{note}"
-                           "<br>T=%{x:.0f}<br>rho=%{y:.4f}<extra></extra>"),
+                           "<br>rho=%{x:.4f}<br>T=%{y:.0f}<extra></extra>"),
         ))
 
+    # A short bold headline plus one small gray line of parameters, matching
+    # ``plot_ga_trails``'s ``_titled`` -- a bold multi-line title packed with counts and a
+    # reading key reads as noise before you've found the actual question the figure
+    # answers. The interaction hint (click/double-click a legend entry) is dropped
+    # entirely: the launch notebook already explains it in the cell's own comment, and
+    # it is standard plotly behavior a reader typically already expects.
+    reading_key = "diamonds = best per run"
+    if trails:
+        reading_key = "lines = search path, " + reading_key
+        if show_generation_dots:
+            reading_key += ", dots = one plotted point"
+    caption = (
+        f"{history['category'].nunique()} directions, "
+        f"{history['run'].nunique()} runs  |  {reading_key}"
+    )
+
     fig.update_layout(
-        title=(f"GA explorer: {history['category'].nunique()} directions, "
-               f"{history['run'].nunique()} runs"
-               + ("  |  lines = search path, diamonds = final elites" if trails else "")
-               + "<br><sup>click a legend entry to isolate a direction, "
-                 "double-click to isolate it alone</sup>"),
-        xaxis_title="Mean Fixation Time (steps)"
+        title=dict(
+            text=f"GA explorer<br><sup>{caption}</sup>",
+            font=dict(size=20),
+        ),
+        xaxis_title="Fixation Probability",
+        yaxis_title="Mean Fixation Time (steps)"
                     + (", log scale" if logscale else ""),
-        yaxis_title="Fixation Probability",
-        xaxis_type="log" if logscale else "linear",
+        yaxis_type="log" if logscale else "linear",
+        # Plotly's own log-axis tick locator, on data spanning barely more than one
+        # decade (~2.4K-42K steps here), lands on an irregular mix like 3k/5k/7k/10k/20k
+        # rather than clean round numbers -- "~s" asks it to keep abbreviating (K/M) but
+        # stops it from also switching to raw/scientific notation on the in-between ticks.
+        yaxis_tickformat="~s",
         height=height, width=width, hovermode="closest",
         template="plotly_white",
     )
@@ -1133,53 +1010,61 @@ def plot_population(
 
     ga_runs_dir = Path(ga_runs_dir)
     wanted = normalize_theta(theta)
-    matched = []
-    for run_dir in sorted(p for p in ga_runs_dir.iterdir()
-                          if p.name.startswith(prefix) and (p / "ga_config.json").exists()):
-        state = load_ga_state(run_dir) or {}
-        if state.get("theta") is None or not np.isclose(state["theta"], wanted):
-            continue
-        if replicate is not None and not run_dir.name.endswith(f"-rep{replicate}"):
-            continue
-        matched.append((run_dir, state))
+    # The theta directory's name is deterministic from (prefix, theta) -- ga_search.
+    # run_dir_for builds exactly this string -- so the match is a direct lookup rather
+    # than opening every run's state file to filter by theta.
+    theta_dir = ga_runs_dir / f"{prefix}-theta{wanted:03.0f}"
 
-    if not matched:
+    if not theta_dir.is_dir():
         available = sorted({
-            (load_ga_state(p) or {}).get("theta")
-            for p in ga_runs_dir.iterdir()
-            if p.name.startswith(prefix) and (p / "ga_config.json").exists()
-        } - {None})
+            int(m.group(1))
+            for p in ga_runs_dir.glob(f"{prefix}-theta*")
+            if (m := re.match(r".*-theta(\d{3})$", p.name))
+        })
         raise ValueError(
-            f"No run at theta={wanted:g}"
-            + (f" replicate {replicate}" if replicate is not None else "")
-            + f" under prefix {prefix!r}. Directions present: "
-            + ", ".join(f"{t:g}" for t in available)
+            f"No direction theta={wanted:g} under prefix {prefix!r} in {ga_runs_dir}. "
+            f"Directions present: {', '.join(map(str, available)) or '(none)'}"
+        )
+
+    reps = sorted(
+        p for p in theta_dir.iterdir()
+        if p.is_dir() and (p / "ga_config.json").exists()
+        and (replicate is None or p.name == f"rep{replicate}")
+    )
+    if not reps:
+        present = sorted(p.name for p in theta_dir.iterdir() if p.is_dir())
+        raise ValueError(
+            f"theta={wanted:g} has no replicate {replicate!r} in {theta_dir}. "
+            f"Replicates present: {', '.join(present) or '(none)'}"
         )
 
     panels = []
-    for run_dir, state in matched:
-        population = load_elite_population(run_dir)[:n]
+    for rep_dir in reps:
+        state = load_ga_state(rep_dir) or {}
+        population = load_elite_population(rep_dir)[:n]
         for index, graph in enumerate(population):
-            panels.append((run_dir.name, state, index, graph))
+            # rep_dir.name alone ("rep0") is unambiguous here: every panel in this figure
+            # is already the same theta, which is what used to need parsing out of a flat
+            # "PREFIX-theta315-rep0" name.
+            panels.append((rep_dir.name, state, index, graph))
 
     n_rows = int(np.ceil(len(panels) / per_row))
     fig, axes = plt.subplots(n_rows, per_row, figsize=(size * per_row, size * n_rows))
     axes = np.atleast_1d(axes).ravel()
     color = theta_color(wanted)
 
-    for axis, (run, state, index, graph) in zip(axes, panels):
+    for axis, (rep_tag, state, index, graph) in zip(axes, panels):
         graph.draw(ax=axis, with_labels=with_labels, descriptive=False)
-        tag = run.rsplit("-", 1)[-1] if "-rep" in run else run
-        axis.set_title(f"{tag}  #{index + 1}\n{graph.name}", fontsize=8, color=color)
+        axis.set_title(f"{rep_tag}  #{index + 1}\n{graph.name}", fontsize=8, color=color)
         axis.set_xticks([]); axis.set_yticks([])
     for axis in axes[len(panels):]:
         axis.axis("off")
 
-    state = matched[0][1]
+    any_state = load_ga_state(reps[0]) or {}
     fig.suptitle(
-        f"Final population: {state.get('category', f'theta={wanted:g}')} "
-        f"({state.get('quadrant', '')})  |  "
-        f"{len(matched)} replicate(s), {len(panels)} graphs  |  "
+        f"Final population: {_theta_label(any_state.get('category', f'theta={wanted:g}'))} "
+        f"({any_state.get('quadrant', '')})  |  "
+        f"{len(reps)} replicate(s), {len(panels)} graphs  |  "
         f"N={N_NODES}, E={N_EDGES}, r={R_VALUE}",
         fontweight="bold", fontsize=13, color=color,
     )
@@ -1209,14 +1094,20 @@ def plot_elite_grid(
     rank 1 as well is a cheap check that a direction's answer is a family of graphs rather
     than one lucky topology.
     """
+    from moran_process.pipeline.ga_search import run_label
+
     run_dirs = _ga_io_run_dirs(run_dirs)
     entries = []
     for run_dir in run_dirs:
         state = load_ga_state(run_dir) or {}
         population = load_elite_population(run_dir)
         if rank < len(population):
+            # run_dir.name is the bare replicate directory ("rep0"), which is exactly the
+            # tag this figure wants -- the theta-dir prefix is identical within a row and
+            # would only take up width. run_label(run_dir) is used for the category
+            # fallback instead, since that has to stay unique if state.json is missing.
             entries.append((state.get("theta", np.inf), run_dir.name,
-                            state.get("category", run_dir.name), population[rank]))
+                            state.get("category", run_label(run_dir)), population[rank]))
     entries.sort(key=lambda e: (e[0], e[1]))
 
     n_rows = int(np.ceil(len(entries) / per_row))
@@ -1224,12 +1115,9 @@ def plot_elite_grid(
                              figsize=(size * per_row, size * n_rows))
     axes = np.atleast_1d(axes).ravel()
 
-    for axis, (theta, run, category, graph) in zip(axes, entries):
+    for axis, (theta, replicate, category, graph) in zip(axes, entries):
         graph.draw(ax=axis, with_labels=with_labels, descriptive=False)
-        # The replicate tag, not the whole run name: the prefix is identical on all of
-        # them and would take more width than the part that differs.
-        replicate = run.rsplit("-", 1)[-1] if "-rep" in run else ""
-        axis.set_title(f"{category}  {replicate}", fontsize=9,
+        axis.set_title(f"{_theta_label(category)}  {replicate}", fontsize=9,
                        color=theta_color(theta) if np.isfinite(theta) else "#333333",
                        fontweight="bold")
         axis.set_xticks([]); axis.set_yticks([])
@@ -1260,11 +1148,13 @@ def _run_thetas(run_dirs):
     state yet is simply absent rather than defaulted, so a caller drawing per-direction
     decoration draws nothing for it instead of drawing it in the wrong direction.
     """
+    from moran_process.pipeline.ga_search import run_label
+
     thetas = {}
     for run_dir in _ga_io_run_dirs(run_dirs):
         state = load_ga_state(run_dir) or {}
         if state.get("theta") is not None:
-            thetas[run_dir.name] = float(state["theta"])
+            thetas[run_label(run_dir)] = float(state["theta"])
     return thetas
 
 
@@ -1310,12 +1200,10 @@ def plot_ga_winners_scatter(
     show_hull=False,
     respiratory=("Avian", "Mammalian", "Fish"),
 ):
-    """GA winners in the (fixation time, fixation probability) plane, over the random cloud.
+    """GA winners in the (fixation probability, fixation time) plane, over the random cloud.
 
-    The 2-D companion to ``plot_ga_winners_in_context``, which draws one metric at a time
-    and so cannot show the thing a weighted run is actually optimizing: a *direction* in
-    the joint plane. ``plot_ml_vs_simulation_scatter`` draws the same plane but requires an
-    ML batch to compare against, which a validation launch does not have.
+    This shows the thing a weighted run is actually optimizing: a *direction* in the joint
+    plane, not one metric in isolation.
 
     What this adds beyond a scatter:
 
@@ -1352,12 +1240,12 @@ def plot_ga_winners_scatter(
         color = colors[category]
         best = group.loc[group["rank"].idxmin()]
         ax.scatter(
-            group["mean_steps"], group["prob_fixation"],
+            group["prob_fixation"], group["mean_steps"],
             s=55, marker="D", facecolor=color, edgecolor="white", linewidth=0.6,
-            alpha=0.85, zorder=5, label=f"{category}  ({len(group)} elites)",
+            alpha=0.85, zorder=5, label=f"{_theta_label(category)}  ({len(group)} elites)",
         )
         ax.scatter(
-            best["mean_steps"], best["prob_fixation"],
+            best["prob_fixation"], best["mean_steps"],
             s=170, marker="D", facecolor=color, edgecolor="black", linewidth=1.4,
             zorder=6,
         )
@@ -1366,22 +1254,22 @@ def plot_ga_winners_scatter(
                 *theta_weights(thetas[run]),
                 best["prob_fixation"], best["mean_steps"],
             )
-            ax.plot(steps, rho, color=color, linewidth=1.2, linestyle="--", alpha=0.8,
+            ax.plot(rho, steps, color=color, linewidth=1.2, linestyle="--", alpha=0.8,
                     zorder=3)
 
     if show_hull and len(winners) >= 3:
         from scipy.spatial import ConvexHull
 
-        # Hulled in (log T, rho): that is the plane the objective is linear in, so this
+        # Hulled in (rho, log T): that is the plane the objective is linear in, so this
         # outline is exactly the set of points some weight vector could have selected.
         points = np.column_stack([
-            np.log10(winners["mean_steps"].to_numpy(dtype=float)),
             winners["prob_fixation"].to_numpy(dtype=float),
+            np.log10(winners["mean_steps"].to_numpy(dtype=float)),
         ])
         hull = ConvexHull(points)
         loop = np.append(hull.vertices, hull.vertices[0])
         ax.plot(
-            10 ** points[loop, 0], points[loop, 1],
+            points[loop, 0], 10 ** points[loop, 1],
             color="#333333", linewidth=1.3, linestyle="-", alpha=0.55, zorder=4,
             label="convex hull of all winners",
         )
@@ -1392,24 +1280,24 @@ def plot_ga_winners_scatter(
     # star sits on the axis line. Set explicitly rather than autoscaled because the support
     # lines run far beyond the region on purpose and would otherwise drag the axes with them.
     drawn = pd.concat([cloud, winners, organs])
-    ax.set_xlim(drawn["mean_steps"].min() * 0.85, drawn["mean_steps"].max() * 1.18)
     span = drawn["prob_fixation"].max() - drawn["prob_fixation"].min()
-    ax.set_ylim(
+    ax.set_xlim(
         drawn["prob_fixation"].min() - 0.12 * span,
         drawn["prob_fixation"].max() + 0.12 * span,
     )
+    ax.set_ylim(drawn["mean_steps"].min() * 0.85, drawn["mean_steps"].max() * 1.18)
 
     # The residual origin, drawn only if it is inside the region. At (31, 34) the complete
     # graph is ~4x faster than anything plotted here, so on this figure the crosshair is
     # usually off-scale entirely and an invisible annotation is worse than none: it reads
     # as though the origin were somewhere in view.
-    if ax.get_xlim()[0] <= T_COMPLETE_PLOT <= ax.get_xlim()[1]:
-        ax.axvline(T_COMPLETE_PLOT, color="#7f7f7f", linestyle=":", linewidth=1.2, zorder=2)
-    if ax.get_ylim()[0] <= RHO_COMPLETE_PLOT <= ax.get_ylim()[1]:
-        ax.axhline(RHO_COMPLETE_PLOT, color="#7f7f7f", linestyle=":", linewidth=1.2, zorder=2)
+    if ax.get_xlim()[0] <= RHO_COMPLETE_PLOT <= ax.get_xlim()[1]:
+        ax.axvline(RHO_COMPLETE_PLOT, color="#7f7f7f", linestyle=":", linewidth=1.2, zorder=2)
+    if ax.get_ylim()[0] <= T_COMPLETE_PLOT <= ax.get_ylim()[1]:
+        ax.axhline(T_COMPLETE_PLOT, color="#7f7f7f", linestyle=":", linewidth=1.2, zorder=2)
 
-    ax.set_xlabel(_scale_steps_axis(ax, which="x", logscale=logscale), fontweight="bold")
-    ax.set_ylabel(_METRIC_LABEL["prob_fixation"], fontweight="bold")
+    ax.set_ylabel(_scale_steps_axis(ax, which="y", logscale=logscale), fontweight="bold")
+    ax.set_xlabel(_METRIC_LABEL["prob_fixation"], fontweight="bold")
     # Counted, not divided. runs/directions is 31/12 here, and integer division would
     # print "2 replicates" for a sweep that has 3 of most directions and 2 of a few.
     n_directions = winners["category"].nunique()
@@ -1437,397 +1325,4 @@ def plot_ga_winners_scatter(
     if path:
         fig.savefig(path, bbox_inches="tight", dpi=150, facecolor="white")
         print(f"Saved: {path}")
-    return fig
-
-
-def _ml_vs_simulation_frame(run_dirs, ml_stats, keep_name=False):
-    """Both searches' winners in one long frame: source, category, and the two metrics.
-
-    ``keep_name`` carries ``graph_name`` through as well, which the static figures have no
-    room for but the interactive one puts in the hover.
-
-    The ML batch is filtered to the GA's exact (N, E, r) rather than trusted to already be
-    there. It happens to be entirely (31, 34) at r=1.1, so nothing is dropped today, but a
-    silent size mismatch would make the whole comparison meaningless rather than merely
-    wrong, so it is checked instead of assumed.
-    """
-    ml = ml_stats[
-        (ml_stats["n_nodes"] == N_NODES)
-        & (ml_stats["n_edges"] == N_EDGES)
-        & (np.isclose(ml_stats["r"], R_VALUE))
-    ]
-    if ml.empty:
-        raise ValueError(
-            f"No ML-driven rows at N={N_NODES}, E={N_EDGES}, r={R_VALUE}. The batch passed "
-            f"as ml_stats was measured on a different search space, so the two sets of "
-            f"winners are not comparable."
-        )
-
-    winners = load_ga_history(run_dirs, survivors_only=True)
-    winners = winners[
-        winners["generation"] == winners.groupby("run")["generation"].transform("max")
-    ]
-
-    # n_grouped and run travel with the rows so the figures can state how much simulation is
-    # behind each source. 'run' is meaningless for the ML batch (those graphs came out of a
-    # regressor, not a search), so it is NaN there and only ever counted on the sim side.
-    columns = ["source", "category", "run", "n_grouped", "mean_steps", "prob_fixation"]
-    if keep_name:
-        columns.append("graph_name")
-
-    return pd.concat(
-        [
-            ml.assign(source="ML-driven", run=None)[columns],
-            winners.assign(
-                source="simulation-driven",
-            )[columns],
-        ],
-        ignore_index=True,
-    )
-
-
-def _provenance_note(frame):
-    """'4 GA runs, 100K sims/graph  |  ML-driven: 100K sims/graph' for the subtitle."""
-    sim = frame[frame["source"] == "simulation-driven"]
-    ml = frame[frame["source"] == "ML-driven"]
-    return (
-        f"{sim['run'].nunique()} GA runs, {len(sim)} winners, "
-        f"{_sims_note(sim['n_grouped'])} sims/graph  |  "
-        f"ML-driven: {len(ml)} graphs, {_sims_note(ml['n_grouped'])} sims/graph"
-    )
-
-
-def plot_ml_vs_simulation(
-    run_dirs, ml_stats, figures_dir=None, figsize=(14, 9), logscale=True
-):
-    """Measured mean_steps and prob_fixation of every winner group, both searches.
-
-    One row per category, individual winners drawn as points and the group mean as a bar,
-    so the figure answers two questions at once: how far each group actually got, and how
-    tightly its ten or twenty winners agree. A group whose points are scattered across the
-    whole axis did not converge on anything, which a bar chart of means alone would hide.
-
-    The ML-driven groups are predictions that were only later measured; the
-    simulation-driven groups were selected on the measurement itself. Both are plotted from
-    the same measured quantities, which is the whole point: this is the only figure in the
-    project where the residual predictors can be checked against ground truth.
-    """
-    frame = _ml_vs_simulation_frame(run_dirs, ml_stats)
-
-    # Known categories keep their hand-picked color and anything new falls through to husl
-    # rather than to a KeyError. Note that a simulation-driven category shares its color
-    # with the ML-driven category it corresponds to (see colors.py) -- deliberate, since
-    # the two blocks are separated and labelled, so a shared hue reads as the pairing it is.
-    colors = generate_robust_color_dict(frame, CATEGORY_COLOR_DICT)
-
-    # ML block on top, simulation block below, alphabetical within each. Rows are built
-    # top-down but matplotlib's y axis runs bottom-up, so the order is reversed at the end.
-    order = [
-        (source, category)
-        for source in ("ML-driven", "simulation-driven")
-        for category in sorted(frame.loc[frame["source"] == source, "category"].unique())
-    ][::-1]
-    y_of = {key: i for i, key in enumerate(order)}
-    split_at = sum(1 for source, _ in order if source == "simulation-driven") - 0.5
-
-    baseline = {
-        "mean_steps": float(analytic_moran_fc_fixation_time(N_NODES, R_VALUE)),
-        "prob_fixation": float(analytic_moran_fc_fixation_prob(N_NODES, R_VALUE)),
-    }
-
-    fig, axes = plt.subplots(1, 2, figsize=figsize, sharey=True)
-    for metric, axis in zip(("mean_steps", "prob_fixation"), axes):
-        for (source, category), group in frame.groupby(["source", "category"]):
-            y = y_of[(source, category)]
-            color = colors[category]
-            values = group[metric].to_numpy(dtype=float)
-
-            # Bars grow from the complete-graph baseline rather than from zero. The axis
-            # still reads in absolute units, but the anchor is the project's usual residual
-            # origin, so bar direction is amplifier-versus-suppressor at a glance. Anchoring
-            # at zero would spend 60% of the probability axis on empty space below 0.08 and
-            # leave every group looking the same length.
-            axis.barh(
-                y, values.mean() - baseline[metric], left=baseline[metric],
-                height=0.62, color=color,
-                alpha=0.30 if source == "ML-driven" else 0.65,
-                edgecolor=color, linewidth=1.2,
-            )
-            # Deterministic offsets rather than random jitter: the same data must redraw
-            # identically, or two saved copies of one figure look like different results.
-            offsets = np.linspace(-0.16, 0.16, len(values)) if len(values) > 1 else [0.0]
-            family = _selection_family(source, category)
-            axis.plot(
-                values, y + np.asarray(offsets), linestyle="none",
-                marker=_MARKER_BY_FAMILY.get(family, _FALLBACK_MARKER),
-                markersize=4.5,
-                markerfacecolor=color if family == "simulation" else "none",
-                markeredgecolor=color, markeredgewidth=1.1, alpha=0.9,
-            )
-
-        axis.axvline(
-            baseline[metric], color="#7f7f7f", linestyle=":", linewidth=1.4, zorder=0
-        )
-        axis.text(
-            baseline[metric], 1.005, " complete graph",
-            transform=axis.get_xaxis_transform(),
-            fontsize=8, color="#7f7f7f", ha="left", va="bottom",
-        )
-        axis.axhline(split_at, color="#333333", linewidth=1.0, linestyle="--", alpha=0.6)
-        # The bars still start at the complete-graph baseline on a log axis: both of a bar's
-        # endpoints are positive step counts, so a bar pointing left is drawn the same way,
-        # it just no longer has a length proportional to the residual.
-        label = (
-            _scale_steps_axis(axis, which="x", logscale=logscale)
-            if metric == "mean_steps"
-            else _METRIC_LABEL[metric]
-        )
-        axis.set_xlabel(label, fontweight="bold")
-        axis.grid(True, axis="x", linestyle=":", alpha=0.6)
-        axis.set_axisbelow(True)
-
-    axes[0].set_yticks(range(len(order)))
-    axes[0].set_yticklabels([category for _, category in order], fontsize=9)
-    axes[0].set_ylim(-0.6, len(order) - 0.4)
-
-    # Which block is which, written outside the right spine so it can never land on a bar.
-    for source, span in (
-        ("simulation-driven", (0, split_at)),
-        ("ML-driven", (split_at, len(order) - 1)),
-    ):
-        axes[1].text(
-            1.015, sum(span) / 2, source, transform=axes[1].get_yaxis_transform(),
-            rotation=90, ha="left", va="center",
-            fontsize=10, fontweight="bold", color="#333333",
-        )
-
-    marker_key = [
-        plt.Line2D([], [], linestyle="none", marker=_MARKER_BY_FAMILY["LR"],
-                   markerfacecolor="none", markeredgecolor="#333333",
-                   label="predicted by LR"),
-        plt.Line2D([], [], linestyle="none", marker=_MARKER_BY_FAMILY["XGBOOST"],
-                   markerfacecolor="none", markeredgecolor="#333333",
-                   label="predicted by XGBOOST"),
-        plt.Line2D([], [], linestyle="none", marker=_MARKER_BY_FAMILY["simulation"],
-                   color="#333333", label="measured by simulation"),
-        plt.Line2D([], [], linestyle=":", color="#7f7f7f",
-                   label="complete graph (bar origin)"),
-    ]
-    fig.legend(
-        handles=marker_key, loc="lower center", ncol=4,
-        bbox_to_anchor=(0.5, -0.03), frameon=False, fontsize=9,
-    )
-    fig.suptitle(
-        "Winner groups of both searches, measured\n"
-        f"bars are the group mean, markers the individual winners  |  "
-        f"N={N_NODES}, E={N_EDGES}, r={R_VALUE}\n"
-        f"{_provenance_note(frame)}",
-        fontsize=13,
-    )
-    fig.tight_layout(rect=(0, 0, 0.97, 1))
-
-    path = _resolve_figure_path(
-        figures_dir, "plot_ml_vs_simulation", n_groups=len(order)
-    )
-    if path:
-        fig.savefig(path, bbox_inches="tight", dpi=150, facecolor="white")
-        print(f"Saved: {path}")
-    return fig
-
-
-def plot_ml_vs_simulation_scatter(
-    run_dirs, ml_stats, reference_stats=None, figures_dir=None, figsize=(12, 8), logscale=True
-):
-    """Fixation probability against fixation time, one point per winner graph.
-
-    The companion to ``plot_ml_vs_simulation``, which plots each metric on its own axis and
-    so cannot show how the two move together. That joint structure is the amplifier /
-    suppressor question directly: whether a topology can be slow *and* likely to fixate, or
-    whether pushing one drags the other along.
-
-    Pass ``reference_stats`` (an ordinary batch's graph_statistics frame) to draw the random
-    (N, E) graphs as a gray cloud behind the winners. Without that background the winners
-    have nothing to be extreme *relative to*, so it is worth supplying. The respiratory
-    graphs in that batch are deliberately NOT singled out here; ``plot_ga_winners_in_context``
-    is the figure that places the avian graph, and this one is about the two searches.
-
-    Fixation time is on a log axis because the winners span roughly 2.4K to 35K steps, and
-    on a linear axis the four fastest groups collapse into the left margin.
-    """
-    frame = _ml_vs_simulation_frame(run_dirs, ml_stats)
-    colors = generate_robust_color_dict(frame, CATEGORY_COLOR_DICT)
-
-    rho_complete = float(analytic_moran_fc_fixation_prob(N_NODES, R_VALUE))
-    t_complete = float(analytic_moran_fc_fixation_time(N_NODES, R_VALUE))
-
-    fig, ax = plt.subplots(figsize=figsize)
-
-    if reference_stats is not None:
-        reference = reference_stats[
-            (reference_stats["n_nodes"] == N_NODES)
-            & (reference_stats["n_edges"] == N_EDGES)
-            & (np.isclose(reference_stats["r"], R_VALUE))
-        ]
-        ax.scatter(
-            reference["mean_steps"], reference["prob_fixation"],
-            s=18, color="#cccccc", edgecolor="none", zorder=1,
-            label=f"random ({N_NODES}, {N_EDGES}) graphs, n={len(reference)}\n"
-                  f"({_sims_note(reference['n_grouped'])} sims each)",
-        )
-
-    for (source, category), group in frame.groupby(["source", "category"]):
-        family = _selection_family(source, category)
-        is_sim = family == "simulation"
-        ax.scatter(
-            group["mean_steps"], group["prob_fixation"],
-            s=70 if is_sim else 55,
-            marker=_MARKER_BY_FAMILY.get(family, _FALLBACK_MARKER),
-            facecolor=colors[category] if is_sim else "none",
-            edgecolor=colors[category],
-            linewidth=1.4,
-            alpha=0.9,
-            zorder=5 if is_sim else 4,
-            # No family prefix: the marker shape already says LR / XGBOOST / simulation,
-            # and the ML category strings repeat the model name anyway.
-            label=category,
-        )
-
-    # The complete graph is the residual origin used everywhere else in the project, so the
-    # crosshair splits the plane into the four amplifier / suppressor quadrants.
-    ax.axvline(t_complete, color="#7f7f7f", linestyle=":", linewidth=1.2, zorder=2)
-    ax.axhline(rho_complete, color="#7f7f7f", linestyle=":", linewidth=1.2, zorder=2)
-    ax.annotate(
-        f"complete graph\nT={t_complete:.0f}, rho={rho_complete:.3f}",
-        xy=(t_complete, rho_complete), xytext=(6, 6), textcoords="offset points",
-        fontsize=8, color="#7f7f7f", va="bottom", ha="left",
-    )
-
-    ax.set_xlabel(_scale_steps_axis(ax, which="x", logscale=logscale), fontweight="bold")
-    ax.set_ylabel(_METRIC_LABEL["prob_fixation"], fontweight="bold")
-    # The marker key that used to be spelled out here (circle = LR, square = XGBOOST,
-    # diamond = simulation) is dropped: the legend draws each category with its own marker
-    # and the ML category strings name their model, so the sentence restated the legend.
-    ax.set_title(
-        "Both metrics together, every winner graph\n"
-        f"N={N_NODES}, E={N_EDGES}, r={R_VALUE}  |  {_provenance_note(frame)}",
-        fontsize=13, pad=12,
-    )
-    ax.grid(True, linestyle=":", alpha=0.6)
-    ax.set_axisbelow(True)
-    ax.legend(
-        loc="center left", bbox_to_anchor=(1.01, 0.5), fontsize=8,
-        frameon=False, labelspacing=0.7,
-    )
-    fig.tight_layout()
-
-    path = _resolve_figure_path(
-        figures_dir, "plot_ml_vs_simulation_scatter",
-        reference="yes" if reference_stats is not None else "no",
-    )
-    if path:
-        fig.savefig(path, bbox_inches="tight", dpi=150, facecolor="white")
-        print(f"Saved: {path}")
-    return fig
-
-
-def plot_ml_vs_simulation_scatter_plotly(
-    run_dirs, ml_stats, reference_stats=None, height=700, width=1100, logscale=True
-):
-    """Interactive twin of ``plot_ml_vs_simulation_scatter``. Returns a plotly Figure.
-
-    Hover gives the graph name and both measured values, and clicking a legend entry
-    isolates a group -- which is what the static version cannot do with 12 overlapping
-    categories on one pair of axes. Same colors, same marker families, same log time axis.
-
-    plotly is imported inside the function rather than at module scope, following
-    ``plotly_prototype.py``: it is a hard dependency but a slow import, and
-    ``analysis_utils/__init__`` pulls this module in eagerly, so a module-level import would
-    tax every ``import analysis_utils`` including the ones that only want a reader.
-    """
-    import plotly.graph_objects as go
-
-    frame = _ml_vs_simulation_frame(run_dirs, ml_stats, keep_name=True)
-    colors = generate_robust_color_dict(frame, CATEGORY_COLOR_DICT)
-
-    rho_complete = float(analytic_moran_fc_fixation_prob(N_NODES, R_VALUE))
-    t_complete = float(analytic_moran_fc_fixation_time(N_NODES, R_VALUE))
-
-    fig = go.Figure()
-
-    # Added first so plotly paints it underneath: unlike matplotlib there is no zorder.
-    if reference_stats is not None:
-        reference = reference_stats[
-            (reference_stats["n_nodes"] == N_NODES)
-            & (reference_stats["n_edges"] == N_EDGES)
-            & (np.isclose(reference_stats["r"], R_VALUE))
-        ]
-        fig.add_trace(
-            go.Scatter(
-                x=reference["mean_steps"], y=reference["prob_fixation"],
-                mode="markers",
-                name=f"random ({N_NODES}, {N_EDGES}), n={len(reference)}"
-                     f" ({_sims_note(reference['n_grouped'])} sims each)",
-                marker=dict(size=5, color="#cccccc"),
-                text=reference["graph_name"],
-                hovertemplate="%{text}<br>T=%{x:.0f}<br>rho=%{y:.4f}<extra></extra>",
-            )
-        )
-
-    for (source, category), group in frame.groupby(["source", "category"]):
-        family = _selection_family(source, category)
-        is_sim = family == "simulation"
-        fig.add_trace(
-            go.Scatter(
-                x=group["mean_steps"], y=group["prob_fixation"],
-                mode="markers",
-                name=category,
-                marker=dict(
-                    size=10 if is_sim else 9,
-                    symbol=_PLOTLY_MARKER_BY_FAMILY.get(
-                        family, _PLOTLY_FALLBACK_MARKER
-                    ),
-                    # Open markers are drawn as a transparent fill with a colored line,
-                    # which is plotly's only equivalent of matplotlib's facecolor='none'.
-                    color=colors[category] if is_sim else "rgba(0,0,0,0)",
-                    line=dict(color=colors[category], width=1.8),
-                ),
-                text=group["graph_name"],
-                hovertemplate=(
-                    "%{text}<br>" + category + "<br>T=%{x:.0f}<br>rho=%{y:.4f}"
-                    "<extra></extra>"
-                ),
-            )
-        )
-
-    fig.add_vline(x=t_complete, line=dict(color="#7f7f7f", width=1.2, dash="dot"))
-    fig.add_hline(y=rho_complete, line=dict(color="#7f7f7f", width=1.2, dash="dot"))
-    # Annotation x is in axis coordinates, and for a log axis those are log10 units. Passing
-    # the raw step count on a log axis would put the label at x=3.7 steps, off the left edge.
-    fig.add_annotation(
-        x=np.log10(t_complete) if logscale else t_complete, y=rho_complete,
-        text=f"complete graph<br>T={t_complete:.0f}, rho={rho_complete:.3f}",
-        showarrow=False, xanchor="left", yanchor="bottom",
-        font=dict(size=10, color="#7f7f7f"),
-    )
-
-    fig.update_layout(
-        title=(
-            "Both metrics together, every winner graph<br>"
-            f"<sup>N={N_NODES}, E={N_EDGES}, r={R_VALUE} | "
-            f"{_provenance_note(frame)}</sup>"
-        ),
-        # plotly's own SI format ('~s' -> '2.4k', '1M') is the equivalent of the K/M tick
-        # formatter the matplotlib twin uses when the axis is linear.
-        xaxis=(
-            dict(title=_METRIC_LABEL["mean_steps"] + ", log scale", type="log")
-            if logscale
-            else dict(title=_METRIC_LABEL["mean_steps"], tickformat="~s")
-        ),
-        yaxis=dict(title="Fixation Probability"),
-        template="plotly_white",
-        height=height,
-        width=width,
-        legend=dict(font=dict(size=10)),
-        hovermode="closest",
-    )
     return fig

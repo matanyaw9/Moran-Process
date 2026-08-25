@@ -12,20 +12,25 @@ that runs for hours. The consequences:
     so resuming is the normal path rather than an exceptional one: if ``ga_state.json``
     exists the driver picks up at the next generation automatically. ``--force`` is the
     only way to start over.
-  * Only ``aggregate`` is chained after each generation's array. verify, the violin cache
-    and job speed all exist to serve figures and QC on a large one-off batch; on a
-    220-graph generation they are pure scheduling latency. See ``post_batch=`` in
-    ``ProcessLab.submit_jobs``.
+  * Nothing is chained after each generation's array (``post_batch="none"``). verify, the
+    violin cache and job speed all exist to serve figures and QC on a large one-off batch;
+    on a 220-graph generation they are pure scheduling latency. The rollup is not chained
+    either: the driver runs it inline, because handing 19 s of work to another machine
+    cost 66 s of queue wait once per generation while this job's own slot sat idle. See
+    ``_aggregate_inline`` and ``post_batch=`` in ``ProcessLab.submit_jobs``.
 
 Selection reads ``prob_fixation`` and ``mean_steps`` straight out of the generation's
 ``graph_statistics.csv``, which is keyed on ``(wl_hash, r)`` -- the same ``wl_hash`` the GA
-already uses to deduplicate candidates, so the join is free.
+already uses to deduplicate candidates, so the join is free. They are combined into a
+single score by the run's search direction ``theta`` (see below), which is the only thing
+that distinguishes one run from another.
 
-Run layout, and the reason each piece exists, is documented in ``GA_SIMULATION_PLAN.md``.
+Run layout is ``<ga_runs_dir>/<prefix>-theta<NNN>/rep<K>/`` (see ``run_dir_for``), and the
+reason each piece exists is recorded next to the piece: every constant below carries the
+batch it was measured on, and CLAUDE.md section 5 summarises the design.
 
     python -m moran_process.pipeline.ga_search \
-        --run-dir simulation_data/ga_runs/2026_07_29-max-mean_steps \
-        --metric mean_steps --objective maximize
+        --run-dir simulation_data/ga_runs/2026_08_19-phase1-theta315 --theta 315
 """
 
 import argparse
@@ -65,8 +70,28 @@ N_NODES = 31
 N_EDGES = 34
 R_VALUE = 1.1
 
-METRICS = ("mean_steps", "prob_fixation", "weighted")
-OBJECTIVES = ("maximize", "minimize")
+# --- Direction ---------------------------------------------------------------------
+# A run is defined by ONE number: the angle of the direction it searches in, in the
+# standardized (probability, time) plane.
+#
+#     w_prob = cos(theta),  w_time = sin(theta)
+#
+# so theta=0 seeks high fixation probability, theta=90 long fixation time, theta=180 low
+# probability, theta=270 short time, and the diagonals are the four combinations. Every
+# run is therefore a MAXIMIZATION, and there is exactly one place direction is written
+# down. The predecessor of this was a `--metric {mean_steps, prob_fixation, weighted}` x
+# `--objective {maximize, minimize}` matrix plus a pair of free weights, which encoded
+# direction in three redundant places; they disagreed as soon as `--objective minimize`
+# met a weighted run, and both of that launch's weighted runs came out labelled with the
+# same corner. The four single-metric runs of that matrix are the axis-aligned thetas
+# here, so nothing is lost.
+#
+# Weights are UNIT length rather than the old (+1, -1), which makes the objective the
+# projection of a graph onto the search direction: the score is literally "how many
+# random-graph SDs out along theta", the support function whose maximum over a set traces
+# that set's convex hull. Scores are therefore 1/sqrt(2) of the pre-theta diagonal runs'.
+# Selection is unaffected, being scale-invariant.
+CORNER_THETAS = (45, 135, 225, 315)
 
 # --- The combined objective -------------------------------------------------------
 # mean_steps runs 2400-41000 and prob_fixation 0.09-0.16, so they cannot be weighted
@@ -444,14 +469,10 @@ def summarize_runs(run_dirs):
         state = json.loads(state_path.read_text()) if state_path.exists() else {}
         rows.append({
             "name": Path(run_dir).name,
-            # A run that never wrote a state file has no objective/metric to report, so it
-            # is identified by directory instead. Labelling it '? ?' would make several
-            # such runs collapse into one indistinguishable line.
-            "category": (
-                f"{state['objective']} {state['metric']}"
-                if state.get("objective") and state.get("metric")
-                else Path(run_dir).name
-            ),
+            # A run that never wrote a state file has no theta to report, so it is
+            # identified by directory instead. Labelling it '?' would make several such
+            # runs collapse into one indistinguishable line.
+            "category": state.get("category") or Path(run_dir).name,
             "status": state.get("status", "never started"),
             "best": state.get("best_fitness"),
             "generation": state.get("generation"),
@@ -507,6 +528,83 @@ def _size_array(n_graphs, n_repeats, n_r_values, seconds_per_sim=SECONDS_PER_SIM
     estimated_seconds = n_graphs * n_repeats * n_r_values * seconds_per_sim
     n_jobs = math.ceil(estimated_seconds / TARGET_SECONDS_PER_WORKER)
     return int(np.clip(n_jobs, 1, MAX_WORKERS))
+
+
+# Everything a generation costs that is not the simulation itself: the register job, LSF
+# dispatch of the array, python import and shard load in each worker, and the driver's own
+# rollup. Measured on 2026_08_13-smoke-*, where a 30-graph generation at 1e6 repeats was
+# sized for 30 s of work per worker and took 101 s and 106 s wall clock end to end, plus
+# 7 s and 9 s of rollup. It is a constant, not a rate: it is queue and startup latency, so
+# it does not shrink when the generation does. At these small sizes it IS the wall clock.
+GENERATION_OVERHEAD_S = 78
+
+
+def preview_launch(
+    generations,
+    pop_size,
+    n_children,
+    n_repeats,
+    n_runs=1,
+    seconds_per_sim=SECONDS_PER_SIM,
+    show=True,
+):
+    """What a launch will cost, before it is launched. Returns the numbers as a dict.
+
+    Sized through ``_size_array`` itself rather than through a copy of its arithmetic, so
+    the shard count printed here is the shard count the driver will actually request.
+
+    Two things it deliberately does not pretend to know:
+
+    * ``seconds_per_sim`` is the generation-0 cost. The search changes it -- on the 100
+      generation run, maximizing mean_steps grew the steps per simulation 9.4x -- so any
+      run with a positive time weight will end up costing more than this says. The driver
+      re-estimates it every generation and resizes, so the effect lands on core-hours,
+      not on wall clock.
+    * Wall clock assumes the arrays start promptly. On a busy queue that is optimistic,
+      and it is the only term here that a preemption changes.
+    """
+    per_generation = [pop_size] + [pop_size * (1 + n_children)] * (generations - 1)
+    workers = [_size_array(n, n_repeats, 1, seconds_per_sim) for n in per_generation]
+    sims_per_run = sum(per_generation) * n_repeats
+
+    seconds_per_generation = TARGET_SECONDS_PER_WORKER + GENERATION_OVERHEAD_S
+    wall_clock_s = generations * seconds_per_generation
+    result = {
+        "n_runs": n_runs,
+        "candidates_gen0": per_generation[0],
+        "candidates_later": per_generation[-1],
+        "workers_gen0": workers[0],
+        "workers_later": workers[-1],
+        "graphs_evaluated_per_run": sum(per_generation),
+        "sims_per_run": sims_per_run,
+        "sims_total": sims_per_run * n_runs,
+        # The simulation work itself, which is what actually consumes the group's CPU
+        # allocation. The driver slots are counted separately because they are held for the
+        # whole wall clock while doing nothing, and that is a different kind of cost.
+        "core_hours": sims_per_run * n_runs * seconds_per_sim / 3600,
+        "wall_clock_hours": wall_clock_s / 3600,
+        "driver_slot_hours": n_runs * wall_clock_s / 3600,
+        "peak_concurrent_workers": max(workers) * n_runs,
+    }
+    if show:
+        print(
+            f"{n_runs} run(s) x {generations} generations\n"
+            f"  candidates:  {result['candidates_gen0']} in gen 0, "
+            f"{result['candidates_later']} after  ->  "
+            f"{result['workers_gen0']} / {result['workers_later']} array workers\n"
+            f"  graphs evaluated: {result['graphs_evaluated_per_run']:,} per run, "
+            f"{result['graphs_evaluated_per_run'] * n_runs:,} total\n"
+            f"  simulations:      {result['sims_total']:,.0f} total\n"
+            f"  simulation cost:  {result['core_hours']:,.1f} core-hours "
+            f"(at {seconds_per_sim * 1e6:.1f} us/sim; a time-maximizing run will exceed this)\n"
+            f"  wall clock:       ~{result['wall_clock_hours']:.2f} h per run, runs are "
+            f"concurrent\n"
+            f"  driver slots:     {result['driver_slot_hours']:,.1f} slot-hours idle "
+            f"({n_runs} slots x {result['wall_clock_hours']:.2f} h)\n"
+            f"  peak concurrency: {result['peak_concurrent_workers']} array workers "
+            f"if every run is in a generation at once"
+        )
+    return result
 
 
 def _estimate_seconds_per_sim(stats):
@@ -754,21 +852,75 @@ def _add_sem(stats):
     )
 
 
-def weighted_category(w_prob, w_time):
-    """A readable name for a weighted run, e.g. ``high_prob low_time``.
+def normalize_theta(theta_deg):
+    """Fold an angle into [0, 360). ``-45`` and ``315`` name the same direction.
 
-    The direction lives in the signs of the weights, not in ``--objective``, so the
-    category has to say which corner is being chased or two runs with opposite weights
-    would both be called "maximize weighted" and collide in every figure's color map.
-    Magnitudes are appended only when they are not 1:1, which keeps the common case short.
+    Canonicalized rather than taken as given, because the angle is part of a run's
+    directory name and its category label. Two launches that both mean "down and to the
+    right" must land in the same-named place, or a phase-2 replicate set at one theta
+    silently splits into two groups that no figure will ever put together.
     """
-    prob = {1: "high_prob", -1: "low_prob"}.get(int(np.sign(w_prob)), "any_prob")
+    return float(np.mod(theta_deg, 360.0))
+
+
+def theta_weights(theta_deg):
+    """``(w_prob, w_time)`` for a direction: the unit vector at ``theta_deg``.
+
+    Rounded to kill the 6e-17 that ``cos(90 degrees)`` returns in floating point. That
+    residue is harmless arithmetically but not cosmetically: it reaches ga_config.json and
+    the bsub command line, where an axis-aligned run reads as 6.1e-17 instead of 0. The
+    ``+ 0.0`` then turns the resulting -0.0 back into 0.0, which is the same number but
+    not the same eight characters in a JSON file someone has to read.
+    """
+    radians = np.deg2rad(normalize_theta(theta_deg))
+    return (
+        round(float(np.cos(radians)), 12) + 0.0,
+        round(float(np.sin(radians)), 12) + 0.0,
+    )
+
+
+def theta_category(theta_deg):
+    """The canonical label for a direction: ``theta=315``.
+
+    Short and sortable, because it has to work as a legend entry for a dozen directions at
+    once. The qualitative reading lives in ``quadrant_name``, which is used where there is
+    room for words.
+    """
+    return f"theta={normalize_theta(theta_deg):03.0f}"
+
+
+def quadrant_name(theta_deg):
+    """The words for a direction, e.g. ``high_prob, low_time``.
+
+    For launch printouts, figure annotations and anywhere a reader needs to know what a
+    theta means without doing trigonometry. Axis-aligned directions name only the axis
+    they move along, since calling theta=0 "high_prob any_time" implies a time preference
+    it does not have.
+    """
+    w_prob, w_time = theta_weights(theta_deg)
+    # Tolerance rather than == 0, so a theta of 89.9999 still reads as a pure time run.
+    prob = "" if abs(w_prob) < 1e-9 else ("high_prob" if w_prob > 0 else "low_prob")
     # Negative time weight means shorter fixation scores higher.
-    time = {-1: "low_time", 1: "high_time"}.get(int(np.sign(w_time)), "any_time")
-    label = f"{prob} {time}"
-    if (abs(w_prob), abs(w_time)) != (1.0, 1.0):
-        label += f" ({abs(w_prob):g}:{abs(w_time):g})"
-    return label
+    time = "" if abs(w_time) < 1e-9 else ("high_time" if w_time > 0 else "low_time")
+    return ", ".join(part for part in (prob, time) if part)
+
+
+def weighted_score(prob_fixation, mean_steps, w_prob, w_time):
+    """The combined objective evaluated on any (rho, T), not just on a generation's stats.
+
+    Public and column-free so a reader can score things the search never produced: the
+    random-graph cloud, the respiratory graphs, an old run under a different theta. That
+    is what makes "did the winner land where the objective says it should" checkable,
+    since the check is 'no other graph in the cloud scores higher', and the cloud has no
+    weighted column of its own. Accepts scalars or arrays.
+
+    ``_add_weighted`` is the in-pipeline caller, so the score the driver selects on and
+    the score a figure draws cannot drift apart.
+    """
+    return (
+        w_prob * (prob_fixation - RHO_COMPLETE) / SD_PROB_RESIDUAL
+        + w_time * np.log(mean_steps / T_COMPLETE) / SD_LOG_TIME_RESIDUAL
+    )
 
 
 def _add_weighted(stats, w_prob, w_time):
@@ -787,14 +939,13 @@ def _add_weighted(stats, w_prob, w_time):
     contributes more fixation-time samples. The residual correlation is second order next
     to the weights themselves, and this SEM is used for display, never for selection.
     """
-    prob_term = w_prob * (stats["prob_fixation"] - RHO_COMPLETE) / SD_PROB_RESIDUAL
-    time_term = w_time * np.log(stats["mean_steps"] / T_COMPLETE) / SD_LOG_TIME_RESIDUAL
+    score = weighted_score(stats["prob_fixation"], stats["mean_steps"], w_prob, w_time)
     sem = np.sqrt(
         (w_prob / SD_PROB_RESIDUAL * stats["prob_fixation_sem"]) ** 2
         + (w_time / SD_LOG_TIME_RESIDUAL * stats["mean_steps_sem"] / stats["mean_steps"])
         ** 2
     )
-    return stats.assign(weighted=prob_term + time_term, weighted_sem=sem)
+    return stats.assign(weighted=score, weighted_sem=sem)
 
 
 def _run_generation(state, cfg, candidates, generation, seconds_per_sim):
@@ -825,7 +976,7 @@ def _run_generation(state, cfg, candidates, generation, seconds_per_sim):
             candidates,
             run_dir,
             gen_dir,
-            batch_name=f"{run_dir.name}_gen_{generation:03d}",
+            batch_name=f"{run_label(run_dir)}_gen_{generation:03d}",
             n_repeats=cfg["n_repeats"],
             queue=cfg["queue"],
             memory=cfg["memory"],
@@ -867,7 +1018,15 @@ def _run_generation(state, cfg, candidates, generation, seconds_per_sim):
         # confusing "graph_props.csv missing" three lines later.
         # Shards first: an unreadable one segfaults polars, which no except clause
         # can catch, so it has to be prevented rather than retried.
-        complaint = _wait_for_shards(gen_dir, job_ids.get("n_shards", 1))
+        # Budgeted off the same knob as the array wait, not the 600 s default. Under a
+        # saturated queue the last array index can still be PENDING when the rest have
+        # finished, and a fixed 600 s then throws away a generation that was 101/102
+        # complete and re-runs all 102 -- which is how a 3 h launch became a 10 h one.
+        complaint = _wait_for_shards(
+            gen_dir,
+            job_ids.get("n_shards", 1),
+            timeout_s=cfg["generation_timeout_s"],
+        )
         if complaint is not None:
             pass
         elif register_state == "EXIT":
@@ -883,10 +1042,7 @@ def _run_generation(state, cfg, candidates, generation, seconds_per_sim):
             )
             if stats is not None:
                 stats = _add_sem(stats)
-                if cfg["metric"] == "weighted":
-                    stats = _add_weighted(
-                        stats, cfg["weight_prob"], cfg["weight_time"]
-                    )
+                stats = _add_weighted(stats, *theta_weights(cfg["theta"]))
                 # The generation is banked and its jobs are terminal, so there is nothing
                 # left for a successor to kill. Leaving the record would make the next
                 # driver bkill job ids that have since been recycled by LSF.
@@ -929,8 +1085,11 @@ def _prune_raw(gen_dir):
 # ======================================================================================
 
 
-def _select(stats, candidates, metric, objective, pop_size):
-    """Top ``pop_size`` candidates by ``metric``, as PopulationGraph objects.
+def _select(stats, candidates, pop_size):
+    """Top ``pop_size`` candidates by the weighted objective, as PopulationGraph objects.
+
+    Always a maximization, and always on the same column: direction is carried entirely by
+    the sign of the weights, so there is no objective flag to get out of step with them.
 
     wl_hash is the tiebreaker, and it is load-bearing rather than decorative. Exact ties
     are routine, not freak events: prob_fixation is k/n_repeats, an integer over a fixed
@@ -948,16 +1107,14 @@ def _select(stats, candidates, metric, objective, pop_size):
     so it plays no favourites, yet fixed, so it costs no RNG state and reproduces exactly.
     That is a coin flip's fairness with a rule's determinism.
     """
-    ranked = stats.sort_values(
-        [metric, "wl_hash"], ascending=[objective == "minimize", True]
-    )
+    ranked = stats.sort_values(["weighted", "wl_hash"], ascending=[False, True])
     ranked = ranked.reset_index(drop=True)
     by_hash = {g.wl_hash: g for g in candidates}
     elites = [by_hash[h] for h in ranked["wl_hash"].head(pop_size)]
     return elites, ranked
 
 
-def _append_history(run_dir, generation, ranked, metric, pop_size, parents, elite_hashes):
+def _append_history(run_dir, generation, ranked, pop_size, parents, elite_hashes):
     """One row per (generation, candidate): the full lineage, recoverable after the run.
 
     The ML notebook kept only the mean predicted fitness of survivors in memory, so it
@@ -965,25 +1122,26 @@ def _append_history(run_dir, generation, ranked, metric, pop_size, parents, elit
     """
     rows = ranked.assign(
         generation=generation,
-        fitness=ranked[metric],
         rank=np.arange(1, len(ranked) + 1),
         survived=np.arange(len(ranked)) < pop_size,
         is_new=~ranked["wl_hash"].isin(elite_hashes),
         parent_wl_hash=ranked["wl_hash"].map(parents),
     )
+    # No separate 'fitness' column any more: it used to be a copy of whichever metric the
+    # run selected on, which was the only way to compare a mean_steps run against a
+    # prob_fixation one. Every run now selects on 'weighted', so the copy carried no
+    # information and gave two names to one number.
     columns = [
         "generation", "wl_hash", "graph_name", "parent_wl_hash",
         "prob_fixation", "prob_fixation_sem", "mean_steps", "mean_steps_sem",
-        "std_steps", "n_grouped", "fitness", "rank", "survived", "is_new",
+        "std_steps", "n_grouped", "weighted", "weighted_sem",
+        "rank", "survived", "is_new",
     ]
-    # Present only on weighted runs; the readers key off the metric name, so an
-    # absent column is never silently read as zero.
-    columns += [c for c in ("weighted", "weighted_sem") if c in ranked]
     path = Path(run_dir) / "ga_history.csv"
     rows[columns].to_csv(path, mode="a", header=not path.exists(), index=False)
 
 
-def _progress_line(cfg, generation, ranked, metric, n_new_elites, elapsed, start_gen=0):
+def _progress_line(cfg, generation, ranked, n_new_elites, elapsed, start_gen=0):
     """A one-line bar for the driver's LSF log.
 
     The driver runs detached, so this is how you see where the search is from a
@@ -999,11 +1157,12 @@ def _progress_line(cfg, generation, ranked, metric, n_new_elites, elapsed, start
     done = generation + 1
     ran_here = generation - start_gen + 1
     filled = min(22, max(0, int(22 * done / total)))
-    best = ranked[metric].iloc[0]
-    median = ranked[metric].median()
+    best = ranked["weighted"].iloc[0]
+    median = ranked["weighted"].median()
     remaining = (total - done) * (elapsed / ran_here) if ran_here > 0 else 0
     return (
-        f"[{cfg['objective']} {metric}] gen {done:3d}/{total} "
+        f"[{theta_category(cfg['theta'])} {quadrant_name(cfg['theta'])}] "
+        f"gen {done:3d}/{total} "
         f"|{'#' * filled}{'-' * (22 - filled)}| {100 * done / total:3.0f}%  "
         f"best={best:.4g}  median={median:.4g}  new_elites={n_new_elites}  "
         f"eta {int(remaining // 3600)}h{int(remaining % 3600 // 60):02d}m"
@@ -1029,12 +1188,9 @@ def _write_state(run_dir, state, seen):
 
 def run_search(cfg):
     run_dir = Path(cfg["run_dir"])
-    metric, objective = cfg["metric"], cfg["objective"]
-    category = (
-        weighted_category(cfg["weight_prob"], cfg["weight_time"])
-        if metric == "weighted"
-        else f"{objective} {metric}"
-    )
+    theta = normalize_theta(cfg["theta"])
+    w_prob, w_time = theta_weights(theta)
+    category = theta_category(theta)
     state_path = run_dir / "ga_state.json"
 
     if state_path.exists():
@@ -1062,7 +1218,7 @@ def run_search(cfg):
         state["generations"] = cfg["generations"]
         log.info(
             "Resuming %s at generation %d of %d.",
-            run_dir.name, start_gen, cfg["generations"],
+            run_label(run_dir), start_gen, cfg["generations"],
         )
     else:
         run_dir.mkdir(parents=True, exist_ok=True)
@@ -1078,18 +1234,23 @@ def run_search(cfg):
         seen = {g.wl_hash for g in elites}
         start_gen = 0
         state = {
-            "run": run_dir.name,
-            "metric": metric,
-            "objective": objective,
-            # Recorded rather than re-derived: for a weighted run it names the corner
-            # and cannot be reconstructed from objective + metric alone.
+            "run": run_label(run_dir),
+            "theta": theta,
+            "weight_prob": w_prob,
+            "weight_time": w_time,
+            # Recorded rather than re-derived, so every reader labels a run the same way
+            # without importing this module to recompute it.
             "category": category,
+            "quadrant": quadrant_name(theta),
             "generations": cfg["generations"],
             "started_at": datetime.now().isoformat(timespec="seconds"),
             "warnings": [],
         }
-        log.info("Starting %s: %s %s, %d generations.", run_dir.name, objective, metric,
-                 cfg["generations"])
+        log.info(
+            "Starting %s: theta=%g (%s), w=(%+.3f, %+.3f), %d generations.",
+            run_label(run_dir), theta, quadrant_name(theta), w_prob, w_time,
+            cfg["generations"],
+        )
 
     started = time.monotonic()
     # Carried across generations and re-estimated from each one's measured results. On a
@@ -1118,13 +1279,13 @@ def run_search(cfg):
             state, cfg, candidates, generation, seconds_per_sim
         )
         seconds_per_sim = _estimate_seconds_per_sim(stats) or seconds_per_sim
-        elites, ranked = _select(stats, candidates, metric, objective, cfg["pop_size"])
+        elites, ranked = _select(stats, candidates, cfg["pop_size"])
         n_new_elites = int(
             (~ranked["wl_hash"].head(cfg["pop_size"]).isin(elite_hashes)).sum()
         )
 
         _append_history(
-            run_dir, generation, ranked, metric, cfg["pop_size"], parents, elite_hashes
+            run_dir, generation, ranked, cfg["pop_size"], parents, elite_hashes
         )
         _prune_raw(gen_dir)
 
@@ -1135,8 +1296,8 @@ def run_search(cfg):
             elite_hashes=[g.wl_hash for g in elites],
             n_seen=len(seen),
             rng_state=rng.bit_generator.state,
-            best_fitness=float(ranked[metric].iloc[0]),
-            median_fitness=float(ranked[metric].median()),
+            best_fitness=float(ranked["weighted"].iloc[0]),
+            median_fitness=float(ranked["weighted"].median()),
             n_new_elites=n_new_elites,
             seconds_per_sim=seconds_per_sim,
             last_generation_at=datetime.now().isoformat(timespec="seconds"),
@@ -1147,9 +1308,7 @@ def run_search(cfg):
         _write_state(run_dir, state, seen)
         log.info(
             "%s",
-            _progress_line(
-                cfg, generation, ranked, metric, n_new_elites, elapsed, start_gen
-            ),
+            _progress_line(cfg, generation, ranked, n_new_elites, elapsed, start_gen),
         )
 
     joblib.dump(elites, run_dir / "final_population.pkl")
@@ -1168,12 +1327,13 @@ def run_search(cfg):
         timing += f" ({_format_duration(this_attempt)} of it computing, after a resume)"
     per_generation = this_attempt / max(generations_run, 1)
 
-    # Suppressed by submit_all_runs, which sends one summary for the whole launch
+    # Suppressed by submit_theta_runs, which sends one summary for the whole launch
     # instead. A lone submit_driver still announces itself.
     notify(
         cfg.get("ntfy_topic") if cfg.get("notify_on_finish", True) else "",
-        f"GA finished: {run_dir.name}",
-        f"{objective} {metric} over {cfg['generations']} generations {timing}\n"
+        f"GA finished: {run_label(run_dir)}",
+        f"theta={theta:g} ({quadrant_name(theta)}) over {cfg['generations']} "
+        f"generations {timing}\n"
         f"{_format_duration(per_generation)} per generation\n"
         f"best={state['best_fitness']:.6g}  median={state['median_fitness']:.6g}\n"
         f"{state['n_seen']} topologies evaluated",
@@ -1182,8 +1342,7 @@ def run_search(cfg):
 
 def submit_driver(
     run_dir,
-    metric,
-    objective,
+    theta,
     generations=100,
     pop_size=20,
     n_children=10,
@@ -1193,8 +1352,6 @@ def submit_driver(
     driver_queue="gsla-cpu",
     driver_walltime="12:00",
     notify_on_finish=True,
-    weight_prob=1.0,
-    weight_time=-1.0,
     extra_args=(),
 ):
     """bsub one driver job. Returns its LSF job id.
@@ -1247,14 +1404,15 @@ def submit_driver(
     if complaint:
         topic = ""
 
+    label = run_label(run_dir)
     cmd = [
         "bsub",
         "-q", driver_queue,
-        "-J", f"ga_{run_dir.name}",
+        "-J", f"ga_{label}",
         "-W", driver_walltime,
         "-R", "rusage[mem=4096]",
-        "-o", str(logs_dir / f"{run_dir.name}_%J.out"),
-        "-e", str(logs_dir / f"{run_dir.name}_%J.err"),
+        "-o", str(logs_dir / f"{label}_%J.out"),
+        "-e", str(logs_dir / f"{label}_%J.err"),
         # NTFY_TOPIC is forwarded from the submitting shell, so the driver can notify
         # without the topic ever being written into the repo or a job's command line.
         # Thread limits, and a requeue-on-crash. The driver is a 1-slot job that spends
@@ -1275,19 +1433,13 @@ def submit_driver(
         "-Q", "139",
         sys.executable, "-u", "-m", "moran_process.pipeline.ga_search",
         "--run-dir", str(run_dir),
-        "--metric", metric,
-        "--objective", objective,
+        "--theta", str(normalize_theta(theta)),
         "--generations", str(generations),
         "--pop-size", str(pop_size),
         "--n-children", str(n_children),
         "--n-repeats", str(n_repeats),
         "--seed", str(seed),
         "--queue", queue,
-        *(
-            ["--weight-prob", str(weight_prob), "--weight-time", str(weight_time)]
-            if metric == "weighted"
-            else []
-        ),
         *([] if notify_on_finish else ["--no-finish-notify"]),
         *extra_args,
     ]
@@ -1296,59 +1448,101 @@ def submit_driver(
     if result.returncode == 0:
         match = re.search(r"Job <(\d+)>", result.stdout)
         job_id = match.group(1) if match else None
-        print(f"{run_dir.name:34s} submitted as LSF job {job_id or 'unknown'}")
+        print(f"{label:34s} submitted as LSF job {job_id or 'unknown'}")
     else:
-        print(f"{run_dir.name:34s} bsub FAILED: {(result.stderr or '').strip()}")
+        print(f"{label:34s} bsub FAILED: {(result.stderr or '').strip()}")
     return job_id
 
 
-#: The two corners the single-objective runs cannot reach. The first is the interesting
-#: one: among random (31, 34) graphs the two metrics are POSITIVELY correlated (+0.35),
-#: so "fixes more often AND finishes sooner" is asking the search to break the natural
-#: trend, and none of the four single-objective runs got near it -- the high-probability
-#: runs all sat at long times, and the fast run gave up its probability advantage.
-CORNERS = {
-    "high_prob-low_time": (1.0, -1.0),
-    "low_prob-high_time": (-1.0, 1.0),
-}
+def run_dir_for(ga_runs_dir, prefix, theta, replicate=0):
+    """Where a (prefix, theta, replicate) run lives: ``<prefix>-theta<NNN>/rep<K>/``.
 
+    ``theta315`` rather than ``theta-45``: the angle is normalized first, which keeps the
+    name free of sign characters and, more importantly, makes two launches that mean the
+    same direction land under the same theta directory.
 
-def submit_corner_runs(
-    ga_runs_dir, prefix, corners=None, replicates=1, seed=42, **kwargs
-):
-    """Submit weighted-objective runs, one per corner per replicate.
-
-    ``corners`` maps a name to ``(weight_prob, weight_time)``; it defaults to CORNERS.
-    Everything else works exactly as submit_all_runs, including the single summary
-    notification once every run has ended.
-
-    Direction lives in the weights, not in ``--objective``, so every one of these is a
-    maximization: w = (+1, -1) maximizes "probability gain minus time cost" in units of
-    random-graph SDs.
+    Nested rather than a flat ``<prefix>-theta315-rep0`` name (the layout before
+    2026-08-24) so every replicate of one direction lives together and is one glob away:
+    ``(ga_runs_dir / f"{prefix}-theta315").glob("rep*")`` finds them all, where the flat
+    layout needed a prefix match plus a regex to avoid also matching theta315's own
+    directory when replicates == 1. ``replicate`` always has a value now -- the old
+    ``None`` meant "no -repN suffix" for a single-replicate launch, which was the second
+    representation of "how many replicates" alongside the ``replicates`` argument itself,
+    and the two disagreeing is exactly the class of bug the theta refactor (2026-08-19)
+    was meant to eliminate.
     """
-    corners = dict(corners or CORNERS)
+    theta_dir = f"{prefix}-theta{normalize_theta(theta):03.0f}"
+    return Path(ga_runs_dir) / theta_dir / f"rep{replicate}"
+
+
+def run_label(run_dir):
+    """Flat identity string for a run directory: ``.../PREFIX-theta315/rep0`` ->
+    ``PREFIX-theta315-rep0``.
+
+    Reconstructs the pre-nesting flat name, which is what every place that treats a run as
+    an opaque unique string -- the ``run`` column in ``ga_history.csv``, LSF job names,
+    driver log filenames, ntfy messages -- used before the directory layout changed.
+    Nesting was a filesystem-layout decision; it does not have to also change every
+    identifier derived from a run directory's name, so this is the one place that
+    translates between the two.
+    """
+    run_dir = Path(run_dir)
+    return f"{run_dir.parent.name}-{run_dir.name}"
+
+
+def submit_theta_runs(
+    ga_runs_dir, prefix, thetas, replicates=1, seed=42, **kwargs
+):
+    """Submit one driver per direction per replicate. The only launcher.
+
+    ``thetas`` is any iterable of angles in degrees -- ``CORNER_THETAS`` for the four
+    diagonals, ``np.linspace(0, 360, K, endpoint=False)`` to sweep a circle, or a single
+    ``[45]``. Duplicates are rejected after normalization rather than silently collapsed,
+    since ``[45, 405]`` almost certainly means a mistake and would otherwise produce one
+    run where two were asked for.
+
+    Replicates are the phase-2 mechanism for "did independent searches in the SAME
+    direction converge on the same topology": replicate k gets ``seed + k*1000``, which
+    reseeds the initial population, the mutation stream and the simulation seeds together,
+    so the runs share nothing but their objective.
+    """
+    thetas = [normalize_theta(t) for t in thetas]
+    duplicates = {t for t in thetas if thetas.count(t) > 1}
+    if duplicates:
+        raise ValueError(
+            f"repeated direction(s) {sorted(duplicates)} after normalizing to [0, 360). "
+            f"Angles that differ by a multiple of 360 are the same direction and would "
+            f"collide in one run directory. For independent repeats of one direction, "
+            f"use replicates=."
+        )
+
     jobs, run_dirs = {}, []
     for replicate in range(replicates):
-        suffix = f"-rep{replicate}" if replicates > 1 else ""
-        for name, (w_prob, w_time) in corners.items():
-            run_dir = Path(ga_runs_dir) / f"{prefix}-{name}{suffix}"
+        for theta in thetas:
+            run_dir = run_dir_for(ga_runs_dir, prefix, theta, replicate)
             run_dirs.append(run_dir)
-            jobs[run_dir.name] = submit_driver(
+            jobs[run_label(run_dir)] = submit_driver(
                 run_dir,
-                metric="weighted",
-                objective="maximize",
+                theta=theta,
                 seed=seed + replicate * 1000,
-                weight_prob=w_prob,
-                weight_time=w_time,
+                # One message for the launch, not one per run. Failures still notify
+                # individually and immediately: a run that dies at hour four is worth
+                # interrupting for, and folding it into the summary would mean hearing
+                # about it only once its siblings also finished.
                 notify_on_finish=False,
                 **kwargs,
             )
     submit_summary_job(run_dirs, list(jobs.values()), prefix)
+
+    # One ping at launch, so the notification path is proved now rather than assumed for
+    # the next several hours. The failure it exists to catch is silent by construction:
+    # posting to a valid but unsubscribed topic succeeds, so a typo in NTFY_TOPIC looks
+    # exactly like a working setup until the run ends and nothing arrives.
     notify(
         os.environ.get("NTFY_TOPIC", ""),
         f"GA launched: {prefix}",
-        f"{len(jobs)} weighted-objective runs submitted\n"
-        + "\n".join(f"{n}: w=({p:+g}, {t:+g})" for n, (p, t) in corners.items())
+        f"{len(jobs)} runs over {len(thetas)} direction(s) x {replicates} replicate(s)\n"
+        + "\n".join(f"theta={t:g}: {quadrant_name(t)}" for t in thetas)
         + "\nOne summary message when they have ALL finished.",
     )
     return jobs
@@ -1400,72 +1594,6 @@ def submit_summary_job(run_dirs, job_ids, prefix, queue="short", walltime="0:10"
     return job_id
 
 
-def submit_all_runs(ga_runs_dir, prefix, replicates=1, seed=42, **kwargs):
-    """Submit the full run matrix, optionally as ``replicates`` independent repeats.
-
-    The matrix is METRICS x OBJECTIVES, so three metrics against two objectives gives six
-    runs per replicate, not four. (For the weighted corners specifically, see
-    ``submit_corner_runs``, which walks CORNERS instead.)
-
-    Within one replicate the runs share a seed, and that is what makes them comparable:
-    they start from the identical 20 random graphs, so any divergence between them is
-    attributable to the objective rather than to where they started.
-
-    Across replicates the seed changes, and it changes for everything at once. Replicate
-    k gets ``seed + k * 1000``, which reseeds the initial population, the mutation stream
-    and the per-task simulation seeds together. The alternative -- holding the starting
-    population fixed and varying only mutation -- answers a narrower question (how
-    path-dependent is the search from this one starting point). Varying both answers the
-    question actually being asked: run the whole procedure again from scratch and does it
-    arrive somewhere similar.
-
-    Directories are suffixed ``-rep0``, ``-rep1``, ... only when replicates > 1, so a
-    single-replicate launch keeps the names every existing figure and notebook expects.
-
-    Note the load: 4 runs per replicate, each holding one driver slot plus an array of up
-    to MAX_WORKERS. Three replicates is 12 concurrent runs, which will bump into the
-    group's slot limit (``blimits -w -a -q gsla-cpu``, 680 for molgen) and simply queue.
-    That costs wall clock but nothing else.
-    """
-    jobs, run_dirs = {}, []
-    for replicate in range(replicates):
-        suffix = f"-rep{replicate}" if replicates > 1 else ""
-        for metric in METRICS:
-            for objective in OBJECTIVES:
-                run_dir = (
-                    Path(ga_runs_dir) / f"{prefix}-{objective}-{metric}{suffix}"
-                )
-                run_dirs.append(run_dir)
-                jobs[run_dir.name] = submit_driver(
-                    run_dir,
-                    metric,
-                    objective,
-                    seed=seed + replicate * 1000,
-                    # One message for the launch, not one per run. Failures still notify
-                    # individually and immediately: a run that dies at hour four is worth
-                    # interrupting for, and waiting to fold it into the summary would mean
-                    # hearing about it only once its siblings also finished.
-                    notify_on_finish=False,
-                    **kwargs,
-                )
-    submit_summary_job(run_dirs, list(jobs.values()), prefix)
-
-    # One ping at launch, so the notification path is proved now rather than assumed for
-    # the next several hours. The failure it exists to catch is silent by construction:
-    # posting to a valid but unsubscribed topic succeeds, so a typo in NTFY_TOPIC looks
-    # exactly like a working setup until the run ends and nothing arrives. If this message
-    # does not appear on your phone, neither will the summary.
-    notify(
-        os.environ.get("NTFY_TOPIC", ""),
-        f"GA launched: {prefix}",
-        f"{len(jobs)} runs submitted"
-        + (f" ({replicates} replicates)" if replicates > 1 else "")
-        + "\nOne summary message when they have ALL finished.\n"
-        + "If this is the only message you ever get, check NTFY_TOPIC.",
-    )
-    return jobs
-
-
 def _main_summarize(argv):
     """``--summarize <run_dir> ...``: send one message covering a whole launch.
 
@@ -1494,8 +1622,12 @@ def main():
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run-dir", required=True)
-    parser.add_argument("--metric", required=True, choices=METRICS)
-    parser.add_argument("--objective", required=True, choices=OBJECTIVES)
+    parser.add_argument(
+        "--theta", type=float, required=True,
+        help="Search direction in degrees: w_prob=cos(theta), w_time=sin(theta). "
+        "0 seeks high fixation probability, 90 long fixation time, 180 low probability, "
+        "270 short time. Normalized to [0, 360), so -45 and 315 are the same run.",
+    )
     parser.add_argument("--generations", type=int, default=100)
     parser.add_argument("--pop-size", type=int, default=20)
     parser.add_argument("--n-children", type=int, default=10)
@@ -1503,20 +1635,10 @@ def main():
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--queue", default="gsla-cpu")
     parser.add_argument(
-        "--weight-prob", type=float, default=1.0,
-        help="Weight on (rho - rho_c)/SD_PROB_RESIDUAL. Only used by "
-        "--metric weighted. Positive seeks high fixation probability.",
-    )
-    parser.add_argument(
-        "--weight-time", type=float, default=-1.0,
-        help="Weight on log(T/T_c)/SD_LOG_TIME_RESIDUAL. Only used by "
-        "--metric weighted. NEGATIVE seeks short fixation time.",
-    )
-    parser.add_argument(
         "--no-finish-notify",
         dest="notify_on_finish",
         action="store_false",
-        help="Do not notify when THIS run finishes. Set by submit_all_runs, which "
+        help="Do not notify when THIS run finishes. Set by submit_theta_runs, which "
         "sends a single summary once every run in the launch has ended. Failure "
         "notifications are unaffected.",
     )
@@ -1569,10 +1691,16 @@ def main():
         ).exists() else {}
         elapsed = _elapsed_since_launch(state)
         reached = state.get("generation")
+        # theta, not args.objective/args.metric. Those attributes were removed when a run
+        # became a single angle, and this handler kept referencing them -- so the crash
+        # reporter crashed with AttributeError, swallowing both the real error and the
+        # notification that was supposed to announce it. It went unnoticed because this is
+        # the one path that only executes when something has ALREADY gone wrong: five
+        # drivers died overnight and the only trace was a bare exit code 1.
         notify(
             cfg["ntfy_topic"],
-            f"GA FAILED: {run_dir.name}",
-            f"{args.objective} {args.metric}\n"
+            f"GA FAILED: {run_label(run_dir)}",
+            f"theta={args.theta:g} ({quadrant_name(args.theta)})\n"
             + (f"died after {_format_duration(elapsed)}" if elapsed else "died")
             + (
                 f" at generation {reached + 1}/{args.generations}\n"
