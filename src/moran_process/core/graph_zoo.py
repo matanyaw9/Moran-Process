@@ -22,11 +22,16 @@ class GraphZoo:
 
     # --- Visualization ---
 
-    def draw_all(self, cols: int = 3, descriptive=True, with_labels=False, title=None) -> None:
+    def draw_all(self, cols: int = 3, descriptive=True, with_labels=False, title=None, skip_randoms=True) -> None:
         """Draw all graphs in a matplotlib grid. Each graph occupies one subplot."""
         import matplotlib.pyplot as plt  # lazy: keep matplotlib off the module-import path
 
-        n = len(self.graphs)
+        if skip_randoms: 
+            graphs_to_show = [g for g in self.graphs if g.category != "Random"]
+            print(f"Skipping {len(self.graphs) - len(graphs_to_show)} randoms")
+        else:
+            graphs_to_show = self.graphs
+        n = len(graphs_to_show)
         if n == 0:
             print("No graphs in zoo.")
             return
@@ -34,7 +39,7 @@ class GraphZoo:
         rows = math.ceil(n / cols)
         fig, axes = plt.subplots(rows, cols, figsize=(cols * 4, rows * 4))
         axes = np.array(axes).flatten()
-        for i, graph in enumerate(self.graphs):
+        for i, graph in enumerate(graphs_to_show):
             graph.draw(ax=axes[i], descriptive=descriptive, with_labels=with_labels, title=title)
         for j in range(n, len(axes)):
             axes[j].set_visible(False)
