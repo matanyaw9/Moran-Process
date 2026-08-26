@@ -41,6 +41,14 @@ _RESULT_SCHEMA = pa.schema(
         pa.field("fixation", pa.bool_()),
         pa.field("steps", pa.int64()),
         pa.field("duration", pa.float64()),
+        # True when the run was cut short by max_steps rather than absorbing.
+        # Both engines only break out of the loop *before* incrementing `steps`,
+        # so exiting with steps == max_steps happens if and only if the while
+        # condition failed, making this exact rather than a heuristic. Without it
+        # a truncated run is written as (fixation=False, steps=max_steps) and is
+        # indistinguishable from an extinction, which biases mean_steps downward
+        # at exactly the large-N end of a scaling study.
+        pa.field("censored", pa.bool_()),
     ]
 )
 
@@ -77,19 +85,30 @@ def _rss_mb() -> int:
 
 
 def run_worker_slice(
-    batch_dir, zoo_shard_dir, manifest_path, worker_index, engine="cpp"
+    batch_dir,
+    zoo_shard_dir,
+    manifest_path,
+    worker_index,
+    engine="cpp",
+    max_steps=1_000_000,
 ):
     """Run simulations for all tasks assigned to this LSF job index.
 
     1. Load this worker's GraphCore shard and filter manifest to our rows.
     2. Run simulations for each (graph, r) task using the selected engine.
     3. Stream results to a per-job Parquet file (one row-group per task).
+
+    max_steps caps each run. It is batch-level rather than per-task (like engine,
+    unlike seed) and is recorded in batch_info.json, so a batch documents its own
+    ceiling. The default matches the engine constructor default, so callers that
+    do not pass it are unaffected.
     """
     MoranProcess = _resolve_engine(engine)
     log.info(
-        "--- Worker %s started | engine=%s | RSS=%d MB ---",
+        "--- Worker %s started | engine=%s | max_steps=%d | RSS=%d MB ---",
         worker_index,
         engine,
+        max_steps,
         _rss_mb(),
     )
 
@@ -144,7 +163,10 @@ def run_worker_slice(
                 # Seed from manifest: int → reproducible task, NaN → OS entropy.
                 task_seed = None if pd.isna(row.seed) else int(row.seed)
                 sim = MoranProcess(
-                    graph_core=graph_core, selection_coefficient=r_val, seed=task_seed
+                    graph_core=graph_core,
+                    selection_coefficient=r_val,
+                    seed=task_seed,
+                    max_steps=max_steps,
                 )
 
                 # Run all repeats inside the engine: one boundary crossing per
@@ -153,6 +175,19 @@ def run_worker_slice(
                 fixations = out["fixation"]
                 steps_arr = out["steps"]
                 durations = out["duration"]
+                # Exact, not a heuristic: see the note on _RESULT_SCHEMA.censored.
+                censored = np.asarray(steps_arr) >= max_steps
+                if censored.any():
+                    log.warning(
+                        "Task %s (%s, r=%s): %d/%d runs hit max_steps=%d. "
+                        "mean_steps for this graph is biased low.",
+                        row.task_id,
+                        graph_core.name,
+                        r_val,
+                        int(censored.sum()),
+                        n_repeats,
+                        max_steps,
+                    )
 
                 # Flush this task's results as one Parquet row-group
                 batch = pa.RecordBatch.from_arrays(
@@ -165,6 +200,7 @@ def run_worker_slice(
                         pa.array(fixations),
                         pa.array(steps_arr),
                         pa.array(durations),
+                        pa.array(censored),
                     ],
                     schema=_RESULT_SCHEMA,
                 )
@@ -232,6 +268,17 @@ if __name__ == "__main__":
         default="cpp",
         help="Simulation engine: 'cpp' (fast, default) or 'python' (reference)",
     )
+    parser.add_argument(
+        "--max-steps",
+        type=int,
+        default=1_000_000,
+        help=(
+            "Cap on steps per run (default: 1e6, the engine default). Runs that "
+            "hit it are flagged in the 'censored' column. Raise it for large or "
+            "strongly suppressive graphs, where absorption takes longer than 1e6 "
+            "steps and truncation would silently bias mean_steps downward."
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -259,4 +306,5 @@ if __name__ == "__main__":
         args.manifest_path,
         job_idx,
         engine=args.engine,
+        max_steps=args.max_steps,
     )

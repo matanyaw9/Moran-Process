@@ -72,6 +72,7 @@ def create_batch_info(
     total_simulations=None,
     batch_seed=None,
     engine=None,
+    max_steps=None,
     # zoo description
     n_graphs=None,
     graph_types=None,
@@ -121,6 +122,7 @@ def create_batch_info(
             "total_simulations": total_simulations,
             "batch_seed": batch_seed,
             "engine": engine,
+            "max_steps": max_steps,
         },
         "hpc": {
             "n_requested_jobs": n_requested_jobs,

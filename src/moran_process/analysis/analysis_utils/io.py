@@ -13,6 +13,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from .constants import HASH_DTYPES
+
 from .provenance import load_batch_info
 from .theory import (
     analytic_moran_fc_fixation_prob,
@@ -265,6 +267,13 @@ GROUP_KEYS = ["wl_hash", "r"]
 # is what makes the map-reduce exact (see _aggregate_chunked).
 _PARTIAL_COLS = ["_fix_sum", "_n_total", "_steps_sum", "_steps_n", "_steps_sq_sum"]
 
+# Counted only when the shards carry it. worker_lsf writes a 'censored' column (True when
+# max_steps stopped the run rather than absorption); shards written before that change
+# have no such column, and there is no way to recover the ceiling they ran under from the
+# rows alone. Absent is therefore reported as an ABSENT n_censored column rather than as
+# zero: a batch that was never measured for censoring must not claim it found none.
+_CENSORED_PARTIAL = "_censored_sum"
+
 
 def _expand_shards(results_source):
     """Return the list of files a results source refers to (glob -> sorted file list)."""
@@ -317,6 +326,12 @@ def _aggregate_chunked(files, progress_every=100):
     """
     import polars as pl
 
+    # One decision for the whole batch: every shard in it was written by the same worker
+    # version, so the first shard's schema settles it without opening the other 999.
+    has_censored = bool(files) and "censored" in scan_results(
+        files[0]
+    ).collect_schema().names()
+
     partials = []
     for i, f in enumerate(files):
         if i > 0 and i % progress_every == 0:
@@ -335,15 +350,21 @@ def _aggregate_chunked(files, progress_every=100):
                     .sum()
                     .alias("_steps_sq_sum"),
                 ]
+                + (
+                    [pl.col("censored").sum().cast(pl.Int64).alias(_CENSORED_PARTIAL)]
+                    if has_censored
+                    else []
+                )
             )
             .collect()
         )
 
     # ~73 rows per shard, so the reduce input is tiny (~73k rows for 1000 shards).
+    partial_cols = _PARTIAL_COLS + ([_CENSORED_PARTIAL] if has_censored else [])
     combined = (
         pl.concat(partials)
         .group_by(GROUP_KEYS)
-        .agg([pl.col(c).sum().alias(c) for c in _PARTIAL_COLS])
+        .agg([pl.col(c).sum().alias(c) for c in partial_cols])
     )
 
     n, s, sq = pl.col("_steps_n"), pl.col("_steps_sum"), pl.col("_steps_sq_sum")
@@ -358,8 +379,13 @@ def _aggregate_chunked(files, progress_every=100):
                 pl.when(n > 1).then(variance.sqrt()).otherwise(None).alias("std_steps"),
                 pl.col("_n_total").alias("n_grouped"),
             ]
+            + (
+                [pl.col(_CENSORED_PARTIAL).alias("n_censored")]
+                if has_censored
+                else []
+            )
         )
-        .drop(_PARTIAL_COLS)
+        .drop(partial_cols)
         .to_pandas()
     )
 
@@ -390,6 +416,13 @@ def build_graph_statistics(
     - Moments (always) -- prob_fixation, mean_steps, std_steps, n_grouped. Each decomposes
       into additive per-shard partials, so these are computed shard-by-shard and combined
       (see _aggregate_chunked). Peak memory is one shard, whatever the batch size.
+    - n_censored (when the shards carry a 'censored' column) -- how many runs were stopped
+      by max_steps instead of absorbing. It matters because such a run is written as
+      (fixation=False, steps=max_steps), which is indistinguishable from an extinction:
+      it depresses prob_fixation and, since mean_steps is conditional on fixation, drops
+      the longest runs out of the mean entirely. So a batch with n_censored > 0 has BOTH
+      headline statistics biased low, at exactly the slowest-absorbing graphs. The column
+      is omitted rather than zeroed for shards predating it -- see _CENSORED_PARTIAL.
     - Order statistics (only if ``include_order_stats``) -- median_steps, q25_steps,
       q75_steps, iqr_steps. An exact quantile needs every value of a group held at once, so
       it does NOT decompose and forces a single group_by over the whole batch. Polars does
@@ -421,6 +454,7 @@ def build_graph_statistics(
         # therefore does the whole batch in one group_by, which polars does not bound
         # (see _aggregate_chunked) -- fine for small batches, fatal for large ones.
         print(f"Aggregating {len(files)} file(s) in ONE pass (order stats requested)...")
+        has_censored = "censored" in scan_results(results_path).collect_schema().names()
         agg_results_df = (
             scan_results(results_path)
             .with_columns(_steps_success_expr())
@@ -439,6 +473,11 @@ def build_graph_statistics(
                         - pl.col("steps_success").quantile(0.25)
                     ).alias("iqr_steps"),
                 ]
+                + (
+                    [pl.col("censored").sum().cast(pl.Int64).alias("n_censored")]
+                    if has_censored
+                    else []
+                )
             )
             .collect(engine="streaming")
             .to_pandas()
@@ -563,7 +602,7 @@ def load_graph_statistics(batch_dir, category_filter=None, r_filter=None):
                 f"--batch-dir {batch_path}"
             )
 
-        frame = pd.read_csv(stats_path)
+        frame = pd.read_csv(stats_path, dtype=HASH_DTYPES)
 
         # Derived from n_nodes and r alone, so they are recomputed on read rather than
         # being persisted. That keeps the on-disk graph_statistics.csv schema unchanged,
@@ -675,8 +714,14 @@ def _read_fixation_steps_cache(batch_dir, r, max_points_per_category):
         meta = json.load(f)
 
     print(f"Using cached fixation-steps sample: {path}")
+    sample = pd.read_parquet(path)
+    # Caches written before direction existed have no 'group' column. Every batch from
+    # that era was entirely undirected, so group == category is the true value there,
+    # not a placeholder standing in for something unknown.
+    if "group" not in sample.columns:
+        sample["group"] = sample["category"]
     return (
-        pd.read_parquet(path),
+        sample,
         meta["fixation_counts"],
         meta["total_counts"],
         meta["r"],
@@ -723,12 +768,16 @@ def _accumulate_counts(acc, df, key_col, val_col):
 
 
 def _trim_reservoir(reservoir, max_points_per_category):
-    """Keep the ``cap`` smallest sampling keys per category, dropping the rest."""
+    """Keep the ``cap`` smallest sampling keys per violin group, dropping the rest.
+
+    Partitioned on 'group' rather than 'category' so a directed graph and its undirected
+    twin each get the full cap, instead of sharing one.
+    """
     import polars as pl
 
     return (
         reservoir.sort("_key")
-        .with_columns(pl.int_range(pl.len()).over("category").alias("_rank"))
+        .with_columns(pl.int_range(pl.len()).over("group").alias("_rank"))
         .filter(pl.col("_rank") < max_points_per_category)
         .drop("_rank")
     )
@@ -792,7 +841,22 @@ def compute_fixation_steps_by_category(
         raise ValueError("r_values is empty; nothing to sample.")
 
     files = _expand_shards(results_source)
-    cats = pl.from_pandas(df_graphs[["wl_hash", "category"]]).lazy()
+
+    # A violin needs one x position per distribution, and since an undirected graph and
+    # its directed twin now share a category (direction lives in its own column), the
+    # grouping key is the (category, is_directed) pair. It is materialised as one string
+    # because the counts end up as JSON sidecar keys, which cannot be tuples. 'category'
+    # is carried alongside so callers can still colour a pair with a single hue.
+    graphs = df_graphs[["wl_hash", "category"]].copy()
+    _directed = (
+        df_graphs["is_directed"].fillna(False).astype(bool)
+        if "is_directed" in df_graphs.columns
+        else pd.Series(False, index=df_graphs.index)
+    )
+    graphs["group"] = graphs["category"].where(
+        ~_directed, graphs["category"] + " (directed)"
+    )
+    cats = pl.from_pandas(graphs).lazy()
 
     total_counts = {r: {} for r in r_values}
     fixation_counts = {r: {} for r in r_values}
@@ -824,7 +888,9 @@ def compute_fixation_steps_by_category(
         # denominator, so it has to count non-fixation runs too.
         shard = (
             lf.join(cats, on="wl_hash", how="left")
-            .select(["category", "steps", "fixation"] + (["r"] if has_r else []))
+            .select(
+                ["category", "group", "steps", "fixation"] + (["r"] if has_r else [])
+            )
             .collect()
         )
         if shard.height == 0:
@@ -838,19 +904,21 @@ def compute_fixation_steps_by_category(
 
             _accumulate_counts(
                 total_counts[r],
-                slice_.group_by("category").agg(pl.len().alias("n")),
-                "category",
+                slice_.group_by("group").agg(pl.len().alias("n")),
+                "group",
                 "n",
             )
 
-            fx = slice_.filter(pl.col("fixation")).select(["category", "steps"])
+            fx = slice_.filter(pl.col("fixation")).select(
+                ["category", "group", "steps"]
+            )
             if fx.height == 0:
                 continue
 
             _accumulate_counts(
                 fixation_counts[r],
-                fx.group_by("category").agg(pl.len().alias("n")),
-                "category",
+                fx.group_by("group").agg(pl.len().alias("n")),
+                "group",
                 "n",
             )
 
@@ -877,7 +945,7 @@ def compute_fixation_steps_by_category(
     for r in r_values:
         reservoir = reservoirs[r]
         if reservoir is None:
-            sample = pd.DataFrame({"category": [], "steps": []})
+            sample = pd.DataFrame({"category": [], "group": [], "steps": []})
         else:
             sample = reservoir.drop("_key", strict=False).to_pandas()
 
@@ -976,14 +1044,20 @@ def _report_cache_stitch(batch_paths, frames, merged_raw):
         f"column 'batch' identifies the source."
     )
 
+    # Keyed on 'group', not 'category', because that is what the figures actually draw a
+    # violin per. Since direction moved out of the category string, an undirected graph
+    # and its directed twin share a category while landing in different groups, so keying
+    # on category here would announce pooling that does not happen.
+    key = "group" if "group" in merged_raw.columns else "category"
     seen = {}
     for path, frame in zip(batch_paths, frames):
-        for category in frame["category"].dropna().unique():
-            seen.setdefault(category, []).append(path.name)
-    shared = sorted(c for c, batches in seen.items() if len(batches) > 1)
+        col = frame[key] if key in frame.columns else frame["category"]
+        for group in col.dropna().unique():
+            seen.setdefault(group, []).append(path.name)
+    shared = sorted(g for g, batches in seen.items() if len(batches) > 1)
     if shared:
         print(
-            f"WARNING: {len(shared)} category/categories appear in more than one batch "
+            f"WARNING: {len(shared)} group(s) appear in more than one batch "
             f"({', '.join(map(str, shared))}). Their violins POOL across batches unless "
             f"you facet by 'batch', and the rho annotation pools too (counts summed)."
         )
@@ -1095,7 +1169,7 @@ def build_fixation_steps_cache(
             f"sample can only be built from raw rows."
         )
 
-    df_graphs = pd.read_csv(batch_path / "graph_props.csv")
+    df_graphs = pd.read_csv(batch_path / "graph_props.csv", dtype=HASH_DTYPES)
 
     if r_values is None:
         stats_path = batch_path / "graph_statistics.csv"

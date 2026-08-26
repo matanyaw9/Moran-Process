@@ -39,7 +39,12 @@ import pandas as pd
 import matplotlib.colors as mcolors
 import plotly.graph_objects as go
 
-from .colors import CATEGORY_COLOR_DICT, DEFAULT_FIG_SIZE, _sort_categories
+from .colors import (
+    CATEGORY_COLOR_DICT,
+    DEFAULT_FIG_SIZE,
+    _sort_categories,
+    fill_missing_colors,
+)
 from .plots import _outcome_color_norm
 from .theory import analytic_moran_fc_fixation_prob
 
@@ -90,9 +95,29 @@ def plot_two_property_effect_plotly(
     r_suffix = f"  (r={r_vals[0]})" if len(r_vals) == 1 else ""
 
     cols = [x_prop, y_prop, outcome, "category"]
-    plot_df = df[cols].replace([np.inf, -np.inf], np.nan).dropna()
+    if "is_directed" in df.columns:
+        cols = cols + ["is_directed"]
+    plot_df = df[cols].copy()
+    if "is_directed" in plot_df.columns:
+        # Filled BEFORE the dropna below: an unrecorded flag should draw the graph as a
+        # circle, not drop it from the figure.
+        plot_df["is_directed"] = plot_df["is_directed"].fillna(False).astype(bool)
+    plot_df = plot_df.replace([np.inf, -np.inf], np.nan).dropna()
     if plot_df.empty:
         raise ValueError(f"No valid data for ({x_prop}, {y_prop}) -> {outcome}")
+
+    # Here colour carries the outcome, not the category, so the symbol slot is free:
+    # direction always gets it when present.
+    directed = (
+        plot_df["is_directed"].to_numpy()
+        if "is_directed" in plot_df.columns
+        else np.zeros(len(plot_df), dtype=bool)
+    )
+    by_direction = bool(directed.any())
+
+    def _symbols(mask=None):
+        d = directed if mask is None else directed[mask]
+        return np.where(d, "triangle-up", "circle")
 
     # --- color: reuse the matplotlib norm, then normalize to [0,1] for plotly ---
     norm = _outcome_color_norm(plot_df[outcome])
@@ -112,6 +137,7 @@ def plot_two_property_effect_plotly(
             marker=dict(
                 size=7,
                 opacity=0.6,
+                symbol=_symbols(),
                 color=norm_colors,
                 colorscale=colorscale,
                 cmin=0,
@@ -140,7 +166,8 @@ def plot_two_property_effect_plotly(
     # still on the shared outcome scale. Legend entries come for free from `name`.
     if highlight_categories:
         for cat in highlight_categories:
-            grp = plot_df[plot_df["category"] == cat]
+            m = (plot_df["category"] == cat).to_numpy()
+            grp = plot_df[m]
             if grp.empty:
                 continue
             fig.add_trace(
@@ -151,6 +178,7 @@ def plot_two_property_effect_plotly(
                     name=cat,
                     marker=dict(
                         size=13,
+                        symbol=_symbols(m),
                         color=norm(grp[outcome].to_numpy()),
                         colorscale=colorscale,
                         cmin=0,
@@ -163,6 +191,31 @@ def plot_two_property_effect_plotly(
                         f"{x_prop}: %{{x}}<br>{y_prop}: %{{y}}<br>"
                         f"{outcome}: %{{customdata[1]:.4g}}<extra></extra>"
                     ),
+                )
+            )
+
+    # Proxy traces labelling what each marker shape means. No data points, so they only
+    # populate the legend.
+    if by_direction:
+        for i, (label, symbol) in enumerate(
+            [("undirected", "circle"), ("directed", "triangle-up")]
+        ):
+            fig.add_trace(
+                go.Scatter(
+                    x=[None],
+                    y=[None],
+                    mode="markers",
+                    name=label,
+                    legendrank=1000 + i,
+                    legendgroup="direction_legend",
+                    legendgrouptitle_text="Edge direction",
+                    marker=dict(
+                        size=8,
+                        symbol=symbol,
+                        color="dimgray",
+                        line=dict(width=0.5, color="white"),
+                    ),
+                    hoverinfo="skip",
                 )
             )
 
@@ -326,11 +379,18 @@ def plot_outcome_vs_property_plotly(
     customdata, template = _hover(plot_df, x_prop, y_outcome)
     highlight_categories = highlight_categories or []
     legend_order = _sort_categories(plot_df["category"].dropna().unique().tolist())
+    # Same fill the static twin uses, over the same ordered list, so a category with no
+    # entry in CATEGORY_COLOR_DICT ('Line', 'Grid') gets one identical color in both.
+    # This replaced a flat 'lightgray' default, which rendered every unpinned category
+    # the same shade and made them indistinguishable from 'Random'.
+    palette = fill_missing_colors(legend_order, color_dict)
 
-    # With several r values in one frame, color still encodes category while marker
-    # SHAPE encodes r, so both are readable at once. The symbol is attached per point
-    # (marker.symbol accepts an array), keeping each category a single trace and the
-    # category legend clean; the shape -> r mapping is shown via proxy traces below.
+    # Color encodes category; marker SHAPE encodes one other variable, attached per
+    # point (marker.symbol accepts an array) so each category stays a single trace.
+    # Direction and r compete for that one slot, and direction wins whenever the frame
+    # holds any directed graph -- same rule as the static twin, for the same reason: a
+    # directed topology against its undirected twin is the comparison being made, while
+    # r is already in the title. The shape -> meaning mapping is shown via proxy traces.
     multi_r = len(r_values) > 1
     R_SYMBOLS = [
         "circle",
@@ -344,6 +404,17 @@ def plot_outcome_vs_property_plotly(
     ]
     r_symbol = {r: R_SYMBOLS[i % len(R_SYMBOLS)] for i, r in enumerate(r_values)}
 
+    directed = (
+        plot_df["is_directed"].fillna(False).astype(bool).to_numpy()
+        if "is_directed" in plot_df.columns
+        else np.zeros(len(plot_df), dtype=bool)
+    )
+    by_direction = bool(directed.any())
+    # Either encoding makes symbol a per-point array, which breaks the legend swatch
+    # (plotly would draw element [0]'s shape for the whole category), so both take the
+    # same route: hide the data traces from the legend and add colour proxies below.
+    per_point_symbol = by_direction or multi_r
+
     for cat in reversed(legend_order):
         m = (plot_df["category"] == cat).to_numpy()
         line = (
@@ -352,9 +423,11 @@ def plot_outcome_vs_property_plotly(
             else dict(width=0.5, color="white")
         )
         marker = dict(
-            size=8, color=color_dict.get(cat, "lightgray"), opacity=0.75, line=line
+            size=8, color=palette.get(cat, "lightgray"), opacity=0.75, line=line
         )
-        if multi_r:
+        if by_direction:
+            marker["symbol"] = np.where(directed[m], "triangle-up", "circle")
+        elif multi_r:
             marker["symbol"] = plot_df.loc[m, "r"].map(r_symbol).to_numpy()
         fig.add_trace(
             go.Scatter(
@@ -364,19 +437,19 @@ def plot_outcome_vs_property_plotly(
                 name=cat,
                 legendrank=legend_order.index(cat),
                 marker=marker,
-                # When symbol is a per-point array (r-encoding), the legend swatch would
-                # pick element [0]'s shape, so categories would show mixed shapes. Hide the
-                # data trace from the legend and add a fixed-circle color proxy below, so
-                # the category legend reflects only color.
-                showlegend=not multi_r,
+                # When symbol is a per-point array, the legend swatch would pick element
+                # [0]'s shape, so categories would show mixed shapes. Hide the data trace
+                # from the legend and add a fixed-circle color proxy below, so the
+                # category legend reflects only color.
+                showlegend=not per_point_symbol,
                 customdata=customdata[m] if customdata is not None else None,
                 hovertemplate=template,
             )
         )
 
     # Category legend (color only): one circle swatch per category, decoupled from the
-    # per-point r-shapes above. Only needed in the multi-r case.
-    if multi_r:
+    # per-point shapes above. Only needed when symbol varies within a category.
+    if per_point_symbol:
         for cat in legend_order:
             line = (
                 dict(width=1.8, color="black")
@@ -393,7 +466,7 @@ def plot_outcome_vs_property_plotly(
                     marker=dict(
                         size=8,
                         symbol="circle",
-                        color=color_dict.get(cat, "lightgray"),
+                        color=palette.get(cat, "lightgray"),
                         opacity=0.75,
                         line=line,
                     ),
@@ -401,8 +474,31 @@ def plot_outcome_vs_property_plotly(
                 )
             )
 
-    # Proxy traces (no data points) that label which marker shape maps to which r.
-    if multi_r:
+    # Proxy traces (no data points) that label what each marker shape means. Direction
+    # takes the slot when present, so only one of these blocks ever fires.
+    if by_direction:
+        for i, (label, symbol) in enumerate(
+            [("undirected", "circle"), ("directed", "triangle-up")]
+        ):
+            fig.add_trace(
+                go.Scatter(
+                    x=[None],
+                    y=[None],
+                    mode="markers",
+                    name=label,
+                    legendrank=1000 + i,
+                    legendgroup="direction_legend",
+                    legendgrouptitle_text="Edge direction",
+                    marker=dict(
+                        size=8,
+                        symbol=symbol,
+                        color="dimgray",
+                        line=dict(width=0.5, color="white"),
+                    ),
+                    hoverinfo="skip",
+                )
+            )
+    elif multi_r:
         for i, r in enumerate(r_values):
             fig.add_trace(
                 go.Scatter(
@@ -453,10 +549,27 @@ def plot_outcome_vs_property_plotly(
                 if (
                     n_mean > 0 and (n_col.std() / n_mean) < 0.05
                 ):  # only when N homogeneous
+                    # Same baseline choice as the static twin: complete-graph rho(N, r)
+                    # when a single r is in play (it is the amplifier/suppressor
+                    # reference and lies inside the data), neutral 1/N only when r is
+                    # ambiguous. rho equals 1/N at r=1, so nothing is lost there.
+                    if len(r_values) == 1:
+                        rv = r_values[0]
+                        base = float(analytic_moran_fc_fixation_prob(n_mean, rv))
+                        label = (
+                            f"Moran ρ(N={n_mean:.0f}, r={rv:g})={base:.4f}"
+                            if rv != 1
+                            else f"Neutral (1/N={n_mean:.0f})"
+                        )
+                        color = "royalblue" if rv != 1 else "black"
+                    else:
+                        base = 1.0 / n_mean
+                        label = f"Neutral (1/N={n_mean:.0f})"
+                        color = "black"
                     fig.add_hline(
-                        y=1.0 / n_mean,
-                        line=dict(color="black", dash="dot", width=1.2),
-                        annotation_text=f"Neutral (1/N={n_mean:.0f})",
+                        y=base,
+                        line=dict(color=color, dash="dot", width=1.2),
+                        annotation_text=label,
                     )
 
     r_suffix = f"  (r={r_values[0]})" if len(r_values) == 1 else ""

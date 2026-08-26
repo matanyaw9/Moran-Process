@@ -71,6 +71,7 @@ class ProcessLab:
         print_time=True,
         output_path=None,
         engine="cpp",
+        max_steps=1_000_000,
     ):
         """
         Run comparative study across multiple graphs and selection coefficients.
@@ -109,7 +110,11 @@ class ProcessLab:
 
             for r in r_values:
                 for _ in range(n_repeats):
-                    sim = MoranProcess(graph_core=graph_core, selection_coefficient=r)
+                    sim = MoranProcess(
+                        graph_core=graph_core,
+                        selection_coefficient=r,
+                        max_steps=max_steps,
+                    )
                     sim.initialize_random_mutant()
                     raw_result = sim.run()
 
@@ -119,6 +124,9 @@ class ProcessLab:
                         "fixation": raw_result["fixation"],
                         "steps": raw_result["steps"],
                         "duration": raw_result["duration"],
+                        # Exact: both engines break before incrementing `steps`,
+                        # so steps == max_steps iff the cap stopped the run.
+                        "censored": raw_result["steps"] >= max_steps,
                     }
                     all_results.append(record)
                     if print_time:
@@ -190,7 +198,9 @@ class ProcessLab:
         notes="",
         batch_seed=None,
         engine="cpp",
+        max_steps=1_000_000,
         zoo_config=None,
+        post_batch="all",
     ):
         """
         1. Dumps all graphs to 'graphs.pkl'
@@ -203,7 +213,27 @@ class ProcessLab:
             'zoo' section of batch_info.json so the batch is reproducible from
             that file alone. main.py assembles it; everything else here is
             captured automatically.
+
+        post_batch: which of the post-simulation jobs to chain.
+            'all'       -- aggregate, verify, violin cache, job speed (the default; what
+                           every ordinary batch wants).
+            'aggregate' -- aggregate only. For callers that submit a batch per iteration
+                           and only need prob_fixation / mean_steps back, where the other
+                           three are pure scheduling latency: verify, the violin cache and
+                           job speed all exist to serve figures and QC on a large one-off
+                           batch. ga_search uses this.
+            'none'      -- nothing beyond the array. The batch is left raw.
+
+        Returns:
+            dict of LSF job ids keyed by step ('register', 'array', 'aggregate', and
+            whichever post-batch steps were submitted). Values may be None if a bsub
+            failed or its output could not be parsed. Callers that chain on these degrade
+            to "runs immediately" rather than PENDing forever on a stale condition.
         """
+        if post_batch not in ("all", "aggregate", "none"):
+            raise ValueError(
+                f"post_batch must be 'all', 'aggregate' or 'none', got {post_batch!r}"
+            )
         log.info(
             "Submitting batch '%s' (engine=%s, %d jobs, queue=%s)",
             batch_name,
@@ -225,7 +255,14 @@ class ProcessLab:
         logs_dir = os.path.join(batch_dir, "logs")
         os.makedirs(logs_dir, exist_ok=True)
 
-        register_job_id = register_graphs_job(zoo_path, batch_name, batch_dir)
+        # Same queue as the simulation array, not the 'short' default. The register
+        # job is a dependency of the rollup, so preempting it wastes the whole
+        # generation -- and 'short' is PREEMPTABLE while the queue a caller chooses
+        # for real work (gsla-cpu) is not. Under a 12-run GA launch this was killing
+        # register jobs and taking their generations down with them.
+        register_job_id = register_graphs_job(
+            zoo_path, batch_name, batch_dir, queue=queue
+        )
 
         log.info("--- Preparing Batch %s ---", batch_name)
 
@@ -295,6 +332,8 @@ class ProcessLab:
             str(tmp_dir),
             "--engine",
             str(engine),
+            "--max-steps",
+            str(max_steps),
         ]
         cmd = cmd_job + cmd_process
         bsub_command = " ".join(cmd)
@@ -325,6 +364,7 @@ class ProcessLab:
             total_simulations=n_graphs * len(r_values) * n_repeats,
             batch_seed=batch_seed,
             engine=engine,
+            max_steps=max_steps,
             n_graphs=n_graphs,
             graph_types=graph_types,
             node_sizes=node_sizes,
@@ -338,6 +378,12 @@ class ProcessLab:
             bsub_command=bsub_command,
         )
 
+        job_ids = {"register": register_job_id, "array": lsf_job_id}
+
+        if post_batch == "none":
+            log.info("post_batch='none': no post-simulation jobs chained.")
+            return job_ids
+
         # Chain the post-processing job: it PENDs until the array has ended and
         # register_graphs is done, then builds raw_results.parquet + graph_statistics.csv
         # on a compute node. This is what makes experiment_analysis.ipynb open instantly.
@@ -348,19 +394,25 @@ class ProcessLab:
             register_job_id=register_job_id,
             queue=queue,
         )
+        job_ids["aggregate"] = aggregate_job_id
 
         # And chain the rest of the post-batch DAG: verify (did every requested run
         # happen?) and the violin-sample cache (the only figure input that still needs raw
         # rows) PEND on the aggregation; job speed hangs off the array directly and so runs
         # alongside it. By the time you open experiment_analysis.ipynb the batch is
         # verified, aggregated, and every figure input is a file read.
-        submit_post_batch_jobs(
-            batch_dir=batch_dir,
-            batch_name=batch_name,
-            aggregate_job_id=aggregate_job_id,
-            array_job_id=lsf_job_id,
-            queue=queue,
-        )
+        if post_batch == "all":
+            job_ids.update(
+                submit_post_batch_jobs(
+                    batch_dir=batch_dir,
+                    batch_name=batch_name,
+                    aggregate_job_id=aggregate_job_id,
+                    array_job_id=lsf_job_id,
+                    queue=queue,
+                )
+            )
+
+        return job_ids
 
     # @staticmethod
     # def _create_task_list(n_graphs, r_values, n_jobs, n_repeats):

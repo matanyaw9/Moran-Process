@@ -33,6 +33,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from moran_process.analysis.analysis_utils.constants import HASH_DTYPES
+
 from moran_process.analysis.analysis_utils.io import (
     PER_JOB_RESULT_STEM,
     resolve_results_source,
@@ -382,8 +384,8 @@ def run_verification(batch_dir, count_rows=True):
                 f"{p} missing; run moran_process.pipeline.aggregate_batch on this batch first."
             )
 
-    df_props = pd.read_csv(props_path)
-    df_stats = pd.read_csv(stats_path)
+    df_props = pd.read_csv(props_path, dtype=HASH_DTYPES)
+    df_stats = pd.read_csv(stats_path, dtype=HASH_DTYPES)
 
     if resolve_results_source(batch_path) is None:
         checks.add(WARN, "results_source", "no raw results resolvable for this batch")

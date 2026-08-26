@@ -34,7 +34,12 @@ import matplotlib.colors as mcolors
 from matplotlib.ticker import FuncFormatter, MaxNLocator
 import seaborn as sns
 
-from .colors import DEFAULT_FIG_SIZE, GRAPH_PROPERTY_DESCRIPTION, _sort_categories
+from .colors import (
+    DEFAULT_FIG_SIZE,
+    GRAPH_PROPERTY_DESCRIPTION,
+    _sort_categories,
+    fill_missing_colors,
+)
 # The fixation-steps loader lives in io.py (pure polars/pandas) so the LSF cache job
 # can build the violin sample without importing matplotlib/seaborn.
 from .io import load_fixation_steps_by_category as _load_fixation_steps_by_category
@@ -719,47 +724,57 @@ def plot_steps_violin(
         )
     )
 
-    # The loader left-joins every graph, so merged_raw carries categories outside the
-    # requested set (e.g. 'Grid'). Because hue='category' equals x='category', seaborn
-    # maps hue to every value present in the data and demands a palette key for each,
-    # ignoring `order`. Drop out-of-filter rows so hue levels stay a subset of palette.
-    merged_raw = merged_raw[merged_raw["category"].isin(categories)]
+    # One violin per (category, is_directed): a directed graph and its undirected twin
+    # share a category, so grouping on category alone would pool two distributions.
+    order, base_category = _violin_groups(df_graphs, categories)
 
-    # seaborn needs a palette entry for every hue level; fill any category the
-    # caller did not color with a distinct husl fallback so a partial color_dict
-    # never crashes the plot (same guard plot_outcome_vs_property uses).
-    palette = {cat: color_dict[cat] for cat in categories if cat in color_dict}
-    missing_cats = [c for c in categories if c not in palette]
-    if missing_cats:
-        palette.update(zip(missing_cats, sns.color_palette("husl", len(missing_cats))))
+    # The loader left-joins every graph, so merged_raw carries groups outside the
+    # requested set (e.g. 'Grid'). Because hue equals x, seaborn maps hue to every value
+    # present and demands a palette key for each, ignoring `order`. Drop out-of-filter
+    # rows so hue levels stay a subset of palette.
+    merged_raw = merged_raw[merged_raw["group"].isin(order)]
 
-    fig, ax = plt.subplots(figsize=(max(12, len(categories) * 1.1), 7))
+    # Both halves of a pair take their base category's color; direction is carried by
+    # hatching instead, so the eye reads hue as topology and texture as orientation.
+    # Any category the caller did not color falls back to a distinct husl entry, so a
+    # partial color_dict never crashes the plot (same guard plot_outcome_vs_property uses).
+    cat_colors = fill_missing_colors(categories, color_dict)
+    palette = {grp: cat_colors[base_category[grp]] for grp in order}
+
+    fig, ax = plt.subplots(figsize=(max(12, len(order) * 1.1), 7))
     sns.violinplot(
         data=merged_raw,
-        x="category",
+        x="group",
         y="steps",
-        order=categories,
-        hue="category",
+        order=order,
+        hue="group",
+        hue_order=order,
         palette=palette,
         legend=False,
         inner="box",
         linewidth=1.2,
         ax=ax,
     )
+    # Hatch the directed violins. seaborn emits the bodies in `order`, so the collections
+    # line up positionally with it.
+    for body, grp in zip(ax.collections, order):
+        if grp.endswith(" (directed)"):
+            body.set_hatch("///")
+            body.set_edgecolor("black")
     fig_title = fig_title or f"Distribution of Steps to Fixation by Category{r_suffix}"
 
     # Annotate each violin with its fixation probability and the raw fixation count
     # (n) on a second label line. rho = fixations / total runs makes clear that an
     # unequal n reflects a different success rate, not a different number of runs.
-    def _violin_label(cat):
-        fix = fixation_counts.get(cat, 0)
-        tot = total_counts.get(cat, 0)
+    def _violin_label(grp):
+        fix = fixation_counts.get(grp, 0)
+        tot = total_counts.get(grp, 0)
         rho = fix / tot if tot else 0.0
-        return f"{cat}\nρ = {rho:.3f}  (n = {fix:,})"
+        return f"{grp}\nρ = {rho:.3f}  (n = {fix:,})"
 
-    ax.set_xticks(range(len(categories)))
+    ax.set_xticks(range(len(order)))
     ax.set_xticklabels(
-        [_violin_label(cat) for cat in categories],
+        [_violin_label(grp) for grp in order],
         rotation=45,
         ha="right",
         fontsize=10,
@@ -787,6 +802,35 @@ def plot_steps_violin(
         print(f"[figure] Saved: {fig_path.name}")
     if show:
         plt.show()
+
+
+def _violin_groups(df_graphs, categories):
+    """Violin/test x-order and each group's base category, from (category, is_directed).
+
+    Direction is a column, not part of the category, so an undirected graph and its
+    directed twin share a hue and must still get their own violin (pooling two different
+    distributions into one KDE would be silently wrong). Each category contributes its
+    undirected group, then its directed one, so the twins land adjacent.
+
+    Returns:
+        (order, base_category) -- the group labels in x-order, and a group -> category
+        map so a pair can be coloured with one hue.
+    """
+    directed = (
+        df_graphs["is_directed"].fillna(False).astype(bool)
+        if "is_directed" in df_graphs.columns
+        else pd.Series(False, index=df_graphs.index)
+    )
+    order, base = [], {}
+    for cat in categories:
+        in_cat = df_graphs["category"] == cat
+        for is_dir in (False, True):
+            if not (in_cat & (directed == is_dir)).any():
+                continue
+            label = f"{cat} (directed)" if is_dir else cat
+            order.append(label)
+            base[label] = cat
+    return order, base
 
 
 def _significance_stars(p):
@@ -859,13 +903,17 @@ def plot_steps_pvalue_matrix(
     )
 
     # Only categories with fixation data can be tested.
+    # Same (category, is_directed) grouping the violins use, so the two figures compare
+    # exactly the same distributions: a directed graph is tested against its undirected
+    # twin rather than averaged with it.
+    categories, _ = _violin_groups(df_graphs, categories)
     categories = [c for c in categories if fixation_counts.get(c, 0) > 0]
     if len(categories) < 2:
         print("[skip] need at least two categories with fixation events to compare")
         return
 
     groups = {
-        c: merged.loc[merged["category"] == c, "steps"].to_numpy() for c in categories
+        c: merged.loc[merged["group"] == c, "steps"].to_numpy() for c in categories
     }
 
     k = len(categories)
@@ -1195,11 +1243,23 @@ def plot_outcome_vs_property(
     draw_order = list(reversed(hue_order))
     # seaborn requires a dict palette to cover every hue level. Keep the caller's
     # colors and fill any uncolored category with a distinct fallback so the plot
-    # never crashes on a missing/partial color_dict.
-    palette = dict(color_dict)
-    missing_cats = [c for c in hue_order if c not in palette]
-    if missing_cats:
-        palette.update(zip(missing_cats, sns.color_palette("husl", len(missing_cats))))
+    # never crashes on a missing/partial color_dict. Shared with the plotly twin, which
+    # passes the same ordered list, so an unpinned category gets one color in both.
+    palette = fill_missing_colors(hue_order, color_dict)
+    # Marker shape. Seaborn gives exactly one `style` slot, so direction and r compete
+    # for it; direction wins whenever the frame contains any directed graph, because a
+    # directed topology against its undirected twin is the comparison being made, and r
+    # is already reported in the title (single r) or the correlation box (several).
+    # Falls back to the previous r encoding when nothing is directed, so every existing
+    # figure is unchanged.
+    style_col, style_markers = None, True
+    if "is_directed" in plot_df.columns:
+        plot_df["is_directed"] = plot_df["is_directed"].fillna(False).astype(bool)
+        if plot_df["is_directed"].any():
+            style_col, style_markers = "is_directed", {False: "o", True: "^"}
+    if style_col is None and len(r_values) > 1:
+        style_col = "r"
+
     # Fixed dot size, applied only when not encoding a column as size (else seaborn's
     # size/sizes mapping owns 's' and passing both raises).
     base_dot_size = 55
@@ -1211,7 +1271,8 @@ def plot_outcome_vs_property(
         y=y_outcome,
         hue="category",
         hue_order=draw_order,
-        style="r" if len(r_values) > 1 else None,
+        style=style_col,
+        markers=style_markers,
         size=size_property,
         sizes=(20, 100),
         palette=palette,
@@ -1233,7 +1294,8 @@ def plot_outcome_vs_property(
                 y=y_outcome,
                 hue="category",
                 hue_order=hue_order,
-                style="r" if len(r_values) > 1 else None,
+                style=style_col,
+                markers=style_markers,
                 size=size_property,
                 sizes=(20, 100),
                 palette=palette,
@@ -1283,12 +1345,34 @@ def plot_outcome_vs_property(
                 n_mean = n_col.mean()
                 n_cv = n_col.std() / n_mean if n_mean > 0 else 1.0
                 if n_cv < 0.05:
+                    if len(r_values) == 1:
+                        # The baseline that matters is the COMPLETE-graph rho(N, r):
+                        # amplifier/suppressor is defined against it, and it sits inside
+                        # the data. Neutral 1/N is the r=1 baseline, so at r>1 it lands
+                        # far below every point (0.033 vs ~0.10 at N=30, r=1.1) and
+                        # stretched the autoscaled y axis over probabilities that never
+                        # occur. rho collapses to exactly 1/N at r=1, so that case still
+                        # draws the neutral line, just via the general formula.
+                        rv = r_values[0]
+                        base = float(analytic_moran_fc_fixation_prob(n_mean, rv))
+                        label = (
+                            rf"Moran  $\rho$(N={n_mean:.0f}, r={rv:g})={base:.4f}"
+                            if rv != 1
+                            else f"Neutral (1/N={n_mean:.0f})"
+                        )
+                        color = "tab:blue" if rv != 1 else "black"
+                    else:
+                        # rho depends on r, so several r values have no single line.
+                        # 1/N is the only r-independent reference left.
+                        base = 1.0 / n_mean
+                        label = f"Neutral (1/N={n_mean:.0f})"
+                        color = "black"
                     ax.axhline(
-                        1.0 / n_mean,
-                        color="black",
+                        base,
+                        color=color,
                         linestyle=":",
                         linewidth=1.0,
-                        label=f"Neutral (1/N={n_mean:.0f})",
+                        label=label,
                         zorder=4,
                     )
                 # else: N varies too much -- a flat line would be misleading, so skip
@@ -1354,8 +1438,16 @@ def plot_outcome_vs_property(
     _others = [(l, h) for l, h in zip(labels_leg, handles) if l not in _cat_set]
     labels_leg = [l for l, _ in _sorted_cats + _others]
     handles = [h for _, h in _sorted_cats + _others]
-    # seaborn's style='r' inserts a bare 'r' sub-header; spell out what r means.
-    labels_leg = ["r  (mutant relative fitness)" if l == "r" else l for l in labels_leg]
+    # seaborn inserts a bare sub-header for whatever drives `style`, plus one entry per
+    # level. Spell all of them out: 'r' means nothing on its own, and 'True'/'False'
+    # under an 'is_directed' header reads as a bug rather than a legend.
+    _leg_rename = {
+        "r": "r  (mutant relative fitness)",
+        "is_directed": "Edge direction",
+        "True": "directed",
+        "False": "undirected",
+    }
+    labels_leg = [_leg_rename.get(l, l) for l in labels_leg]
 
     legend = ax.legend(
         handles=handles,

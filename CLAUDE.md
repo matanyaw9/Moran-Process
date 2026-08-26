@@ -31,7 +31,8 @@ The simulation pipeline has three layers:
 
 **1. Graph Layer: `core/population_graph.py`**
 - `PopulationGraph` wraps a NetworkX graph and computes a Weisfeiler-Lehman hash (`wl_hash`) for deduplication. Construction has NO database side effect.
-- Factory classmethods: `complete_graph`, `cycle_graph`, `mammalian_lung_graph`, `avian_graph`, `fish_graph`, `random_connected_graph`.
+- Factory classmethods: `complete_graph`, `cycle_graph`, `line_graph`, `star_graph`, `mammalian_lung_graph`, `avian_graph`, `fish_graph`, `random_connected_graph`.
+- `cycle_graph`, `line_graph`, `star_graph`, `mammalian_lung_graph` and `avian_graph` take `directed=True`, which names the graph `directed_*`. Offspring then flow along edge direction only (`to_simulation_struct` uses successors), and both engines treat a reproducer with out-degree 0 as a wasted step rather than an error. Single-source topologies (directed star/line/tree) abolish selection: a mutant fixates iff it is born at the source, so rho = 1/N at every r. The directed cycle is isothermal and is the natural control. Directed variants that are weakly but not strongly connected have undefined distance metrics, recorded as None (see the `distances_defined` guard).
 - Registration is per batch: `PopulationGraph.batch_register(zoo, batch_dir)` writes `<batch_dir>/graph_props.csv` (dedup by WL hash). CLI: `python -m moran_process.core.population_graph --register --batch-dir ... --graph-zoo-path ...`.
 - `save()`/`load()` use pickle for HPC serialization.
 - `core/graph_zoo.py` defines `GraphZoo`, an ordered collection of graphs (the pipeline often serializes a plain `list[PopulationGraph]` via joblib instead).
@@ -55,6 +56,7 @@ The simulation pipeline has three layers:
 - Reads `LSB_JOBINDEX` and processes the manifest rows whose `worker_id` equals that index.
 - Writes per-job results to `<batch_dir>/tmp/results/raw_results_job_<idx>.parquet` (one row-group per task).
 - `--engine {cpp,python}` (default `cpp`) selects the simulation engine via `_resolve_engine()`.
+- `--max-steps` (default 1e6, the engine default) caps each run and is recorded in `batch_info.json`. A run that hits the cap is written as `(fixation=False, steps=max_steps)`, which is **indistinguishable from an extinction**: it depresses `prob_fixation`, and since `mean_steps` is conditional on fixation it drops the longest runs out of the mean entirely. So the worker also writes a `censored` column, exact rather than heuristic because both engines break out of the loop before incrementing `steps`. `build_graph_statistics` rolls it up as `n_censored`; the column is **absent**, not zero, for shards predating it, so a batch never claims it found no censoring when it was never measured. **`n_censored > 0` means both headline statistics are biased low at those graphs**: raise `--max-steps` and re-run rather than correcting after the fact. Raise it for large N or strongly suppressive graphs, where absorption takes longer than 1e6 steps.
 - For local debugging: pass `--job-index 1` explicitly.
 
 **4. Post-Simulation Layer: four independent jobs, chained by LSF dependencies**
@@ -82,6 +84,81 @@ uv run python -m moran_process.pipeline.post_batch --batch-dir <batch> --submit
 ```
 
 Two batch kinds are classified and reported, so "works on any batch" includes saying no clearly: `CURRENT` (all four steps apply) and `LEGACY` (pre-June batches; none apply, no compat shims were added).
+
+**5. Genetic Search Layer: `pipeline/ga_search.py`**
+Evolves topologies whose fitness is **measured by simulation**, not predicted by a regressor
+(the ML-predicted version is `notebooks/extreme_graphs.ipynb`, kept for comparison). Every
+constant in `ga_search.py` carries the batch it was measured on in a comment beside it.
+
+- **A run is one angle.** Fitness is `w_prob*(rho-rho_c)/SD_PROB + w_time*log(T/T_c)/SD_LOG_TIME`
+  with `(w_prob, w_time) = (cos theta, sin theta)`, unit length, so the score is the projection
+  of a graph onto the search direction in random-graph SDs. theta=0 seeks high fixation
+  probability, 90 long time, 180 low probability, 270 short time; the diagonals are the
+  combinations, and 315 (high prob AND short time) is the hard one, because among random
+  (31, 34) graphs the two metrics are positively correlated (+0.35). Every run is a
+  **maximization**: direction lives in theta and nowhere else. theta is normalized to
+  [0, 360), so -45 and 315 are the same run and land in the same directory.
+- One **driver job** per GA run holds the loop and waits on LSF, using ~no CPU itself. Launch
+  with `ga_search.submit_theta_runs(ga_runs_dir, prefix, thetas, replicates=...)`, or a single
+  `submit_driver(run_dir, theta)`. `CORNER_THETAS` is `(45, 135, 225, 315)`. Never run the loop
+  in a notebook: it takes hours.
+  - The predecessor was a `--metric {mean_steps, prob_fixation, weighted}` x
+    `--objective {maximize, minimize}` matrix plus free weights, which wrote direction in three
+    redundant places. They disagreed as soon as `--objective minimize` met a weighted run, and
+    both weighted runs of such a launch came out labelled with the same corner. Its four
+    single-metric runs are the axis-aligned thetas, so nothing was lost. Run directories from
+    before the change do not load.
+- A run lives at `simulation_data/ga_runs/<prefix>-theta<NNN>/rep<K>/` (`run_dir_for`),
+  nested so every replicate of one direction is a single glob away; `run_label` flattens
+  that back to `<prefix>-theta<NNN>-rep<K>` for job names and the `run` column.
+- Each generation is its own **standard batch directory** under
+  `<run>/generations/gen_NNN/`, so every existing reader works on it
+  unchanged. `submit_jobs(post_batch="none")`: verify, the violin cache and job speed serve
+  figures on large one-off batches and are pure latency here, and **the driver runs the
+  rollup itself** rather than chaining an aggregate job. Measured, a GA generation's
+  aggregation is 19 s of work for which the chained job cost 66 s of queue wait and poll
+  latency, on an idle driver slot. This does not apply to ordinary batches, where
+  aggregation scans 7.2e9 rows and needs its own 16GB job.
+- **Raw shards are deleted** after each generation's rollup is verified. `populations/gen_NNN.pkl`
+  is kept, so any generation replays in ~2 min; retaining them would cost ~370GB.
+- **Elites are re-simulated every generation.** Carrying a score forward means a lucky-high
+  estimate is never re-tested and sits at the top of the ranking permanently.
+- **`n_repeats` is set by the noisier metric, judged by selection efficiency** rather than by
+  raw S/N: `rho = 1/sqrt(1 + (SEM/SD_between)^2)`, the correlation between measured and true
+  fitness, to which the per-generation response is proportional. Measured: 1e6 gives
+  rho ~ 0.99, 100K holds `prob_fixation` at rho ~ 0.85 for 100 generations, 1K gives ~0.39.
+  `plot_selection_efficiency` computes it from `ga_history.csv` at no simulation cost. Watch
+  the time term there: its SEM is proportional to the mean, so a run that succeeds at pushing
+  time up inflates its own noise floor in step with its own signal.
+- **Runs are reproducible from their seed**: `batch_seed = seed*100003 + generation`, and
+  selection breaks ties on `wl_hash` (`prob_fixation` is k/n, so exact ties are routine and
+  hit the elite cutoff in ~7% of generations).
+- **Resume is automatic**: an existing `ga_state.json` is resumed from, because preemptable
+  queues requeue a job from the beginning. `--force` is the only way to restart.
+- **A generation directory is never deleted under live jobs.** Retrying a generation starts
+  by wiping its directory, but "retry" does not imply the previous jobs are dead: the driver
+  may simply have misread a healthy array. So the array and register jobs are `bkill`ed and
+  waited out first. Across a preemption the replacement driver has no memory of them, so the
+  ids are written to `<run>/pending_jobs.json` at submit and cleared once the generation is
+  banked. Relatedly, `_job_state` distinguishes `GONE` (LSF says "not found") from `UNKNOWN`
+  (bjobs itself failed); only the former is terminal, and it must hold for three consecutive
+  polls. Treating an absence of information as completion is what made this reachable.
+- **Notifications**: one message when *every* run in a launch has ended, via a watcher job
+  holding `-w ended(...)` on all drivers. Set `NTFY_TOPIC` (letters, digits, `-`, `_` only)
+  in `~/.bashrc` and restart the Jupyter server. Failures notify per run, immediately.
+- **Color encodes direction**: `colors.theta_color` maps hue straight onto theta, so a run is
+  the same color in every figure and a sweep of directions reads as a color wheel. HSV with
+  fixed S and V rather than a cyclic matplotlib map, whose lightness cycle would make two of
+  the directions vanish against the page or the gray random cloud.
+- Readers: `analysis_utils/ga_io.py` (history, state, `ga_progress`), figures:
+  `analysis_utils/ga_plots.py`. `plot_ga_winners_scatter` puts the winners in the joint
+  (probability, time) plane over the random cloud and draws each run's objective iso-line
+  through its own best; a run that worked leaves the whole cloud on the losing side, which is
+  the support-point property made visible. Notebook: `notebooks/ga_simulation.ipynb`
+  (launch + read only; phase-1 scope, no ML comparison or replicate section).
+- `ga_search.preview_launch(...)` reports shards, simulations, core-hours and wall clock for a
+  set of knobs before anything is submitted. It calls `_size_array` itself, so the worker
+  counts it prints are the ones the driver will request.
 
 **Spanning several batches: stitch at read time, do not build a combined batch.** Both readers take a single batch directory **or a list of them**:
 

@@ -7,6 +7,7 @@ sits at the bottom of the dependency graph (``plots`` pulls from here).
 
 import seaborn as sns
 import matplotlib.colors as mcolors
+import numpy as np
 import hashlib
 
 __all__ = [
@@ -15,6 +16,9 @@ __all__ = [
     "GRAPH_PROPERTY_COLUMNS",
     "DEFAULT_FIG_SIZE",
     "generate_robust_color_dict",
+    "fill_missing_colors",
+    "theta_color",
+    "theta_color_dict",
 ]
 
 
@@ -27,7 +31,7 @@ CATEGORY_COLOR_DICT = {
     "Random": "#E0E0E0",
     "Complete": "#000000",
     "Cycle": "#5C6BC0",
-    "Star": "#FFE656",
+    "Star": "#E4C306",
     # --- PROBABILITY (Blues/Purples) ---
     "maximize LR Fixation Probability": "#08519C",  # Navy Blue
     "maximize XGBOOST Fixation Probability": "#6BAED6",  # Soft Sky Blue
@@ -38,6 +42,15 @@ CATEGORY_COLOR_DICT = {
     "maximize XGBOOST Fixation Time": "#FC9272",  # Salmon
     "minimize LR Fixation Time": "#D94801",  # Burnt Orange
     "minimize XGBOOST Fixation Time": "#FDBB84",  # Peach
+    # --- SIMULATION-DRIVEN GA (pipeline.ga_search) ---
+    # Fitness is measured rather than predicted, so there is no LR/XGBOOST axis and the
+    # category is just objective + metric. Each takes the same hue as its ML-driven
+    # counterpart above -- probability in blues, time in reds -- so a simulation-driven
+    # run and the ML-driven run it is being compared against share a color.
+    "maximize prob_fixation": "#08519C",  # Navy Blue
+    "minimize prob_fixation": "#54278F",  # Deep Indigo
+    "maximize mean_steps": "#A50F15",  # Blood Red
+    "minimize mean_steps": "#D94801",  # Burnt Orange
 }
 
 # The GA now targets RESIDUALS, so its categories carry a target suffix -- e.g.
@@ -110,6 +123,27 @@ GRAPH_PROPERTY_COLUMNS = [
 DEFAULT_FIG_SIZE = (8.7, 6)
 
 
+def fill_missing_colors(categories, color_dict, default_palette="husl"):
+    """Complete a category -> color map, inventing a color for each unpinned category.
+
+    Shared by the static and interactive figures so a category with no entry in
+    CATEGORY_COLOR_DICT (today: 'Line', 'Grid') gets the SAME color in both. The plotly
+    twin used to fall back to a flat 'lightgray', which rendered every unpinned category
+    identical to each other and to 'Random', while the seaborn twin gave them distinct
+    husl colors.
+
+    Colors are assigned in the order ``categories`` is given, so callers that pass the
+    same ordered list (both scatter twins pass ``_sort_categories(...)``) agree exactly.
+    Returned as hex, which matplotlib and plotly both accept.
+    """
+    palette = {c: color_dict[c] for c in categories if c in color_dict}
+    missing = [c for c in categories if c not in color_dict]
+    if missing:
+        generated = sns.color_palette(default_palette, len(missing))
+        palette.update(zip(missing, (mcolors.to_hex(c) for c in generated)))
+    return palette
+
+
 def _sort_categories(categories):
     """Return categories sorted: Avian/Fish/Mammalian first, Random last, rest alphabetically."""
     BIOLOGICAL = ["Avian", "Fish", "Mammalian"]
@@ -119,6 +153,39 @@ def _sort_categories(categories):
     last = [c for c in LAST if c in cat_set]
     middle = sorted(c for c in cat_set if c not in BIOLOGICAL and c not in LAST)
     return bio + middle + last
+
+
+def theta_color(theta_deg, saturation=0.72, value=0.80):
+    """Color for a GA search direction. Hue IS the angle.
+
+    A GA run's direction is an angle, and angles are cyclic, so the color encoding has to
+    be cyclic too: theta=0 and theta=359 are neighbours and must not be opposite ends of a
+    gradient. Mapping hue directly to theta gives that for free, and makes the legend
+    redundant on the phase-2 figure -- a winner's color says which way its run was pushing,
+    so a boundary traced by twelve runs reads as a color wheel around the cloud.
+
+    HSV with fixed saturation and value rather than matplotlib's cyclic maps ('twilight',
+    'twilight_shifted'): those are cyclic in lightness as well as hue, so two of the twelve
+    directions would come out near-white or near-black and vanish against the page or the
+    gray random cloud. Holding V and S fixed costs some perceptual uniformity and buys
+    twelve markers that are all equally visible.
+    """
+    hue = float(np.mod(theta_deg, 360.0)) / 360.0
+    return mcolors.to_hex(mcolors.hsv_to_rgb((hue, saturation, value)))
+
+
+def theta_color_dict(frame, theta_column="theta", category_column="category"):
+    """``{category: color}`` for every direction present in a GA frame.
+
+    Rows whose theta is missing (a run whose state file predates the field, or a
+    non-GA category sharing the axes) are skipped rather than given a default, so the
+    caller's fallback map still decides what happens to them.
+    """
+    pairs = frame[[category_column, theta_column]].dropna().drop_duplicates()
+    return {
+        row[category_column]: theta_color(row[theta_column])
+        for _, row in pairs.iterrows()
+    }
 
 
 def generate_robust_color_dict(df, existing_colors, default_palette="husl"):

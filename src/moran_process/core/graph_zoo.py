@@ -22,7 +22,7 @@ class GraphZoo:
 
     # --- Visualization ---
 
-    def draw_all(self, cols: int = 3) -> None:
+    def draw_all(self, cols: int = 3, descriptive=True, with_labels=False, title=None) -> None:
         """Draw all graphs in a matplotlib grid. Each graph occupies one subplot."""
         import matplotlib.pyplot as plt  # lazy: keep matplotlib off the module-import path
 
@@ -35,7 +35,7 @@ class GraphZoo:
         fig, axes = plt.subplots(rows, cols, figsize=(cols * 4, rows * 4))
         axes = np.array(axes).flatten()
         for i, graph in enumerate(self.graphs):
-            graph.draw(ax=axes[i])
+            graph.draw(ax=axes[i], descriptive=descriptive, with_labels=with_labels, title=title)
         for j in range(n, len(axes)):
             axes[j].set_visible(False)
         fig.suptitle(self.name or "Graph Zoo", fontsize=16)

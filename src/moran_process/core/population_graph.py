@@ -140,8 +140,15 @@ class PopulationGraph:
 
                 # --- SLOW METRICS (Guarded by N) ---
 
+                # Distances need every node to reach every other. A connected undirected
+                # graph gives that for free; a digraph needs strong connectivity, which
+                # the directed star (one source, N-1 sinks) does not have. Without this
+                # guard nx.diameter raises and aborts the whole try block, taking the six
+                # centrality columns down with it even though they compute fine.
+                distances_defined = not self.is_directed or nx.is_strongly_connected(G)
+
                 # CRITICAL FIX: Diameter is O(N^2). It will freeze your computer for N > 1000.
-                if self.n_nodes <= 500:
+                if self.n_nodes <= 500 and distances_defined:
                     properties["diameter"] = nx.diameter(G)
                     properties["radius"] = nx.radius(G)
                     properties["average_shortest_path_length"] = (
@@ -258,30 +265,53 @@ class PopulationGraph:
         )
 
     @classmethod
-    def cycle_graph(cls, n_nodes: int, labeled_edges: bool = False):
+    def cycle_graph(cls, n_nodes: int, directed: bool = False, labeled_edges: bool = False):
         """
         Creates a ring graph.
+
+        With directed=True every edge points one way around the ring
+        (0 -> 1 -> ... -> n-1 -> 0). That leaves every node with in-degree 1 and
+        out-degree 1, which is the isothermal condition, so it neither amplifies nor
+        suppresses: rho equals the well-mixed Moran value (1 - 1/r)/(1 - 1/r**N). It is
+        the natural control against the directed graphs that do deviate.
+
+        Args:
+            n_nodes (int): Number of nodes in the ring.
+            directed (bool): If True, returns a DiGraph circulating one way.
         """
-        name = f"cycle_n{n_nodes}"
+        name = f"directed_cycle_n{n_nodes}" if directed else f"cycle_n{n_nodes}"
         return cls(
-            nx.cycle_graph(n_nodes),
+            nx.cycle_graph(n_nodes, create_using=nx.DiGraph if directed else None),
             name=name,
             category="Cycle",
             labeled_edges=labeled_edges,
         )
 
     @classmethod
-    def line_graph(cls, n_nodes: int, labeled_edges: bool = False):
+    def line_graph(cls, n_nodes: int, directed: bool = False, labeled_edges: bool = False):
         """
         Creates a path (line) graph: nodes arranged in a linear chain.
         Known theoretical suppressor of selection in evolutionary graph theory.
+
+        With directed=True every edge points downstream (0 -> 1 -> ... -> n-1). Node 0
+        becomes a source that nothing can overwrite, so a mutant fixates iff it is born
+        there: rho = 1/N at every r, selection fully abolished. Same verdict as the
+        directed star, but it fixates far faster (a front sweeping a chain, rather than
+        a hub coupon-collecting its leaves).
+
+        Note the directed variant is weakly but NOT strongly connected, so its distance
+        metrics are undefined and recorded as None.
+
+        Args:
+            n_nodes (int): Number of nodes in the chain.
+            directed (bool): If True, returns a DiGraph flowing one way.
         """
-        G = nx.path_graph(n_nodes)
+        G = nx.path_graph(n_nodes, create_using=nx.DiGraph if directed else None)
 
         pos = {i: np.array([float(i), 0.0]) for i in range(n_nodes)}
         nx.set_node_attributes(G, pos, "pos")
 
-        name = f"line_n{n_nodes}"
+        name = f"directed_line_n{n_nodes}" if directed else f"line_n{n_nodes}"
         return cls(
             G,
             name=name,
@@ -291,14 +321,30 @@ class PopulationGraph:
         )
 
     @classmethod
-    def star_graph(cls, n_nodes: int, labeled_edges: bool = False):
+    def star_graph(
+        cls, n_nodes: int, directed: bool = False, labeled_edges: bool = False
+    ):
         """
         Creates a star graph: one central hub connected to all other nodes.
         Node 0 is the hub; nodes 1..n_nodes-1 are leaves.
         Classic selective amplifier in evolutionary graph theory (Lieberman et al. 2005).
+
+        With directed=True every edge points hub -> leaf. That makes the hub a source
+        (in-degree 0, so nothing can overwrite it) and every leaf a sink (out-degree 0,
+        so it can never propagate), which abolishes selection entirely: a mutant fixates
+        iff it is born on the hub, so rho = 1/N at every r. It is the exact counterpart
+        of the undirected star -- same nodes, same edges, amplifier becomes suppressor.
+
+        Note the directed variant is weakly but NOT strongly connected, so distance
+        metrics (diameter, radius, average shortest path) are undefined for it.
+
+        Args:
+            n_nodes (int): Total nodes (1 hub + n_nodes-1 leaves).
+            directed (bool): If True, returns a DiGraph with edges hub -> leaf.
         """
-        # nx.star_graph(k) produces k+1 nodes (hub + k leaves), so pass n_nodes-1
-        G = nx.star_graph(n_nodes - 1)
+        # nx.star_graph(k) produces k+1 nodes (hub + k leaves), so pass n_nodes-1.
+        # create_using=DiGraph emits exactly the (0, i) edges, i.e. hub -> leaf.
+        G = nx.star_graph(n_nodes - 1, create_using=nx.DiGraph if directed else None)
 
         # Layout: hub at center, leaves on a unit circle
         angles = np.linspace(0, 2 * np.pi, n_nodes - 1, endpoint=False)
@@ -307,7 +353,7 @@ class PopulationGraph:
             pos[i + 1] = np.array([np.cos(angle), np.sin(angle)])
         nx.set_node_attributes(G, pos, "pos")
 
-        name = f"star_n{n_nodes}"
+        name = f"directed_star_n{n_nodes}" if directed else f"star_n{n_nodes}"
         return cls(
             G,
             name=name,
@@ -356,11 +402,30 @@ class PopulationGraph:
         cls,
         branching_factor: int = 2,
         depth: int = 3,
+        directed: bool = False,
         name="mammalian",
         labeled_edges: bool = False,
     ):
-        """Generates a tree shaped population graph mimicking mammalian lung topology."""
-        G = nx.balanced_tree(branching_factor, depth)
+        """Generates a tree shaped population graph mimicking mammalian lung topology.
+
+        With directed=True every edge points parent -> child, i.e. top to bottom, the
+        direction air travels on inhalation. The root is then the only source (in-degree
+        0, so nothing can overwrite it) and every leaf a sink, which abolishes selection:
+        a mutant fixates iff it is born at the root, so rho = 1/N at every r. It is the
+        fastest of the single-source suppressors, because a tree sweeps 2**k fronts in
+        parallel and so fixates in time set by depth rather than by node count.
+
+        Note the directed variant is weakly but NOT strongly connected, so its distance
+        metrics are undefined and recorded as None.
+
+        Args:
+            branching_factor (int): Children per internal node.
+            depth (int): Levels below the root.
+            directed (bool): If True, returns a DiGraph flowing root -> leaves.
+        """
+        G = nx.balanced_tree(
+            branching_factor, depth, create_using=nx.DiGraph if directed else None
+        )
 
         pos = {}
 
@@ -381,7 +446,8 @@ class PopulationGraph:
 
         assign_pos(0, 0, 100, 0)
         nx.set_node_attributes(G, pos, "pos")
-        name = f"mammalian_b{branching_factor}_d{depth}"
+        prefix = "directed_mammalian" if directed else "mammalian"
+        name = f"{prefix}_b{branching_factor}_d{depth}"
         return cls(
             G,
             name=name,
@@ -405,8 +471,15 @@ class PopulationGraph:
         Structure:
         - n_rods: Number of parallel 'parabronchi' (linear paths).
         - rods_length: Number of nodes in each rod.
-        - Connectivity: All rods connect to an 'Inlet' and 'Outlet'.
-          A 'Circuit node connects Outlet back to Inlet to close the loop.
+        - Connectivity: every parabronchus runs from the posterior air sac to the
+          anterior air sac; the trachea closes the loop from anterior back to
+          posterior.
+
+        With directed=True every edge points downstream, so air (and offspring)
+        flow one way only: posterior air sac -> parabronchi -> anterior air sac
+        -> trachea -> posterior air sac. Node identifiers are anatomical and are
+        preserved as a 'label' node attribute after the integer relabelling, so
+        draw(with_labels=True) shows them.
 
         Args:
             n_rods (int): Number of parallel paths.
@@ -415,7 +488,7 @@ class PopulationGraph:
         """
         G = nx.DiGraph() if directed else nx.Graph()
 
-        inlet, outlet, circuit = "Inlet", "Outlet", "Circuit"
+        inlet, outlet, circuit = "posterior-air-sac", "anterior-air-sac", "trachea"
         G.add_nodes_from([inlet, outlet, circuit])
 
         # 1. Define Macro Layout
@@ -439,27 +512,33 @@ class PopulationGraph:
             y = (i - (n_rods - 1) / 2) * 1.0
 
             # Connect Inlet
-            first_node = f"r{i}_0"
+            first_node = f"parabronchus_{i}_0"
             G.add_edge(inlet, first_node)
 
             for j in range(rod_length):
-                node_id = f"r{i}_{j}"
+                node_id = f"parabronchus_{i}_{j}"
                 x = x_start + j + 0.5
                 pos[node_id] = np.array([x, y])
 
                 # Internal Edges
                 if j > 0:
-                    prev_node = f"r{i}_{j-1}"
+                    prev_node = f"parabronchus_{i}_{j-1}"
                     G.add_edge(prev_node, node_id)
 
             # Connect Outlet
-            last_node = f"r{i}_{rod_length-1}"
+            last_node = f"parabronchus_{i}_{rod_length-1}"
             G.add_edge(last_node, outlet)
 
         # 3. Store pos & Convert labels
+        # The simulation layer indexes nodes as range(n) (see to_simulation_struct),
+        # so the anatomical identifiers cannot survive as node keys. label_attribute
+        # keeps them as a node attribute instead, which draw() picks up and which the
+        # WL hash ignores (weisfeiler_lehman_graph_hash reads node attrs only when
+        # node_attr is passed), so relabelling does not invalidate any existing batch.
         nx.set_node_attributes(G, pos, "pos")
-        G = nx.convert_node_labels_to_integers(G)
-        name = f"avian_r{n_rods}_l{rod_length}"
+        G = nx.convert_node_labels_to_integers(G, label_attribute="label")
+        prefix = "directed_avian" if directed else "avian"
+        name = f"{prefix}_r{n_rods}_l{rod_length}"
         return cls(
             G,
             name,
@@ -584,8 +663,16 @@ class PopulationGraph:
                     # Generate a batch of potential edges (u, v)
                     # We generate 2x what we need to account for collisions/existing edges
                     batch_size = max(edges_needed * 2, 100)
-                    u_list = rng.integers(0, n_nodes, size=batch_size)
-                    v_list = rng.integers(0, n_nodes, size=batch_size)
+                    # .tolist() rather than iterating the arrays directly: it yields
+                    # Python ints, where iterating yields np.int64. Both hash and compare
+                    # equal to an int, so the node dict looks clean and G.nodes reports
+                    # plain ints -- but the numpy object is what gets stored in the edge
+                    # tuple. NetworkX algorithms that compare a node against a tuple then
+                    # broadcast instead of comparing, and raise "truth value of an array
+                    # with more than one element is ambiguous". nx.minimum_cycle_basis
+                    # does exactly that, so it fails on every graph built here.
+                    u_list = rng.integers(0, n_nodes, size=batch_size).tolist()
+                    v_list = rng.integers(0, n_nodes, size=batch_size).tolist()
 
                     for u, v in zip(u_list, v_list):
                         if u != v and not G.has_edge(u, v):
@@ -642,9 +729,12 @@ class PopulationGraph:
             comp_a = sorted(list(comps[0]))
             comp_b = sorted(list(comps[1]))
 
-            # Pick one random node from each distinct group using RNG
-            u = rng.choice(comp_a)
-            v = rng.choice(comp_b)
+            # Pick one random node from each distinct group using RNG.
+            # int() because rng.choice returns np.int64, which would land in the edge
+            # tuple and break node-vs-tuple comparisons downstream (see
+            # random_connected_graph). Node keys are integers in every factory.
+            u = int(rng.choice(comp_a))
+            v = int(rng.choice(comp_b))
             G.add_edge(u, v)
 
         else:
@@ -660,7 +750,8 @@ class PopulationGraph:
                 # rng.choice needs 1D array or int, passing list works but is slower.
                 # Better to pick indices if nodes are standard integers,
                 # but if nodes are strings, choice(nodes) is fine.
-                u, v = rng.choice(nodes, size=2, replace=False)
+                # int() for the same reason as above: rng.choice yields np.int64.
+                u, v = (int(x) for x in rng.choice(nodes, size=2, replace=False))
 
                 # Check undirected existence (u,v) or (v,u)
                 if not G.has_edge(u, v):
@@ -720,6 +811,28 @@ class PopulationGraph:
             created_internally = True
 
         with_edge_labels = self.labeled_edges
+
+        # Node keys are integers after convert_node_labels_to_integers, so factories
+        # that carry meaningful names (avian: parabronchi, air sacs, trachea) stash
+        # them in a 'label' node attribute. Prefer those over the integer keys;
+        # graphs without the attribute fall back to the keys as before.
+        label_kwargs = {}
+        if with_labels:
+            node_labels = nx.get_node_attributes(self.graph, "label")
+            if node_labels:
+                label_kwargs = {
+                    "labels": node_labels,
+                    "font_size": 8,
+                    # names are far wider than the 50pt markers. Sit them above the
+                    # node rather than on it, so they do not cover the edges (and,
+                    # on the directed variant, the arrowheads); the translucent box
+                    # keeps them readable where rods run close together.
+                    "verticalalignment": "bottom",
+                    "bbox": dict(
+                        boxstyle="round,pad=0.15", fc="white", ec="none", alpha=0.7
+                    ),
+                }
+
         # 3. Drawing
         nx.draw(
             self.graph,
@@ -730,6 +843,7 @@ class PopulationGraph:
             with_labels=with_labels,
             edge_color="#555555",
             width=1.5,
+            **label_kwargs,
         )
 
         if with_edge_labels:
