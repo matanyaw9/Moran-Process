@@ -549,14 +549,69 @@ class PopulationGraph:
 
     @classmethod
     def fish_graph(
-        cls, n_rods: int, rod_length: int, name="fish", labeled_edges: bool = False
+        cls,
+        n_rods: int,
+        rod_length: int,
+        fillaments: int = 2,
+        name="fish",
+        labeled_edges: bool = False,
     ):
-        """Generates a 'Comb' structure: Vertical arch, horizontal filaments."""
+        """Generates a 'Comb' structure: Vertical arch, horizontal filaments.
+
+        Each of the n_rods gill filaments hangs off the vertical arch as a chain of
+        rod_length center nodes, and every center node carries `fillaments` lamellae
+        split between its two sides (the upper side takes the extra one when the
+        count is odd). fillaments=2 is the original one-up-one-down comb, so the
+        default reproduces graphs built before this parameter existed, wl_hash
+        included; only an explicit value creates a new topology.
+
+        N = n_rods * (1 + rod_length * (1 + fillaments))
+
+        Args:
+            n_rods (int): Number of filaments along the arch.
+            rod_length (int): Center nodes per filament.
+            fillaments (int): Lamellae per center node, TOTAL across both sides.
+        """
+        if fillaments < 0:
+            raise ValueError("fillaments must be non-negative")
+
         G = nx.Graph()
         pos = {}
 
         main_rod_x = 0
-        rod_spacing_y = 4.0  # Vertical distance between filaments
+        n_up = (fillaments + 1) // 2  # odd counts put the extra lamella on top
+        n_down = fillaments // 2
+
+        # Lamellae fan out from their center node instead of stacking on one
+        # vertical line. They all attach to that single node, so drawn colinear
+        # their edges would overlap and a star would read as a path.
+        def lamella_offsets(count, sign):
+            if count == 0:
+                return []
+            radius = max(0.5, 0.18 * count)
+            angles = (
+                np.array([np.pi / 2])
+                if count == 1
+                else np.linspace(np.pi / 2 - 0.55, np.pi / 2 + 0.55, count)
+            )
+            return [
+                np.array([radius * np.cos(a), sign * radius * np.sin(a)])
+                for a in angles
+            ]
+
+        up_offsets = lamella_offsets(n_up, 1.0)
+        down_offsets = lamella_offsets(n_down, -1.0)
+
+        # Vertical distance between filaments, widened so tall fans on adjacent
+        # rods do not collide (4.0 is the historical spacing, kept as the floor).
+        reach = max([abs(o[1]) for o in up_offsets + down_offsets], default=0.5)
+        rod_spacing_y = max(4.0, 2 * reach + 2.0)
+
+        # Same idea along the filament: a wide fan is wider than the historical
+        # 1.0 gap between center nodes, and neighbouring fans would interleave.
+        # Collapses back to exactly 1.0 for one lamella per side.
+        span = max([abs(o[0]) for o in up_offsets + down_offsets], default=0.0)
+        c_spacing = max(1.0, 3.0 * span)
 
         main_nodes = [f"main_{i}" for i in range(n_rods)]
 
@@ -566,25 +621,27 @@ class PopulationGraph:
             y_base = i * rod_spacing_y
             pos[main_id] = np.array([main_rod_x, y_base])
 
-            # Generate Filaments (c) and Lamellae (r/l)
+            # Filament backbone (c); lamellae hang off each of its nodes
             c_nodes = [f"r{i}c{j}" for j in range(rod_length)]
-            r_nodes = [f"r{i}r{j}" for j in range(rod_length)]
-            l_nodes = [f"r{i}l{j}" for j in range(rod_length)]
 
             # Connect Main -> First Filament Node
             G.add_edge(main_id, c_nodes[0])
 
             for j in range(rod_length):
-                x = main_rod_x + (j + 1) * 1.0
+                x = main_rod_x + (j + 1) * c_spacing
+                center = np.array([x, y_base])
+                pos[c_nodes[j]] = center
 
-                # Positions: c is center, r is above, l is below
-                pos[c_nodes[j]] = np.array([x, y_base])
-                pos[r_nodes[j]] = np.array([x, y_base + 0.5])
-                pos[l_nodes[j]] = np.array([x, y_base - 0.5])
+                for m, offset in enumerate(up_offsets):
+                    node_id = f"r{i}u{j}_{m}"
+                    pos[node_id] = center + offset
+                    G.add_edge(c_nodes[j], node_id)
 
-                # Edges: Ladder structure
-                G.add_edge(c_nodes[j], r_nodes[j])  # Center to Upper
-                G.add_edge(c_nodes[j], l_nodes[j])  # Center to Lower
+                for m, offset in enumerate(down_offsets):
+                    node_id = f"r{i}d{j}_{m}"
+                    pos[node_id] = center + offset
+                    G.add_edge(c_nodes[j], node_id)
+
                 if j > 0:
                     G.add_edge(c_nodes[j - 1], c_nodes[j])  # Linear filament
 
@@ -594,12 +651,16 @@ class PopulationGraph:
 
         nx.set_node_attributes(G, pos, "pos")
         G = nx.convert_node_labels_to_integers(G)
-        name = f"fish_r{n_rods}_l{rod_length}"
+        name = f"fish_r{n_rods}_l{rod_length}_f{fillaments}"
         return cls(
             G,
             name,
             category="Fish",
-            params={"n_rods": n_rods, "rod_length": rod_length},
+            params={
+                "n_rods": n_rods,
+                "rod_length": rod_length,
+                "fillaments": fillaments,
+            },
             labeled_edges=labeled_edges,
         )
 
