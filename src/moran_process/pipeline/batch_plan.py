@@ -26,7 +26,6 @@ import argparse
 import inspect
 import json
 import logging
-import os
 import sys
 import time
 from pathlib import Path
@@ -119,15 +118,45 @@ def make_plan(
     They are independent on purpose: re-running the same zoo with a different
     batch_seed is a fresh Monte Carlo sample of the same population structures.
     """
+    # Validated here rather than left to build_zoo, for the same reason spec()
+    # resolves factory names eagerly. These arguments are *coerced* below
+    # (list(), int()), and coercion is not validation: list() succeeds on a
+    # string by splitting it into characters, so specs=str(SPECS) yields a plan
+    # that serializes to valid JSON. A bad zoo_seed is worse, because describe()
+    # prints '43' for the string and the int alike and only build_zoo fails, by
+    # which point submit_from_plan has already created the batch directory.
+    specs = list(specs)
+    for i, s in enumerate(specs):
+        if not (isinstance(s, dict) and {"factory", "count", "kwargs"} <= s.keys()):
+            raise TypeError(
+                f"specs[{i}] is not a spec(...) dict, got {type(s).__name__}. "
+                f"specs must be a list of spec(...) calls."
+            )
+
+    r_values = list(r_values)
+    if not r_values:
+        raise ValueError("r_values is empty: the batch would run zero simulations.")
+    for i, r in enumerate(r_values):
+        if not isinstance(r, (int, float, np.integer, np.floating)):
+            raise TypeError(f"r_values[{i}] must be a number, got {type(r).__name__}: {r!r}")
+
+    for label, value in (("zoo_seed", zoo_seed), ("batch_seed", batch_seed)):
+        if value is not None and not isinstance(value, (int, np.integer)):
+            raise TypeError(
+                f"{label} must be an int or None, got {type(value).__name__}: {value!r}"
+            )
+
+    # Key order is the on-disk reading order: json.dumps preserves insertion
+    # order, so the knobs you scan first sit at the top of the file and the
+    # spec list, which can run to hundreds of lines, sits at the bottom.
     return {
         "schema_version": SCHEMA_VERSION,
         "batch_name": batch_name,
         "description": description,
         "notes": notes,
         "zoo_seed": zoo_seed,
-        "specs": list(specs),
         "sim": {
-            "r_values": list(r_values),
+            "r_values": r_values,
             "n_repeats": int(n_repeats),
             "n_jobs": int(n_jobs),
             "batch_seed": batch_seed,
@@ -137,6 +166,7 @@ def make_plan(
             "max_steps": int(max_steps),
             "post_batch": post_batch,
         },
+        "specs": specs,
     }
 
 

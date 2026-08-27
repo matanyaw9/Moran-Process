@@ -26,7 +26,7 @@ class GraphZoo:
         """Draw all graphs in a matplotlib grid. Each graph occupies one subplot."""
         import matplotlib.pyplot as plt  # lazy: keep matplotlib off the module-import path
 
-        if skip_randoms: 
+        if skip_randoms:
             graphs_to_show = [g for g in self.graphs if g.category != "Random"]
             print(f"Skipping {len(self.graphs) - len(graphs_to_show)} randoms")
         else:

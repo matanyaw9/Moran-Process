@@ -29,6 +29,58 @@ Code is an installable package under `src/moran_process/`. Run modules with
 `uv run python -m moran_process.<subpackage>.<module>` (the cluster path sets `PYTHONPATH=src`).
 The simulation pipeline has three layers:
 
+**0. Planning Layer: `pipeline/batch_plan.py`**
+A **batch plan** is a small JSON document holding the *recipe* for a batch: factory names,
+kwargs, counts, one `zoo_seed`, plus the simulation knobs. It never contains a graph.
+
+- **Why it exists.** The predecessor was the `zoo_config` dict `main.py` assembled from
+  `PopulationGraph.params`, which could not work: no factory records `directed` in `params`,
+  and two of them use key names that differ from their own kwargs (`mammalian_lung_graph`
+  stores `branching` for a kwarg called `branching_factor`, `fish_graph` stores `rods_length`
+  for `rod_length`). It described a batch without being able to rebuild one. The second
+  reason is memory: `design_zoo.ipynb` materializes the whole zoo in the Jupyter kernel, and
+  at 3000 graphs of N=1000 that is gigabytes. A plan for the same batch is a few KB.
+- **Seeding.** One root generator from `zoo_seed`, `.spawn(len(specs))` once, so spec *i*'s
+  stream is a function of `(zoo_seed, i)` alone. **Appending** a spec leaves every earlier
+  spec's graphs bit-identical; **inserting** one in the middle shifts everything after it.
+  This is why capping every spec to `count=1` gives a genuine prefix of the real zoo, which
+  is what makes the notebook's preview show the graphs the batch will actually run.
+  `zoo_seed` (which topologies exist) and `batch_seed` (which trajectories are drawn) are
+  independent on purpose: same zoo, new `batch_seed` is a fresh Monte Carlo sample.
+- **Dedup** is by `wl_hash` across the whole zoo. A seedable spec redraws on collision so
+  `count` stays honest (up to `MAX_SEED_REDRAWS`); a deterministic spec that collides is a
+  duplicate line in the plan and is dropped with a warning. `build_zoo` reports the shortfall
+  rather than silently running a smaller batch.
+- **Eager validation.** `spec()` resolves the factory name at the moment the notebook cell
+  runs, so a typo raises there instead of inside an LSF job three hours later. kwargs are
+  deliberately *not* checked against the signature: a factory may grow a parameter and a plan
+  written before that is still valid.
+- **Costing before submitting.** `describe(plan)` prints the spec table, graph count, total
+  simulations and simulations/job without building anything. Read `simulations/job`, not the
+  graph count: `FAILED-2026_08_26-realistic-graphs-2` was 1.2e9 simulations across 10 workers,
+  which is ~67 h of wall clock, and was killed by hand at 22 h and 33% done.
+- **Where plans live.** Authored into `batch_plans/<batch_name>.json`, and `submit_from_plan`
+  copies the plan to `<batch_dir>/batch_plan.json` **before** building anything, so a batch
+  that dies during graph construction still leaves the recipe that would have built it. It
+  also reaches `batch_info.json` under the `zoo` key via `zoo_config`.
+- **`load_plan` gates on `schema_version`** and refuses a mismatch rather than guessing.
+  Batches submitted before `ad1c918` (the old `design_zoo.ipynb` path) have no plan; their
+  zoos are recoverable from `zoo.pkl`, and every random graph's seed is in its own name
+  (`random_n1000_e999_s383329928`), so `graph_props.csv` doubles as a construction log.
+- **Submission does not run in the notebook kernel.** `submit_from_plan` is the step that
+  holds the whole zoo in RAM, which is exactly what the plan exists to keep out of Jupyter.
+  Run it from an `inode` session:
+
+```bash
+uv run python -m moran_process.pipeline.batch_plan --plan batch_plans/<name>.json [--dry-run]
+```
+
+  `--dry-run` prints the plan and its cost and creates nothing. Layering: plans sit *above*
+  `ProcessLab`. `submit_from_plan` builds the zoo, serializes it, and hands the path to
+  `submit_jobs` unchanged; nothing downstream of submission knows plans exist.
+- Notebook: `notebooks/design_batch_plan.ipynb` (authoring only, holds no graphs except a
+  one-per-spec preview). `notebooks/design_zoo.ipynb` is the older path and still works.
+
 **1. Graph Layer: `core/population_graph.py`**
 - `PopulationGraph` wraps a NetworkX graph and computes a Weisfeiler-Lehman hash (`wl_hash`) for deduplication. Construction has NO database side effect.
 - Factory classmethods: `complete_graph`, `cycle_graph`, `line_graph`, `star_graph`, `mammalian_lung_graph`, `avian_graph`, `fish_graph`, `random_connected_graph`.
@@ -187,8 +239,12 @@ Both used to be single "compute if missing, else load" functions. That shape is 
 ## Data Flow
 
 ```
-notebooks/design_zoo.ipynb  (or pipeline/main.py)
-  -> serialize zoo to simulation_data/<batch>/tmp/graph_zoo.joblib
+notebooks/design_batch_plan.ipynb                    # holds no graphs
+  -> batch_plans/<batch>.json
+  -> batch_plan.submit_from_plan()                  # from an inode session, NOT the kernel
+      -> simulation_data/<batch>/batch_plan.json    # the recipe, written before the build
+      -> build_zoo() -> simulation_data/<batch>/tmp/graph_zoo.joblib
+  (older path: notebooks/design_zoo.ipynb, or pipeline/main.py, dumps the zoo directly)
   -> ProcessLab.submit_jobs()                       # HPC
       -> register_graphs job -> simulation_data/<batch>/graph_props.csv
       -> simulation_data/<batch>/tmp/task_manifest.csv
