@@ -13,10 +13,12 @@ if not os.path.isfile(lib_path):
         [
             "rustc",
             "--crate-type=cdylib",
+            "-O",
+            "-C",
+            "panic=abort",
             "-o",
             lib_path,
             dir_path + "/src/lib.rs",
-            "-O",
         ],
         check=True,
     )
@@ -32,18 +34,12 @@ rustlib.compute.argtypes = [
     ptr_u32,
     ptr_u32,
     ctypes.c_double,
-    ctypes.c_double,
     ptr_f64,
     ctypes.c_uint8,
 ]
 
 
-def fixation_prob(
-    g: GraphCore,
-    r: float,
-    *,
-    timeout: dt.timedelta = dt.timedelta(days=1000),
-) -> np.ndarray:
+def fixation_prob(g: GraphCore, r: float) -> np.ndarray:
     """
     For each possible starting node, provides the fixation probability of the
     mutant, assuming it started there.
@@ -54,19 +50,13 @@ def fixation_prob(
         ctypes.cast(g.nbrs.ctypes.data, ptr_u32),
         ctypes.cast(g.offsets.ctypes.data, ptr_u32),
         r,
-        timeout.total_seconds(),
         ctypes.cast(res.ctypes.data, ptr_f64),
         0,
     )
     return res
 
 
-def absorb_time(
-    g: GraphCore,
-    r: float,
-    *,
-    timeout: dt.timedelta = dt.timedelta(days=1000),
-) -> np.ndarray:
+def absorb_time(g: GraphCore, r: float) -> np.ndarray:
     """
     For each possible starting node, provides the average time until system
     homogeny, assuming the mutant started there.
@@ -77,7 +67,6 @@ def absorb_time(
         ctypes.cast(g.nbrs.ctypes.data, ptr_u32),
         ctypes.cast(g.offsets.ctypes.data, ptr_u32),
         r,
-        timeout.total_seconds(),
         ctypes.cast(res.ctypes.data, ptr_f64),
         1,
     )
