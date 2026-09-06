@@ -339,8 +339,213 @@ private:
     std::vector<int> loc_;      // inverse of order_: loc_[order_[i]] == i
 };
 
+// ---------------------------------------------------------------------------
+// MultiColorCore
+// ---------------------------------------------------------------------------
+//
+// Neutral multi-lineage competition (the voter model): every node starts as its
+// own colour and the process runs until one colour holds every node. Mirrors
+// src/moran_process/simulations/multi_color_moran_process.py, with the same
+// statistical-not-bit-exact relationship to it that MoranProcessCore has to
+// MoranProcess.
+//
+// Two things make this simpler than MoranProcessCore rather than harder:
+//
+//   * No fitness. Every colour is neutral by construction, so the reproducer is
+//     a plain uniform draw over nodes. The two-pool order_/loc_ partition exists
+//     purely to sample proportional to fitness in O(1) and has nothing to do
+//     here.
+//   * Absorption is O(1), not O(n). The Python reference calls
+//     `np.all(state == state[0])` once per step, which is an O(n) scan inside
+//     the hot loop. Here `count_[c]` holds the number of nodes carrying colour c
+//     and `n_distinct_` the number of colours still alive; a step that overwrites
+//     a node decrements its old colour's count and, when that count reaches
+//     zero, decrements n_distinct_. Consensus is `n_distinct_ == 1`.
+//
+//     This is exact, not an approximation, and it rests on a genuine property of
+//     the neutral process: an extinct colour can never come back, because a node
+//     only ever acquires a colour that some neighbour is already carrying. So
+//     n_distinct_ is monotonically non-increasing and a single counter is a
+//     complete description of how close the run is to absorption. It is the
+//     direct generalisation of MoranProcessCore's `mutant_count_` test.
+//
+// Colours are node indices in [0, n), so count_ is exactly n wide and needs no
+// map. `winner` is the surviving colour, i.e. the node whose lineage took over.
+class MultiColorCore {
+public:
+    MultiColorCore(int n_nodes,
+                   py::array_t<int32_t, py::array::c_style | py::array::forcecast> nbrs,
+                   py::array_t<int32_t, py::array::c_style | py::array::forcecast> offsets,
+                   int64_t max_steps,
+                   int64_t seed)
+        : n_(n_nodes),
+          max_steps_(max_steps),
+          rng_(seed),
+          n_distinct_(0) {
+        if (n_ < 1) {
+            throw std::invalid_argument("MultiColorCore requires at least one node.");
+        }
+        // Copied into owned vectors once per task, as in MoranProcessCore.
+        auto nbrs_buf = nbrs.unchecked<1>();
+        auto off_buf = offsets.unchecked<1>();
+        nbrs_.resize(nbrs_buf.shape(0));
+        for (py::ssize_t i = 0; i < nbrs_buf.shape(0); ++i) {
+            nbrs_[i] = nbrs_buf(i);
+        }
+        offsets_.resize(off_buf.shape(0));
+        for (py::ssize_t i = 0; i < off_buf.shape(0); ++i) {
+            offsets_[i] = off_buf(i);
+        }
+
+        state_.resize(n_);
+        count_.resize(n_);
+        initialize_unique_colors();
+    }
+
+    // Give every node its own lineage. Also the per-repeat reset: O(n), which is
+    // negligible against the thousands of steps a single takeover costs.
+    void initialize_unique_colors() {
+        for (int i = 0; i < n_; ++i) {
+            state_[i] = i;
+            count_[i] = 1;
+        }
+        n_distinct_ = n_;
+    }
+
+    int n_distinct() const { return n_distinct_; }
+
+    // Current colour of every node, as a NumPy array (parity with the Python
+    // reference's `.state`, which the notebook reads for lineage plots).
+    py::array_t<int> state() const {
+        return py::array_t<int>(state_.size(), state_.data());
+    }
+
+    py::dict run(bool track_history) {
+        auto start_time = std::chrono::steady_clock::now();
+
+        int64_t steps = 0;
+        // Flattened (snapshots x n_) state history; reshaped on the way out.
+        std::vector<int> history;
+
+        while (steps < max_steps_) {
+            if (track_history) {
+                history.insert(history.end(), state_.begin(), state_.end());
+            }
+            if (n_distinct_ == 1) {
+                break;
+            }
+            step();
+            ++steps;
+        }
+
+        auto end_time = std::chrono::steady_clock::now();
+        double duration =
+            std::chrono::duration<double>(end_time - start_time).count();
+
+        // Tested after the loop, not inside it: a run whose final step produced
+        // consensus leaves on the `steps < max_steps_` condition without ever
+        // reaching the in-loop test, and would otherwise be recorded as censored.
+        const bool fixed = (n_distinct_ == 1);
+
+        py::dict result;
+        result["winner"] = fixed ? state_[0] : -1;
+        result["fixed"] = fixed;
+        result["steps"] = steps;
+        result["duration"] = duration;
+        if (track_history) {
+            const py::ssize_t rows =
+                static_cast<py::ssize_t>(history.size()) / n_;
+            result["history"] = py::array_t<int>(
+                {rows, static_cast<py::ssize_t>(n_)},
+                {static_cast<py::ssize_t>(n_ * sizeof(int)),
+                 static_cast<py::ssize_t>(sizeof(int))},
+                history.data());
+        }
+        return result;
+    }
+
+    // Run n_repeats independent takeovers back to back, each preceded by a fresh
+    // unique-colour assignment, advancing this object's single RNG stream. Four
+    // equal-length NumPy arrays come back so the whole task crosses the
+    // Python<->C++ boundary once instead of 2*n_repeats times.
+    py::dict run_repeats(int64_t n_repeats) {
+        auto winner_arr = py::array_t<int64_t>(n_repeats);
+        auto fixed_arr = py::array_t<bool>(n_repeats);
+        auto steps_arr = py::array_t<int64_t>(n_repeats);
+        auto duration_arr = py::array_t<double>(n_repeats);
+        auto wn = winner_arr.mutable_unchecked<1>();
+        auto fx = fixed_arr.mutable_unchecked<1>();
+        auto st = steps_arr.mutable_unchecked<1>();
+        auto du = duration_arr.mutable_unchecked<1>();
+
+        for (int64_t rep = 0; rep < n_repeats; ++rep) {
+            initialize_unique_colors();
+
+            auto start_time = std::chrono::steady_clock::now();
+            int64_t steps = 0;
+            while (steps < max_steps_ && n_distinct_ > 1) {
+                step();
+                ++steps;
+            }
+            auto end_time = std::chrono::steady_clock::now();
+
+            const bool fixed = (n_distinct_ == 1);
+            wn(rep) = fixed ? static_cast<int64_t>(state_[0]) : -1;
+            fx(rep) = fixed;
+            st(rep) = steps;
+            du(rep) =
+                std::chrono::duration<double>(end_time - start_time).count();
+        }
+
+        py::dict result;
+        result["winner"] = winner_arr;
+        result["fixed"] = fixed_arr;
+        result["steps"] = steps_arr;
+        result["duration"] = duration_arr;
+        return result;
+    }
+
+private:
+    // One voter step: uniform reproducer, uniform out-neighbour victim. A
+    // reproducer with out-degree 0 (reachable only on directed graphs) wastes the
+    // step rather than raising, matching both existing engines.
+    inline void step() {
+        const int reproducer =
+            static_cast<int>(rng_.bounded(static_cast<uint64_t>(n_)));
+        const int beg = offsets_[reproducer];
+        const int deg = offsets_[reproducer + 1] - beg;
+        if (deg == 0) {
+            return;
+        }
+        const int victim =
+            nbrs_[beg + static_cast<int>(rng_.bounded(static_cast<uint64_t>(deg)))];
+
+        const int new_color = state_[reproducer];
+        const int old_color = state_[victim];
+        if (old_color == new_color) {
+            return;
+        }
+        state_[victim] = new_color;
+        ++count_[new_color];
+        if (--count_[old_color] == 0) {
+            --n_distinct_;
+        }
+    }
+
+    int n_;
+    int64_t max_steps_;
+    Xoshiro256pp rng_;
+    int n_distinct_;  // colours still holding at least one node
+
+    std::vector<int> nbrs_;     // CSR concatenated neighbour lists
+    std::vector<int> offsets_;  // CSR offsets, length n+1
+    std::vector<int> state_;    // state_[v] = colour (founding node id) of node v
+    std::vector<int> count_;    // count_[c] = nodes currently holding colour c
+};
+
 PYBIND11_MODULE(_moran_cpp, m) {
-    m.doc() = "C++ Moran process core (statistical equivalent of MoranProcess)";
+    m.doc() = "C++ simulation cores: MoranProcessCore (statistical equivalent of "
+        "MoranProcess) and MultiColorCore (of MultiColorMoranProcess)";
 
     py::class_<MoranProcessCore>(m, "MoranProcessCore")
         .def(py::init<int,
@@ -358,4 +563,17 @@ PYBIND11_MODULE(_moran_cpp, m) {
         .def_property_readonly("mutant_count", &MoranProcessCore::mutant_count)
         .def_property_readonly("selection_coeff",
                                &MoranProcessCore::selection_coeff);
+
+    py::class_<MultiColorCore>(m, "MultiColorCore")
+        .def(py::init<int,
+                      py::array_t<int32_t, py::array::c_style | py::array::forcecast>,
+                      py::array_t<int32_t, py::array::c_style | py::array::forcecast>,
+                      int64_t, int64_t>(),
+             py::arg("n_nodes"), py::arg("nbrs"), py::arg("offsets"),
+             py::arg("max_steps"), py::arg("seed"))
+        .def("initialize_unique_colors", &MultiColorCore::initialize_unique_colors)
+        .def("run", &MultiColorCore::run, py::arg("track_history") = false)
+        .def("run_repeats", &MultiColorCore::run_repeats, py::arg("n_repeats"))
+        .def_property_readonly("n_distinct", &MultiColorCore::n_distinct)
+        .def_property_readonly("state", &MultiColorCore::state);
 }

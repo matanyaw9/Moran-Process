@@ -279,11 +279,22 @@ class PopulationGraph:
             n_nodes (int): Number of nodes in the ring.
             directed (bool): If True, returns a DiGraph circulating one way.
         """
+        G = nx.cycle_graph(n_nodes, create_using=nx.DiGraph if directed else None)
+
+        # Store the ring layout, as star_graph and line_graph already do for
+        # theirs. Without a 'pos' attribute draw() falls back to spring_layout,
+        # which lays a cycle out as tangled spaghetti and hides the one property
+        # that matters about it: that every node is identical.
+        angles = np.linspace(0, 2 * np.pi, n_nodes, endpoint=False)
+        pos = {i: np.array([np.cos(a), np.sin(a)]) for i, a in enumerate(angles)}
+        nx.set_node_attributes(G, pos, "pos")
+
         name = f"directed_cycle_n{n_nodes}" if directed else f"cycle_n{n_nodes}"
         return cls(
-            nx.cycle_graph(n_nodes, create_using=nx.DiGraph if directed else None),
+            G,
             name=name,
             category="Cycle",
+            params={"n_nodes": n_nodes},
             labeled_edges=labeled_edges,
         )
 
@@ -851,9 +862,21 @@ class PopulationGraph:
 
     # --- VISUALIZATION ---
     def draw(
-        self, ax=None, filename="", descriptive=True, with_labels=False, title=None
+        self,
+        ax=None,
+        filename="",
+        descriptive=True,
+        with_labels=False,
+        title=None,
+        node_color="skyblue",
+        node_size=50,
     ):
-        """Draws the graph using its stored biological layout."""
+        """Draws the graph using its stored biological layout.
+
+        ``node_color`` and ``node_size`` go straight to ``nx.draw``; the
+        defaults reproduce the plain view. They exist so ``draw_colored_graph``
+        can reuse the layout, label and save logic below instead of copying it.
+        """
         import matplotlib.pyplot as plt  # lazy: keep matplotlib off the module-import path
 
         if self.graph is None:
@@ -899,8 +922,8 @@ class PopulationGraph:
             self.graph,
             pos=pos,
             ax=ax,
-            node_size=50,
-            node_color="skyblue",
+            node_size=node_size,
+            node_color=node_color,
             with_labels=with_labels,
             edge_color="#555555",
             width=1.5,
@@ -962,6 +985,139 @@ class PopulationGraph:
         elif created_internally:
             # Only show if we created it; otherwise let caller control show()
             plt.show()
+
+    def draw_colored_graph(
+        self,
+        values,
+        cmap="viridis",
+        label="",
+        center=None,
+        half_width=None,
+        vmin_floor=None,
+        node_size=300,
+        ax=None,
+        filename="",
+        title=None,
+        with_labels=False,
+        descriptive=False,
+        bad_color="lightgray",
+    ):
+        """Draw the graph with each node colored by a per-node number.
+
+        ``values`` is any sequence of length ``n_nodes`` indexed by node id
+        (win fraction, mean steps to fixation, degree, ...) and ``label`` says
+        what the number means: it becomes the colorbar label.
+
+        ``center`` picks between the two shapes these quantities come in. Left
+        as None the scale runs linearly from min to max, which is what a
+        magnitude such as fixation time wants. Given a value, the scale becomes
+        a ``TwoSlopeNorm`` centered there and the color answers "above or below
+        the reference?" rather than "how big?". A win fraction wants
+        ``center=1/n_nodes`` with a diverging cmap, because under neutral drift
+        the only interesting contrast is deviation from 1/N.
+
+        ``half_width`` fixes the +/- range around ``center`` instead of fitting
+        it to the largest deviation. Auto-fitting is wrong whenever the values
+        are noisy estimates of the reference itself: a perfectly neutral result
+        would have its scale zoomed into pure Monte Carlo scatter and come out
+        looking like signal. Pass a known noise floor (or a shared range, to put
+        several panels on one scale) to stop that.
+
+        ``vmin_floor`` bounds the low end of that range from below, for a
+        quantity that cannot go there. A win fraction is a probability, so a
+        scale reaching to -0.9 (which is what ``center=1/21`` and a node winning
+        every trial produce) spends most of its low half on values that cannot
+        occur. Clamping only the low end keeps ``center`` on the middle color,
+        at the price of the two sides covering unequal ranges of value.
+
+        NaN is allowed and means "undefined at this node", which is a real case
+        rather than a mistake: the mean time to takeover *conditional on a node
+        winning* does not exist at a node that never won, and on a single-source
+        directed graph that is every node but one. Those nodes are drawn in
+        ``bad_color`` and left out of the scale, so one undefined entry cannot
+        collapse the whole colorbar.
+
+        Returns the ``Normalize`` in use, so several panels can be redrawn on a
+        shared scale.
+        """
+        import matplotlib.pyplot as plt  # lazy: keep matplotlib off the module-import path
+        import matplotlib.colors as mcolors
+
+        vals = np.asarray(values, dtype=float)
+        if vals.shape != (self.n_nodes,):
+            raise ValueError(
+                f"values must hold one number per node: expected shape "
+                f"({self.n_nodes},), got {vals.shape}"
+            )
+
+        if np.all(np.isnan(vals)):
+            raise ValueError(
+                f"every value is NaN, so there is nothing to scale a colormap to "
+                f"({self.name}, {self.n_nodes} nodes)"
+            )
+
+        if center is None:
+            norm = mcolors.Normalize(vmin=np.nanmin(vals), vmax=np.nanmax(vals))
+        else:
+            if half_width is not None:
+                max_dev = float(half_width)
+            else:
+                max_dev = float(np.nanmax(np.abs(vals - center)))
+            if max_dev == 0:
+                # TwoSlopeNorm needs vmin < vcenter < vmax, so a constant vector
+                # (every node exactly at the reference) still needs a half-width.
+                max_dev = abs(float(center)) or 1.0
+            vmin = center - max_dev
+            if vmin_floor is not None:
+                if vmin_floor >= center:
+                    raise ValueError(
+                        f"vmin_floor must sit below center, got "
+                        f"vmin_floor={vmin_floor} and center={center}"
+                    )
+                vmin = max(vmin, float(vmin_floor))
+            norm = mcolors.TwoSlopeNorm(
+                vmin=vmin, vcenter=center, vmax=center + max_dev
+            )
+
+        # Copy before set_bad: get_cmap hands back the registered instance, and
+        # mutating that would change the colormap for every other figure.
+        colormap = plt.get_cmap(cmap).copy()
+        colormap.set_bad(bad_color)
+        # Index by node id, not by position: nx.draw colors nodes in G.nodes()
+        # order, which is insertion order and not guaranteed to be sorted.
+        node_colors = colormap(norm(vals[list(self.graph.nodes())]))
+
+        created_internally = ax is None
+        if created_internally:
+            _, ax = plt.subplots(figsize=(8, 7))
+        fig = ax.get_figure()
+
+        # Reuse draw() for layout, labels and the axis. Passing ax keeps it from
+        # saving or showing, so the colorbar lands before anything is written.
+        self.draw(
+            ax=ax,
+            descriptive=descriptive,
+            with_labels=with_labels,
+            title=title,
+            node_color=node_colors,
+            node_size=node_size,
+        )
+
+        sm = plt.cm.ScalarMappable(cmap=colormap, norm=norm)
+        sm.set_array([])
+        fig.colorbar(sm, ax=ax, label=label, shrink=0.8)
+
+        if filename:
+            # A SubFigure has no savefig; its .figure is the real top-level one.
+            root_fig = fig if hasattr(fig, "savefig") else fig.figure
+            root_fig.savefig(filename, dpi=300, bbox_inches="tight")
+            print(f"Saved graph to {filename}")
+            if created_internally:
+                plt.close(root_fig)
+        elif created_internally:
+            plt.show()
+
+        return norm
 
     # --- Getters ---
     def get_as_numpy(self):

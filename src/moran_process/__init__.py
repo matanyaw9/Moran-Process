@@ -21,6 +21,10 @@ _LAZY_EXPORTS = {
     "ProcessLab": "moran_process.pipeline.process_lab:ProcessLab",
     "MoranProcess": "moran_process.simulations.moran_process:MoranProcess",
     "MultiColorMoranProcess": "moran_process.simulations.multi_color_moran_process:MultiColorMoranProcess",
+    # The C++-backed engines. Lazy like everything else here, so importing the
+    # package still works where the compiled extension is absent.
+    "CppMoranProcess": "moran_process.simulations.cpp_moran_wrapper:CppMoranProcess",
+    "CppMultiColorMoranProcess": "moran_process.simulations.cpp_moran_wrapper:CppMultiColorMoranProcess",
     "SimulationProcess": "moran_process.simulations.simulation_process:SimulationProcess",
 }
 
