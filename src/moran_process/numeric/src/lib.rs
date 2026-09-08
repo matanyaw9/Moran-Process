@@ -1,7 +1,16 @@
-mod data;
-mod graph;
+pub mod data;
+pub mod graph;
+pub mod schedule;
 use crate::data::Data;
 use crate::graph::Graph;
+use crate::schedule::Schedule;
+use std::slice;
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+pub enum Action {
+    FixationProb,
+    AbsrobTime,
+}
 
 #[unsafe(no_mangle)]
 extern "C" fn compute(
@@ -12,27 +21,44 @@ extern "C" fn compute(
     res: *mut f64,
     action: u8,
 ) {
-    // TODO: reintroduce action
-    _ = action;
+    let action = match action {
+        0 => Action::FixationProb,
+        1 => Action::AbsrobTime,
+        _ => panic!("bad action"),
+    };
 
     // SAFETY: Caller responsible for passing legal inputs
     let g = unsafe { Graph::from_ffi(size, nbrs, offsets, r) };
-    let d = Data::new(g.len());
+    let res = unsafe { slice::from_raw_parts_mut(res, size) };
+    crunch(&g, action, res)
+}
+
+pub fn crunch(g: &Graph, action: Action, res: &mut [f64]) {
+    const THRDS: usize = 4;
+
+    assert!(res.len() == g.len());
+
+    let d = Data::new(g.len(), action);
     let x = d.reference();
-
-    const MAX_STEPS: u64 = 500;
-    for _ in 0..MAX_STEPS {
-        let change = g.step_section(x, 0, g.len());
-        if change < 3e-15 * 2f64.powi(g.len() as _) {
-            break;
+    let schd = Schedule::new(
+        3e-15 * 2f64.powi(g.len() as _),
+        g.len(),
+        (2 * THRDS).next_power_of_two(),
+    );
+    let cruncher = || {
+        let mut task = schd.first();
+        while let Some(t) = task {
+            let change = g.step_portion(x, t, action);
+            task = schd.next(t, change);
         }
-    }
-
-    for i in 0..g.len() {
-        let val = x.get(1 << i);
-        // SAFETY: Caller responsible for passing legal inputs
-        unsafe {
-            res.add(i).write(val);
+    };
+    std::thread::scope(|s| {
+        for _ in 1..THRDS {
+            s.spawn(cruncher);
         }
+        cruncher();
+    });
+    for (i, r) in res.iter_mut().enumerate() {
+        *r = x.get(1 << i);
     }
 }

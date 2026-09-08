@@ -4,6 +4,11 @@ version = "0.1.0"
 edition = "2024"
 
 [lib]
-crate-type = ["cdylib"]
+path = "src/lib.rs"
+crate-type = ["lib", "cdylib"]
+
+[[bin]]
+name = "numeric_cli"
+path = "src/main.rs"
 
 [dependencies]

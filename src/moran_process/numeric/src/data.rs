@@ -1,3 +1,4 @@
+use super::Action;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 pub struct Data(Box<[AtomicU64]>);
@@ -6,14 +7,19 @@ pub struct Data(Box<[AtomicU64]>);
 pub struct DataRef<'data>(&'data [AtomicU64]);
 
 impl Data {
-    pub fn new(size: usize) -> Data {
-        let mut v = Vec::with_capacity(1 << size);
-        v.resize_with(v.capacity() - 1, || AtomicU64::new(0));
-        // TODO: this assumes we're computing fixation probability.
-        // add a flag to choose beterrn fixation probability and
-        // absorption time
-        v.push(AtomicU64::new(1f64.to_bits()));
-        Data(v.into_boxed_slice())
+    pub fn new(size: usize, action: Action) -> Data {
+        const ZERO: u64 = 0f64.to_bits();
+        const ONE: u64 = 1f64.to_bits();
+        Data(
+            std::iter::repeat_n(ZERO, (1 << size) - 1)
+                .chain([match action {
+                    Action::FixationProb => ONE,
+                    Action::AbsrobTime => ZERO,
+                }])
+                .map(AtomicU64::new)
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+        )
     }
 
     pub fn reference(&self) -> DataRef<'_> {
