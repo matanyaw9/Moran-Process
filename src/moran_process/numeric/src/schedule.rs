@@ -1,23 +1,23 @@
 use std::sync::{Condvar, Mutex, MutexGuard};
 
+// TODO: see whether we can make the schedule lock-free
 pub struct Schedule(Mutex<WorkState>, Condvar);
 
 struct WorkState {
     cease: bool,
     threshold: f64,
+    sides: [Side; 2],
+}
 
-    l_changes: [f64; 2],
-    l_epoch: u32,
-    l_queued: u64,
-    l_done: u64,
-
-    r_changes: [f64; 2],
-    r_epoch: u32,
-    r_queued: u64,
-    r_done: u64,
+#[derive(Clone, Copy)]
+struct Side {
+    changes: [f64; 2],
+    epoch: u32,
+    queued: u64,
+    done: u64,
     // invariants:
-    //   r_queued ∩ r_done = ∅
-    //   l_queued ∩ l_done = ∅
+    //   queued ∩ done = ∅
+    //   done ≠ u64::MAX
 }
 
 impl Schedule {
@@ -26,14 +26,12 @@ impl Schedule {
             Mutex::new(WorkState {
                 cease: false,
                 threshold,
-                l_changes: [f64::MAX / 4.0; 2],
-                l_epoch: 0,
-                l_queued: !0,
-                l_done: 0,
-                r_changes: [f64::MAX / 4.0; 2],
-                r_epoch: 0,
-                r_queued: !0,
-                r_done: 0,
+                sides: [Side {
+                    changes: [f64::MAX / 4.0; 2],
+                    epoch: 0,
+                    queued: u64::MAX,
+                    done: 0,
+                }; _],
             }),
             Condvar::new(),
         )
@@ -47,68 +45,50 @@ impl Schedule {
     pub fn next(&self, prev: u8, change: f64) -> Option<u8> {
         let mut guard = self.0.lock().unwrap();
 
-        // TODO: DRY this
-        if prev < 0x80 {
-            guard.l_done |= 1 << (prev >> 1);
-            guard.l_changes[1] += change;
-            if guard.l_done == !0 {
-                let tot_change = guard.l_changes.iter().chain(&guard.r_changes).sum::<f64>();
-                guard.cease = tot_change <= guard.threshold;
-                guard.l_changes = [guard.l_changes[1], 0.0];
-                (guard.l_queued, guard.l_done) = (!0, 0);
-                guard.l_epoch += 1;
-                self.1.notify_all();
-            }
-        } else {
-            guard.r_done |= 1 << (prev >> 1 & 0x3f);
-            guard.r_changes[1] += change;
-            if guard.r_done == !0 {
-                let tot_change = guard.l_changes.iter().chain(&guard.r_changes).sum::<f64>();
-                guard.cease = tot_change <= guard.threshold;
-                guard.r_changes = [guard.r_changes[1], 0.0];
-                (guard.r_queued, guard.r_done) = (!0, 0);
-                guard.r_epoch += 1;
-                self.1.notify_all();
-            }
+        let i = (prev >= 0x80) as usize;
+        guard.sides[i].done |= 1 << (prev >> 1);
+        guard.sides[i].changes[1] += change;
+        if guard.sides[i].done == u64::MAX {
+            let tot_change = guard.sides[0]
+                .changes
+                .iter()
+                .chain(&guard.sides[1].changes)
+                .sum::<f64>();
+            guard.cease = tot_change <= guard.threshold;
+            guard.sides[i].changes = [guard.sides[i].changes[1], 0.0];
+            (guard.sides[i].queued, guard.sides[i].done) = (u64::MAX, 0);
+            guard.sides[i].epoch += 1;
+            self.1.notify_all();
         }
         self.get_section(guard)
     }
 
     fn get_section(&self, mut guard: MutexGuard<'_, WorkState>) -> Option<u8> {
-        loop {
-            if guard.cease {
-                break None;
+        while !guard.cease {
+            // attempt to take a queued task from a lagging/levelled side
+            for i in [0, 1] {
+                if guard.sides[i].epoch <= guard.sides[1 - i].epoch
+                    && let Some(ctz) = guard.sides[i].queued.lowest_one()
+                {
+                    guard.sides[i].queued &= !(1 << ctz);
+                    let pairity = (ctz.count_ones() ^ guard.sides[i].epoch ^ i as u32) & 1;
+                    return Some(((i as u32) << 7 | ctz << 1 | pairity) as u8);
+                }
             }
-            // TODO: DRY this
-            if guard.l_epoch <= guard.r_epoch
-                && let Some(ctz) = guard.l_queued.lowest_one()
-            {
-                guard.l_queued &= !(1 << ctz);
-                let pairity = (ctz.count_ones() ^ guard.l_epoch) & 1;
-                break Some((ctz << 1 | pairity) as u8);
-            }
-            if guard.r_epoch <= guard.l_epoch
-                && let Some(ctz) = guard.r_queued.lowest_one()
-            {
-                guard.r_queued &= !(1 << ctz);
-                let pairity = (ctz.count_ones() ^ guard.r_epoch ^ 1) & 1;
-                break Some((0x80 | ctz << 1 | pairity) as u8);
-            }
-            if guard.l_epoch == guard.r_epoch + 1
-                && let Some(ctz) = (guard.l_queued & guard.r_done).lowest_one()
-            {
-                guard.l_queued &= !(1 << ctz);
-                let pairity = (ctz.count_ones() ^ guard.l_epoch) & 1;
-                break Some((ctz << 1 | pairity) as u8);
-            }
-            if guard.r_epoch == guard.l_epoch + 1
-                && let Some(ctz) = (guard.r_queued & guard.l_done).lowest_one()
-            {
-                guard.r_queued &= !(1 << ctz);
-                let pairity = (ctz.count_ones() ^ guard.r_epoch ^ 1) & 1;
-                break Some((0x80 | ctz << 1 | pairity) as u8);
+            // also attempt to take a queued task from the leading side, if that
+            // task does not depend on a different task from the lagging side
+            for i in [0, 1] {
+                if guard.sides[i].epoch == guard.sides[1 - i].epoch + 1
+                    && let Some(ctz) =
+                        (guard.sides[i].queued & guard.sides[1 - i].done).lowest_one()
+                {
+                    guard.sides[i].queued &= !(1 << ctz);
+                    let pairity = (ctz.count_ones() ^ guard.sides[i].epoch ^ i as u32) & 1;
+                    return Some(((i as u32) << 7 | ctz << 1 | pairity) as u8);
+                }
             }
             guard = self.1.wait(guard).unwrap();
         }
+        None
     }
 }
