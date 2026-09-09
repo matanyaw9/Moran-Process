@@ -35,7 +35,7 @@ pub fn main() {
 
     let g = Graph::from_shape(size, shape, r);
     let mut res = vec![0.0; g.len()];
-    numeric::crunch(&g, action, &mut res);
+    numeric::crunch(&g, action, 0, &mut res);
 
     for r in res {
         println!("{r}");

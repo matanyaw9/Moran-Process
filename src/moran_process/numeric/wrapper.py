@@ -16,6 +16,8 @@ if not os.path.isfile(lib_path):
             "-O",
             "-C",
             "panic=abort",
+            "--edition",
+            "2024",
             "-o",
             lib_path,
             dir_path + "/src/lib.rs",
@@ -36,10 +38,11 @@ rustlib.compute.argtypes = [
     ctypes.c_double,
     ptr_f64,
     ctypes.c_uint8,
+    ctypes.c_uint8,
 ]
 
 
-def fixation_prob(g: GraphCore, r: float) -> np.ndarray:
+def fixation_prob(g: GraphCore, r: float, thrds: int = 0) -> np.ndarray:
     """
     For each possible starting node, provides the fixation probability of the
     mutant, assuming it started there.
@@ -52,11 +55,12 @@ def fixation_prob(g: GraphCore, r: float) -> np.ndarray:
         r,
         ctypes.cast(res.ctypes.data, ptr_f64),
         0,
+        thrds,
     )
     return res
 
 
-def absorb_time(g: GraphCore, r: float) -> np.ndarray:
+def absorb_time(g: GraphCore, r: float, thrds: int = 0) -> np.ndarray:
     """
     For each possible starting node, provides the average time until system
     homogeny, assuming the mutant started there.
@@ -69,5 +73,6 @@ def absorb_time(g: GraphCore, r: float) -> np.ndarray:
         r,
         ctypes.cast(res.ctypes.data, ptr_f64),
         1,
+        thrds,
     )
     return res

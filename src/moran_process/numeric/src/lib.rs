@@ -20,6 +20,7 @@ extern "C" fn compute(
     r: f64,
     res: *mut f64,
     action: u8,
+    thrds: u8,
 ) {
     let action = match action {
         0 => Action::FixationProb,
@@ -30,13 +31,10 @@ extern "C" fn compute(
     // SAFETY: Caller responsible for passing legal inputs
     let g = unsafe { Graph::from_ffi(size, nbrs, offsets, r) };
     let res = unsafe { slice::from_raw_parts_mut(res, size) };
-    crunch(&g, action, res)
+    crunch(&g, action, thrds, res)
 }
 
-pub fn crunch(g: &Graph, action: Action, res: &mut [f64]) {
-    // TODO: get or calculate number of threads to use
-    const THRDS: usize = 6;
-
+pub fn crunch(g: &Graph, action: Action, thrds: u8, res: &mut [f64]) {
     assert!(res.len() == g.len());
 
     let d = Data::new(g.len(), action);
@@ -49,8 +47,15 @@ pub fn crunch(g: &Graph, action: Action, res: &mut [f64]) {
             section = schd.next(s, change);
         }
     };
+
+    let thrds = if thrds == 0 {
+        std::thread::available_parallelism().map_or(1, |n| n.get())
+    } else {
+        thrds as _
+    };
+
     std::thread::scope(|s| {
-        for _ in 1..THRDS {
+        for _ in 1..thrds {
             s.spawn(cruncher);
         }
         cruncher();
