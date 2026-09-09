@@ -1,6 +1,5 @@
 use super::Action;
 use super::data::DataRef;
-use super::schedule::Portion;
 use std::slice;
 
 pub struct Graph {
@@ -62,33 +61,34 @@ impl Graph {
         self.len() == 0
     }
 
-    /// Run a single Gauss-Siedel step through the entries in range specified by the portion `p`,
-    /// in some order. Skips the very first and very last entries of the data, if they happen to be
-    /// included in the range.
-    pub fn step_portion(&self, x: DataRef, p: Portion, action: Action) -> f64 {
-        let Portion { start, bits } = p;
-        assert!(start.is_multiple_of(1 << bits));
-        assert!(bits <= self.size);
-        assert!(start <= (1 << self.size) - (1 << bits));
+    /// Run a single Gauss-Siedel step through the `idx`th division, out of 256 (zero-indexed),
+    /// entries are updates in an arbitrary order. Does not update the very first, or very last
+    /// entries of the data, if the section given is `0` or `255` respectively.
+    pub fn step_division(&self, x: DataRef, idx: u8, action: Action) -> f64 {
+        assert!(self.size >= 8);
+
+        let topbits = (idx as u64) << (self.size - 8);
+        let division = 1 << (self.size - 8);
 
         let mut weights = [0.0; _];
         {
-            let mut s = start;
+            let mut s = topbits;
             while s != 0 {
                 let idx = s.trailing_zeros() as usize;
                 s &= s - 1;
-                self.adjust_neighbours(&mut weights, start - s, idx);
+                self.adjust_neighbours(&mut weights, topbits - s, idx);
             }
         }
 
         let mut change = 0.0;
-        if start != 0 && start != (1 << self.size) - 1 {
-            change = self.update_entry(&weights, x, start, action);
+        if idx != 0 {
+            change = self.update_entry(&weights, x, topbits, action);
         }
-        let last = start == (1 << self.size) - (1 << bits);
-        let twothirds = (2 << bits) / 3;
-        for i in 1..if last { twothirds } else { 1 << bits } {
-            let state = (i ^ (i >> 1)) | start;
+        let last = idx == 0xff;
+        let twothirds = 2 * division / 3;
+
+        for i in 1..if last { twothirds } else { division } {
+            let state = (i ^ (i >> 1)) | topbits;
             self.adjust_neighbours(&mut weights, state, i.trailing_zeros() as usize);
             change += self.update_entry(&weights, x, state, action);
         }
@@ -97,8 +97,8 @@ impl Graph {
         }
         std::hint::cold_path();
         weights.fill(0.0);
-        for i in twothirds + 1..1 << bits {
-            let state = (i ^ (i >> 1)) | start;
+        for i in twothirds + 1..division {
+            let state = (i ^ (i >> 1)) | topbits;
             self.adjust_neighbours(&mut weights, state, i.trailing_zeros() as usize);
             change += self.update_entry(&weights, x, state, action);
         }

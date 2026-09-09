@@ -34,22 +34,19 @@ extern "C" fn compute(
 }
 
 pub fn crunch(g: &Graph, action: Action, res: &mut [f64]) {
-    const THRDS: usize = 4;
+    // TODO: get or calculate number of threads to use
+    const THRDS: usize = 6;
 
     assert!(res.len() == g.len());
 
     let d = Data::new(g.len(), action);
     let x = d.reference();
-    let schd = Schedule::new(
-        3e-15 * 2f64.powi(g.len() as _),
-        g.len(),
-        (2 * THRDS).next_power_of_two(),
-    );
+    let schd = Schedule::new(3e-15 * 2f64.powi(g.len() as _));
     let cruncher = || {
-        let mut task = schd.first();
-        while let Some(t) = task {
-            let change = g.step_portion(x, t, action);
-            task = schd.next(t, change);
+        let mut section = schd.first();
+        while let Some(s) = section {
+            let change = g.step_division(x, s, action);
+            section = schd.next(s, change);
         }
     };
     std::thread::scope(|s| {
