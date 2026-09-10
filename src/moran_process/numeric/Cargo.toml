@@ -3,7 +3,15 @@ name = "numeric"
 version = "0.1.0"
 edition = "2024"
 
+[profile.release]
+panic = "abort"
+
 [lib]
-crate-type = ["cdylib"]
+path = "src/lib.rs"
+crate-type = ["lib", "cdylib"]
+
+[[bin]]
+name = "numeric_cli"
+path = "src/main.rs"
 
 [dependencies]
