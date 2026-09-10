@@ -5,7 +5,6 @@ pub struct Schedule(Mutex<WorkState>, Condvar);
 
 struct WorkState {
     cease: bool,
-    threshold: f64,
     sides: [Side; 2],
 }
 
@@ -21,11 +20,10 @@ struct Side {
 }
 
 impl Schedule {
-    pub fn new(threshold: f64) -> Schedule {
+    pub fn new() -> Schedule {
         Schedule(
             Mutex::new(WorkState {
                 cease: false,
-                threshold,
                 sides: [Side {
                     changes: [f64::MAX / 4.0; 2],
                     epoch: 0,
@@ -49,12 +47,12 @@ impl Schedule {
         guard.sides[i].done |= 1 << (prev >> 1);
         guard.sides[i].changes[1] += change;
         if guard.sides[i].done == u64::MAX {
-            let tot_change = guard.sides[0]
+            guard.cease = guard.sides[0]
                 .changes
                 .iter()
                 .chain(&guard.sides[1].changes)
-                .sum::<f64>();
-            guard.cease = tot_change <= guard.threshold;
+                .sum::<f64>()
+                <= 0.0;
             guard.sides[i].changes = [guard.sides[i].changes[1], 0.0];
             (guard.sides[i].queued, guard.sides[i].done) = (u64::MAX, 0);
             guard.sides[i].epoch += 1;
@@ -90,5 +88,11 @@ impl Schedule {
             guard = self.1.wait(guard).unwrap();
         }
         None
+    }
+}
+
+impl Default for Schedule {
+    fn default() -> Self {
+        Self::new()
     }
 }

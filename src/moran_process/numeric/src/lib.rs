@@ -39,7 +39,7 @@ pub fn crunch(g: &Graph, action: Action, thrds: u8, res: &mut [f64]) {
 
     let d = Data::new(g.len(), action);
     let x = d.reference();
-    let schd = Schedule::new(3e-15 * 2f64.powi(g.len() as _));
+    let schd = Schedule::new();
     let cruncher = || {
         let mut section = schd.first();
         while let Some(s) = section {

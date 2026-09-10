@@ -146,7 +146,7 @@ impl Graph {
                 / w.iter().sum::<f64>()
                 - old);
         x.set(state, old + c);
-        c.abs()
+        c
     }
 }
 
