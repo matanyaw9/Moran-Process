@@ -1,6 +1,7 @@
 use std::sync::{Condvar, Mutex, MutexGuard};
 
 // TODO: see whether we can make the schedule lock-free
+
 pub struct Schedule(Mutex<WorkState>, Condvar);
 
 struct WorkState {
@@ -35,11 +36,16 @@ impl Schedule {
         )
     }
 
+    /// Ask the scheduler for a new division to compute. A result of `None`
+    /// indicates that the computation is already complete.
     pub fn first(&self) -> Option<u8> {
         let guard = self.0.lock().unwrap();
-        self.get_section(guard)
+        self.get_division(guard)
     }
 
+    /// Ask the scheduler for a division to compute, providing the previously
+    /// computed division, and the total difference of the changed values. A
+    /// result of `None` indicates that the computation is already complete.
     pub fn next(&self, prev: u8, change: f64) -> Option<u8> {
         let mut guard = self.0.lock().unwrap();
 
@@ -58,10 +64,10 @@ impl Schedule {
             guard.sides[i].epoch += 1;
             self.1.notify_all();
         }
-        self.get_section(guard)
+        self.get_division(guard)
     }
 
-    fn get_section(&self, mut guard: MutexGuard<'_, WorkState>) -> Option<u8> {
+    fn get_division(&self, mut guard: MutexGuard<'_, WorkState>) -> Option<u8> {
         while !guard.cease {
             // attempt to take a queued task from a lagging/levelled side
             for i in [0, 1] {

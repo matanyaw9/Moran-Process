@@ -14,19 +14,21 @@ pub enum Action {
 
 #[unsafe(no_mangle)]
 extern "C" fn compute(
-    size: usize,
+    size: u64,
     nbrs: *const u32,
     offsets: *const u32,
     r: f64,
     res: *mut f64,
-    action: u8,
-    thrds: u8,
+    action: u64,
+    thrds: u64,
 ) {
+    let size = size as _;
     let action = match action {
         0 => Action::FixationProb,
         1 => Action::AbsrobTime,
         _ => panic!("bad action"),
     };
+    let thrds = thrds as _;
 
     // SAFETY: Caller responsible for passing legal inputs
     let g = unsafe { Graph::from_ffi(size, nbrs, offsets, r) };
@@ -34,11 +36,11 @@ extern "C" fn compute(
     crunch(&g, action, thrds, res)
 }
 
-pub fn crunch(g: &Graph, action: Action, thrds: u8, res: &mut [f64]) {
+/// Main computation function, result is written to `res`.
+pub fn crunch(g: &Graph, action: Action, thrds: usize, res: &mut [f64]) {
     assert!(res.len() == g.len());
 
-    let d = Data::new(g.len(), action);
-    let x = d.reference();
+    let x = &Data::new(g.len(), action);
     let schd = Schedule::new();
     let cruncher = || {
         let mut section = schd.first();
@@ -47,11 +49,9 @@ pub fn crunch(g: &Graph, action: Action, thrds: u8, res: &mut [f64]) {
             section = schd.next(s, change);
         }
     };
-
-    let thrds = if thrds == 0 {
-        std::thread::available_parallelism().map_or(1, |n| n.get())
-    } else {
-        thrds as _
+    let thrds = match thrds {
+        0 => std::thread::available_parallelism().map_or(1, |n| n.get()),
+        _ => thrds,
     };
 
     std::thread::scope(|s| {

@@ -1,5 +1,5 @@
 use super::Action;
-use super::data::DataRef;
+use super::data::Data;
 use std::slice;
 
 pub struct Graph {
@@ -64,7 +64,7 @@ impl Graph {
     /// Run a single Gauss-Siedel step through the `idx`th division, out of 256 (zero-indexed),
     /// entries are updates in an arbitrary order. Does not update the very first, or very last
     /// entries of the data, if the section given is `0` or `255` respectively.
-    pub fn step_division(&self, x: DataRef, idx: u8, action: Action) -> f64 {
+    pub fn step_division(&self, x: &Data, idx: u8, action: Action) -> f64 {
         assert!(self.size >= 8);
 
         let topbits = (idx as u64) << (self.size - 8);
@@ -105,6 +105,8 @@ impl Graph {
         change
     }
 
+    /// Assuming `weights` describe the transition probabilities from `state ^ (1 << idx)`, adjusts
+    /// the weights to the transition probabilities of `state`.
     fn adjust_neighbours(&self, weights: &mut [f64; 63], state: u64, idx: usize) {
         debug_assert!(state < 1 << self.size);
         debug_assert!(idx < self.size);
@@ -125,7 +127,8 @@ impl Graph {
         }
     }
 
-    fn update_entry(&self, weights: &[f64; 63], x: DataRef, state: u64, action: Action) -> f64 {
+    /// Updates the entry at index `state` using the transition probabilities in `weights`.
+    fn update_entry(&self, weights: &[f64; 63], x: &Data, state: u64, action: Action) -> f64 {
         const OVER_RLX: f64 = 1.5;
 
         debug_assert!(state < 1 << self.size);
