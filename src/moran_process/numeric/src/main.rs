@@ -3,41 +3,62 @@ use numeric::graph::{Graph, Shape};
 
 pub fn main() {
     let args = std::env::args().collect::<Vec<_>>();
-    let [_, action, shape, size, r] = &args[..] else {
-        eprintln!("Usage: {} <action> <shape> <size> <r>", args[0]);
-        return;
+    let args = args.iter().map(String::as_str).collect::<Vec<_>>();
+
+    let (action, g) = match args[..] {
+        [
+            _,
+            action @ ("prob" | "time"),
+            shape @ ("complete" | "circle" | "star" | "tree"),
+            size,
+            r,
+        ] => {
+            let shape = match shape {
+                "complete" => Shape::Complete,
+                "circle" => Shape::Circle,
+                "star" => Shape::Star,
+                "tree" => Shape::Tree,
+                _ => unreachable!(),
+            };
+            let Ok(size) = size.parse::<usize>() else {
+                badexit("bad size")
+            };
+            let Ok(r) = r.parse::<f64>() else {
+                badexit("bad r")
+            };
+            (action, Graph::from_shape(size, shape, r))
+        }
+        [_, action @ ("prob" | "time"), "--file", filepath, r] => {
+            let Ok(r) = r.parse::<f64>() else {
+                badexit("bad r")
+            };
+            let Ok(text) = std::fs::read_to_string(filepath) else {
+                badexit("could not read file")
+            };
+            let Some(g) = Graph::from_text(&text, r) else {
+                badexit("bad file contents")
+            };
+            (action, g)
+        }
+        _ => badexit(&format!(
+            "Usage: {} (prob | time) ((complete | circle | star | tree) <size> | --file <pathname>) <r>",
+            args[0]
+        )),
     };
-    let action = match action.as_str() {
+    let action = match action {
         "prob" => Action::FixationProb,
         "time" => Action::AbsrobTime,
-        _ => {
-            eprintln!("bad action");
-            return;
-        }
-    };
-    let shape = match shape.as_str() {
-        "complete" => Shape::Complete,
-        "star" => Shape::Star,
-        "tree" => Shape::Tree,
-        _ => {
-            eprintln!("bad shape");
-            return;
-        }
-    };
-    let Ok(size) = size.parse::<usize>() else {
-        eprintln!("bad size");
-        return;
-    };
-    let Ok(r) = r.parse::<f64>() else {
-        eprintln!("bad r");
-        return;
+        _ => unreachable!(),
     };
 
-    let g = Graph::from_shape(size, shape, r);
     let mut res = vec![0.0; g.len()];
     numeric::crunch(&g, action, 0, &mut res);
-
     for r in res {
         println!("{r}");
     }
+}
+
+fn badexit(msg: &str) -> ! {
+    eprintln!("{}", msg);
+    std::process::exit(1)
 }

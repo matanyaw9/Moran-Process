@@ -11,6 +11,7 @@ pub struct Graph {
 #[allow(dead_code)]
 pub enum Shape {
     Complete,
+    Circle,
     Star,
     Tree,
 }
@@ -43,6 +44,9 @@ impl Graph {
         let mut nodes = std::array::from_fn(|i| match shape {
             _ if i >= size => 0,
             Shape::Complete => (1 << size) - (1 << i) - 1,
+            Shape::Circle if i == 0 => 2 | (1 << (size - 1)),
+            Shape::Circle if i + 1 == size => 1 | (1 << (i - 1)),
+            Shape::Circle => (1 << (i - 1)) | (1 << (i + 1)),
             Shape::Star if i == 0 => (1 << size) - 2,
             Shape::Star => 1,
             Shape::Tree if i == 0 => 6 & ((1 << size) - 1),
@@ -51,6 +55,24 @@ impl Graph {
         .map(|adjs| Node { adjs, vuln: 0.0 });
         calc_vuln(&mut nodes);
         Graph { r, size, nodes }
+    }
+
+    /// Attempts to create a graph out of the given text representation.
+    #[allow(dead_code)]
+    pub fn from_text(text: &str, r: f64) -> Option<Graph> {
+        let size = match text.chars().filter(|&c| c == ';').count() {
+            s @ ..63 => s + 1,
+            _ => return None,
+        };
+        let mut nodes = [Node { adjs: 0, vuln: 0.0 }; _];
+        let mut i = 0;
+        for num in text.split_inclusive([',', ';']) {
+            let n = num.trim_end_matches([',', ';']).parse::<usize>().ok()?;
+            nodes[i].adjs |= 1 << n;
+            i += num.ends_with(';') as usize;
+        }
+        calc_vuln(&mut nodes);
+        Some(Graph { r, size, nodes })
     }
 
     pub fn len(&self) -> usize {
