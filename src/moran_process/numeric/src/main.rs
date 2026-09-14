@@ -23,13 +23,13 @@ pub fn main() {
             let Ok(size) = size.parse::<usize>() else {
                 badexit("bad size")
             };
-            let Ok(r) = r.parse::<f64>() else {
+            let Ok(r) = r.parse::<f32>() else {
                 badexit("bad r")
             };
             (action, Graph::from_shape(size, shape, r))
         }
         [_, action @ ("prob" | "time"), "--file", filepath, r] => {
-            let Ok(r) = r.parse::<f64>() else {
+            let Ok(r) = r.parse::<f32>() else {
                 badexit("bad r")
             };
             let Ok(text) = std::fs::read_to_string(filepath) else {

@@ -17,8 +17,8 @@ extern "C" fn compute(
     size: u64,
     nbrs: *const u32,
     offsets: *const u32,
-    r: f64,
-    res: *mut f64,
+    r: f32,
+    res: *mut f32,
     action: u64,
     thrds: u64,
 ) {
@@ -37,7 +37,7 @@ extern "C" fn compute(
 }
 
 /// Main computation function, result is written to `res`.
-pub fn crunch(g: &Graph, action: Action, thrds: usize, res: &mut [f64]) {
+pub fn crunch(g: &Graph, action: Action, thrds: usize, res: &mut [f32]) {
     assert!(res.len() == g.len());
 
     let x = &Data::new(g.len(), action);
