@@ -11,7 +11,7 @@ pub struct Graph {
 #[allow(dead_code)]
 pub enum Shape {
     Complete,
-    Circle,
+    Cycle,
     Star,
     Tree,
 }
@@ -44,9 +44,7 @@ impl Graph {
         let mut nodes = std::array::from_fn(|i| match shape {
             _ if i >= size => 0,
             Shape::Complete => (1 << size) - (1 << i) - 1,
-            Shape::Circle if i == 0 => 2 | (1 << (size - 1)),
-            Shape::Circle if i + 1 == size => 1 | (1 << (i - 1)),
-            Shape::Circle => (1 << (i - 1)) | (1 << (i + 1)),
+            Shape::Cycle => (1 << ((i + size - 1) % size)) | (1 << ((i + 1) % size)),
             Shape::Star if i == 0 => (1 << size) - 2,
             Shape::Star => 1,
             Shape::Tree if i == 0 => 6 & ((1 << size) - 1),
