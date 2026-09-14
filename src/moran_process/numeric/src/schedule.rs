@@ -11,7 +11,7 @@ struct WorkState {
 
 #[derive(Clone, Copy)]
 struct Side {
-    changes: [f64; 2],
+    changes: [f32; 2],
     epoch: u32,
     queued: u64,
     done: u64,
@@ -26,7 +26,7 @@ impl Schedule {
             Mutex::new(WorkState {
                 cease: false,
                 sides: [Side {
-                    changes: [f64::MAX / 4.0; 2],
+                    changes: [f32::MAX / 4.0; 2],
                     epoch: 0,
                     queued: u64::MAX,
                     done: 0,
@@ -46,19 +46,19 @@ impl Schedule {
     /// Ask the scheduler for a division to compute, providing the previously
     /// computed division, and the total difference of the changed values. A
     /// result of `None` indicates that the computation is already complete.
-    pub fn next(&self, prev: u8, change: f64) -> Option<u8> {
+    pub fn next(&self, prev: u8, change: f32) -> Option<u8> {
         let mut guard = self.0.lock().unwrap();
 
         let i = (prev >= 0x80) as usize;
         guard.sides[i].done |= 1 << (prev >> 1);
         guard.sides[i].changes[1] += change;
         if guard.sides[i].done == u64::MAX {
-            guard.cease = guard.sides[0]
+            let change = guard.sides[0]
                 .changes
                 .iter()
                 .chain(&guard.sides[1].changes)
-                .sum::<f64>()
-                <= 0.0;
+                .sum::<f32>();
+            guard.cease = change <= 0.0;
             guard.sides[i].changes = [guard.sides[i].changes[1], 0.0];
             (guard.sides[i].queued, guard.sides[i].done) = (u64::MAX, 0);
             guard.sides[i].epoch += 1;

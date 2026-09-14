@@ -3,7 +3,7 @@ use super::data::Data;
 use std::slice;
 
 pub struct Graph {
-    r: f64,
+    r: f32,
     size: usize,
     nodes: [Node; 63],
 }
@@ -22,7 +22,7 @@ impl Graph {
     /// # Safety
     /// `nbrs` and `offsets` must be valid as per the definition in `GraphCore` with respect to
     /// `size`.
-    pub unsafe fn from_ffi(size: usize, nbrs: *const u32, offsets: *const u32, r: f64) -> Graph {
+    pub unsafe fn from_ffi(size: usize, nbrs: *const u32, offsets: *const u32, r: f32) -> Graph {
         assert!(size < 64);
         let mut nodes = [Node { adjs: 0, vuln: 0.0 }; _];
         // SAFETY: Caller guarantees pointer validity
@@ -38,8 +38,7 @@ impl Graph {
     }
 
     /// Creates a `Graph` out of the given shape.
-    #[allow(dead_code)]
-    pub fn from_shape(size: usize, shape: Shape, r: f64) -> Graph {
+    pub fn from_shape(size: usize, shape: Shape, r: f32) -> Graph {
         assert!(size < 64);
         let mut nodes = std::array::from_fn(|i| match shape {
             _ if i >= size => 0,
@@ -56,8 +55,7 @@ impl Graph {
     }
 
     /// Attempts to create a graph out of the given text representation.
-    #[allow(dead_code)]
-    pub fn from_text(text: &str, r: f64) -> Option<Graph> {
+    pub fn from_text(text: &str, r: f32) -> Option<Graph> {
         let size = match text.chars().filter(|&c| c == ';').count() {
             s @ ..63 => s + 1,
             _ => return None,
@@ -84,7 +82,7 @@ impl Graph {
     /// Run a single Gauss-Siedel step through the `idx`th division, out of 256 (zero-indexed),
     /// entries are updates in an arbitrary order. Does not update the very first, or very last
     /// entries of the data, if the section given is `0` or `255` respectively.
-    pub fn step_division(&self, x: &Data, idx: u8, action: Action) -> f64 {
+    pub fn step_division(&self, x: &Data, idx: u8, action: Action) -> f32 {
         assert!(self.size >= 8);
 
         let topbits = (idx as u64) << (self.size - 8);
@@ -127,13 +125,13 @@ impl Graph {
 
     /// Assuming `weights` describe the transition probabilities from `state ^ (1 << idx)`, adjusts
     /// the weights to the transition probabilities of `state`.
-    fn adjust_neighbours(&self, weights: &mut [f64; 63], state: u64, idx: usize) {
+    fn adjust_neighbours(&self, weights: &mut [f32; 63], state: u64, idx: usize) {
         debug_assert!(state < 1 << self.size);
         debug_assert!(idx < self.size);
 
         let Node { mut adjs, vuln } = self.nodes[idx];
         let epidemic = (state >> idx) & 1 != 0;
-        let x = if epidemic { -1.0 } else { 1.0 } / adjs.count_ones() as f64;
+        let x = if epidemic { -1.0 } else { 1.0 } / adjs.count_ones() as f32;
         let y = -self.r * x;
         weights[idx] = if epidemic {
             vuln - weights[idx] / self.r
@@ -148,8 +146,8 @@ impl Graph {
     }
 
     /// Updates the entry at index `state` using the transition probabilities in `weights`.
-    fn update_entry(&self, weights: &[f64; 63], x: &Data, state: u64, action: Action) -> f64 {
-        const OVER_RLX: f64 = 1.5;
+    fn update_entry(&self, weights: &[f32; 63], x: &Data, state: u64, action: Action) -> f32 {
+        const OVER_RLX: f32 = 1.5;
 
         debug_assert!(state < 1 << self.size);
 
@@ -159,14 +157,14 @@ impl Graph {
             * (w.iter()
                 .enumerate()
                 .map(|(i, p)| p * x.get((1 << i) ^ state))
-                .sum::<f64>()
+                .sum::<f32>()
                 .algebraic_add(match action {
                     Action::FixationProb => 0.0,
                     Action::AbsrobTime => {
-                        self.len() as f64 + (self.r - 1.0) * state.count_ones() as f64
+                        self.len() as f32 + (self.r - 1.0) * state.count_ones() as f32
                     }
                 })
-                / w.iter().sum::<f64>()
+                / w.iter().sum::<f32>()
                 - old);
         x.set(state, old + c);
         c
@@ -178,12 +176,12 @@ struct Node {
     /// bitboard of neighbouring nodes
     adjs: u64,
     /// ∑_{(v, u) ∈ V(G)} 1 / deg(v)
-    vuln: f64,
+    vuln: f32,
 }
 
 fn calc_vuln(nodes: &mut [Node; 63]) {
     for i in 0..nodes.len() {
-        let strength = 1.0 / nodes[i].adjs.count_ones() as f64;
+        let strength = 1.0 / nodes[i].adjs.count_ones() as f32;
         let mut adjs = nodes[i].adjs;
         while adjs != 0 {
             nodes[adjs.trailing_zeros() as usize].vuln += strength;
