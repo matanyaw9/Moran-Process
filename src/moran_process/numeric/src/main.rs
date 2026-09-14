@@ -9,13 +9,13 @@ pub fn main() {
         [
             _,
             action @ ("prob" | "time"),
-            shape @ ("complete" | "circle" | "star" | "tree"),
+            shape @ ("complete" | "cycle" | "star" | "tree"),
             size,
             r,
         ] => {
             let shape = match shape {
                 "complete" => Shape::Complete,
-                "circle" => Shape::Circle,
+                "cycle" => Shape::Cycle,
                 "star" => Shape::Star,
                 "tree" => Shape::Tree,
                 _ => unreachable!(),
@@ -41,7 +41,7 @@ pub fn main() {
             (action, g)
         }
         _ => badexit(&format!(
-            "Usage: {} (prob | time) ((complete | circle | star | tree) <size> | --file <pathname>) <r>",
+            "Usage: {} (prob | time) ((complete | cycle | star | tree) <size> | --file <pathname>) <r>",
             args[0]
         )),
     };
