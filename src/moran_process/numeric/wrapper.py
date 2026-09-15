@@ -94,3 +94,30 @@ def absorb_time(
         thrds,
     )
     return res
+
+
+def fixation_time(
+    g: GraphCore,
+    selection_coefficient: float,
+    thrds: int = 0,
+) -> npt.NDArray[np.float32]:
+    """
+    Computes the system's average time to mutant takeover (conditional fixation
+    time) for every possible mutant starting point. Returned array is of the
+    graph's size, with the value at each index representing the result of the
+    mutant starting in the corresponding node.
+
+    The `thrds` parameter dictates the number of threads to use in the
+    computation, a value of `0` uses all available cores.
+    """
+    res = np.zeros([g.n_nodes], dtype=np.float32)
+    rustlib.compute(
+        g.n_nodes,
+        ctypes.cast(g.nbrs.ctypes.data, ptr_u32),
+        ctypes.cast(g.offsets.ctypes.data, ptr_u32),
+        selection_cffnt,
+        ctypes.cast(res.ctypes.data, ptr_f32),
+        2,
+        thrds,
+    )
+    return res

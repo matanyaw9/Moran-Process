@@ -5,7 +5,8 @@ use std::slice;
 pub struct Graph {
     r: f32,
     size: usize,
-    nodes: [Node; 63],
+    adjs: [u64; 63],
+    vulns: [f32; 63],
 }
 
 #[allow(dead_code)]
@@ -24,23 +25,27 @@ impl Graph {
     /// `size`.
     pub unsafe fn from_ffi(size: usize, nbrs: *const u32, offsets: *const u32, r: f32) -> Graph {
         assert!(size < 64);
-        let mut nodes = [Node { adjs: 0, vuln: 0.0 }; _];
+        let mut adjs = [0; _];
         // SAFETY: Caller guarantees pointer validity
         let offsets = unsafe { slice::from_raw_parts(offsets, size + 1) };
         let nbrs = unsafe { slice::from_raw_parts(nbrs, offsets[size] as usize) };
         for (i, &[x, y]) in offsets.array_windows().enumerate() {
             for &nbr in &nbrs[x as usize..y as usize] {
-                nodes[i].adjs |= 1 << nbr;
+                adjs[i] |= 1 << nbr;
             }
         }
-        calc_vuln(&mut nodes);
-        Graph { r, size, nodes }
+        Graph {
+            r,
+            size,
+            adjs,
+            vulns: calc_vuln(&adjs),
+        }
     }
 
     /// Creates a `Graph` out of the given shape.
     pub fn from_shape(size: usize, shape: Shape, r: f32) -> Graph {
         assert!(size < 64);
-        let mut nodes = std::array::from_fn(|i| match shape {
+        let adjs = std::array::from_fn(|i| match shape {
             _ if i >= size => 0,
             Shape::Complete => (1 << size) - (1 << i) - 1,
             Shape::Cycle => (1 << ((i + size - 1) % size)) | (1 << ((i + 1) % size)),
@@ -48,10 +53,13 @@ impl Graph {
             Shape::Star => 1,
             Shape::Tree if i == 0 => 6 & ((1 << size) - 1),
             Shape::Tree => ((6 << (i * 2)) | (1 << ((i - 1) / 2))) & ((1 << size) - 1),
-        })
-        .map(|adjs| Node { adjs, vuln: 0.0 });
-        calc_vuln(&mut nodes);
-        Graph { r, size, nodes }
+        });
+        Graph {
+            r,
+            size,
+            adjs,
+            vulns: calc_vuln(&adjs),
+        }
     }
 
     /// Attempts to create a graph out of the given text representation.
@@ -60,15 +68,19 @@ impl Graph {
             s @ ..63 => s + 1,
             _ => return None,
         };
-        let mut nodes = [Node { adjs: 0, vuln: 0.0 }; _];
+        let mut adjs = [0; _];
         let mut i = 0;
         for num in text.split_inclusive([',', ';']) {
             let n = num.trim_end_matches([',', ';']).parse::<usize>().ok()?;
-            nodes[i].adjs |= 1 << n;
+            adjs[i] |= 1 << n;
             i += num.ends_with(';') as usize;
         }
-        calc_vuln(&mut nodes);
-        Some(Graph { r, size, nodes })
+        Some(Graph {
+            r,
+            size,
+            adjs,
+            vulns: calc_vuln(&adjs),
+        })
     }
 
     pub fn len(&self) -> usize {
@@ -115,6 +127,9 @@ impl Graph {
         }
         std::hint::cold_path();
         weights.fill(0.0);
+        if let Action::Prob = action {
+            x.set((1 << self.size) - 1, 1.0);
+        };
         for i in twothirds + 1..division {
             let state = (i ^ (i >> 1)) | topbits;
             self.adjust_neighbours(&mut weights, state, i.trailing_zeros() as usize);
@@ -129,7 +144,9 @@ impl Graph {
         debug_assert!(state < 1 << self.size);
         debug_assert!(idx < self.size);
 
-        let Node { mut adjs, vuln } = self.nodes[idx];
+        let mut adjs = self.adjs[idx];
+        let vuln = self.vulns[idx];
+
         let epidemic = (state >> idx) & 1 != 0;
         let x = if epidemic { -1.0 } else { 1.0 } / adjs.count_ones() as f32;
         let y = -self.r * x;
@@ -152,16 +169,35 @@ impl Graph {
         debug_assert!(state < 1 << self.size);
 
         let old = x.get(state);
-        let w = &weights[..self.size];
+        let mut w: [f32; 63];
+        let w = match action {
+            Action::Time { cond: true } if state.count_ones() == 1 => {
+                // TODO: precompute this?
+                std::hint::cold_path();
+                w = [0.0; _];
+                let idx = state.trailing_zeros() as usize;
+                let mut adjs = self.adjs[idx];
+                let system_strength = self.size as f32 + self.r - 1.0;
+                let weight = self.r * system_strength
+                    / (system_strength - self.vulns[idx])
+                    / adjs.count_ones() as f32;
+                while adjs != 0 {
+                    w[adjs.trailing_zeros() as usize] = weight;
+                    adjs &= adjs - 1;
+                }
+                &w[..self.size]
+            }
+            _ => &weights[..self.size],
+        };
         let c = OVER_RLX
             * (w.iter()
                 .enumerate()
                 .map(|(i, p)| p * x.get((1 << i) ^ state))
                 .sum::<f32>()
                 .algebraic_add(match action {
-                    Action::FixationProb => 0.0,
-                    Action::AbsrobTime => {
-                        self.len() as f32 + (self.r - 1.0) * state.count_ones() as f32
+                    Action::Prob => 0.0,
+                    Action::Time { .. } => {
+                        self.size as f32 + (self.r - 1.0) * state.count_ones() as f32
                     }
                 })
                 / w.iter().sum::<f32>()
@@ -171,21 +207,15 @@ impl Graph {
     }
 }
 
-#[derive(Clone, Copy)]
-struct Node {
-    /// bitboard of neighbouring nodes
-    adjs: u64,
-    /// ∑_{(v, u) ∈ V(G)} 1 / deg(v)
-    vuln: f32,
-}
-
-fn calc_vuln(nodes: &mut [Node; 63]) {
-    for i in 0..nodes.len() {
-        let strength = 1.0 / nodes[i].adjs.count_ones() as f32;
-        let mut adjs = nodes[i].adjs;
+fn calc_vuln(adjs: &[u64; 63]) -> [f32; 63] {
+    let mut vulns = [0.0; _];
+    for i in 0..adjs.len() {
+        let strength = 1.0 / adjs[i].count_ones() as f32;
+        let mut adjs = adjs[i];
         while adjs != 0 {
-            nodes[adjs.trailing_zeros() as usize].vuln += strength;
+            vulns[adjs.trailing_zeros() as usize] += strength;
             adjs &= adjs - 1;
         }
     }
+    vulns
 }

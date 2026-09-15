@@ -1,19 +1,12 @@
-use super::Action;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 pub struct Data(Box<[AtomicU32]>);
 
 impl Data {
-    /// Create a new state-space vector, initialised for the given action.
-    pub fn new(size: usize, action: Action) -> Data {
-        const ZERO: u32 = 0f32.to_bits();
-        const ONE: u32 = 1f32.to_bits();
+    /// Create a new state-space vector, zero initialised
+    pub fn new(size: usize) -> Data {
         Data(
-            std::iter::repeat_n(ZERO, (1 << size) - 1)
-                .chain([match action {
-                    Action::FixationProb => ONE,
-                    Action::AbsrobTime => ZERO,
-                }])
+            std::iter::repeat_n(0f32.to_bits(), 1 << size)
                 .map(AtomicU32::new)
                 .collect::<Vec<_>>()
                 .into_boxed_slice(),
