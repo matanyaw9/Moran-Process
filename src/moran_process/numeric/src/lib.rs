@@ -8,8 +8,8 @@ use std::slice;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum Action {
-    FixationProb,
-    AbsrobTime,
+    Prob,
+    Time { cond: bool },
 }
 
 #[unsafe(no_mangle)]
@@ -24,8 +24,9 @@ extern "C" fn compute(
 ) {
     let size = size as _;
     let action = match action {
-        0 => Action::FixationProb,
-        1 => Action::AbsrobTime,
+        0 => Action::Prob,
+        1 => Action::Time { cond: false },
+        2 => Action::Time { cond: true },
         _ => panic!("bad action"),
     };
     let thrds = thrds as _;
@@ -40,7 +41,7 @@ extern "C" fn compute(
 pub fn crunch(g: &Graph, action: Action, thrds: usize, res: &mut [f32]) {
     assert!(res.len() == g.len());
 
-    let x = &Data::new(g.len(), action);
+    let x = &Data::new(g.len());
     let schd = Schedule::new();
     let cruncher = || {
         let mut section = schd.first();

@@ -8,7 +8,7 @@ pub fn main() {
     let (action, g) = match args[..] {
         [
             _,
-            action @ ("prob" | "time"),
+            action @ ("prob" | "time" | "ctime"),
             shape @ ("complete" | "cycle" | "star" | "tree"),
             size,
             r,
@@ -41,13 +41,14 @@ pub fn main() {
             (action, g)
         }
         _ => badexit(&format!(
-            "Usage: {} (prob | time) ((complete | cycle | star | tree) <size> | --file <pathname>) <r>",
+            "Usage: {} (prob | time | ctime) ((complete | cycle | star | tree) <size> | --file <pathname>) <r>",
             args[0]
         )),
     };
     let action = match action {
-        "prob" => Action::FixationProb,
-        "time" => Action::AbsrobTime,
+        "prob" => Action::Prob,
+        "time" => Action::Time { cond: false },
+        "ctime" => Action::Time { cond: true },
         _ => unreachable!(),
     };
 
