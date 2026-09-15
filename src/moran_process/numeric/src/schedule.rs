@@ -50,7 +50,7 @@ impl Schedule {
         let mut guard = self.0.lock().unwrap();
 
         let i = (prev >= 0x80) as usize;
-        guard.sides[i].done |= 1 << (prev >> 1);
+        guard.sides[i].done |= 1 << ((prev >> 1) & 0x3f);
         guard.sides[i].changes[1] += change;
         if guard.sides[i].done == u64::MAX {
             let change = guard.sides[0]
