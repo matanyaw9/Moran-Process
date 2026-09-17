@@ -3,8 +3,19 @@ use std::sync::atomic::{AtomicU32, Ordering};
 pub struct Data(Box<[AtomicU32]>);
 
 impl Data {
+    /// Create a new state-space vector, of values `[..0, 1]`
+    pub fn new_prob(size: usize) -> Data {
+        Data(
+            std::iter::repeat_n(0, (1 << size) - 1)
+                .chain([1f32.to_bits()])
+                .map(AtomicU32::new)
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+        )
+    }
+
     /// Create a new state-space vector, zero initialised
-    pub fn new(size: usize) -> Data {
+    pub fn new_time(size: usize) -> Data {
         Data(
             std::iter::repeat_n(0, 1 << size)
                 .map(AtomicU32::new)

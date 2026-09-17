@@ -2,7 +2,7 @@ pub mod data;
 pub mod graph;
 pub mod schedule;
 use crate::data::Data;
-use crate::graph::Graph;
+use crate::graph::{Graph, Phase};
 use crate::schedule::Schedule;
 use std::num::NonZero;
 use std::slice;
@@ -31,34 +31,43 @@ extern "C" fn compute(
 pub fn crunch(g: &Graph, thrds: usize, res: &mut [f32]) {
     assert!(res.len() == 3 * g.len());
 
-    let prob = &Data::new(g.len());
-    let time = &Data::new(g.len());
-    let schd = Schedule::new();
-    let cruncher = || {
-        let mut section = schd.first();
-        while let Some(s) = section {
-            let diff = g.step_division(prob, time, s);
-            section = schd.next(s, diff);
-        }
-    };
     let thrds = match thrds {
         0 => std::thread::available_parallelism().map_or(1, NonZero::get),
         _ => thrds,
     };
-
-    std::thread::scope(|s| {
-        for _ in 1..thrds {
-            s.spawn(cruncher);
-        }
-        cruncher();
-    });
-
+    let prob = &Data::new_prob(g.len());
+    let time = &mut Data::new_time(g.len());
     let (p, t) = res.split_at_mut(g.len());
     let (t, ct) = t.split_at_mut(g.len());
 
-    for (i, ((p, t), ct)) in p.iter_mut().zip(t).zip(ct).enumerate() {
-        *p = prob.get(1 << i);
-        *t = time.get(1 << i);
-        *ct = f32::NAN; // TODO: compute me
+    for phase in [Phase::First, Phase::Second] {
+        let schd = Schedule::new();
+        let cruncher = || {
+            let mut section = schd.first();
+            while let Some(s) = section {
+                let diff = g.step_division(phase, prob, time, s);
+                section = schd.next(s, diff);
+            }
+        };
+        std::thread::scope(|s| {
+            for _ in 1..thrds {
+                s.spawn(cruncher);
+            }
+            cruncher();
+        });
+        match phase {
+            Phase::First => {
+                for (i, (p, t)) in p.iter_mut().zip(&mut *t).enumerate() {
+                    *p = prob.get(1 << i);
+                    *t = time.get(1 << i);
+                }
+                time.clear();
+            }
+            Phase::Second => {
+                for (i, ct) in ct.iter_mut().enumerate() {
+                    *ct = time.get(1 << i) / prob.get(1 << i);
+                }
+            }
+        }
     }
 }

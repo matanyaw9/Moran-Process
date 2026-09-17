@@ -41,13 +41,13 @@ pub fn main() {
 
     let mut res = vec![0.0; 3 * g.len()];
     numeric::crunch(&g, 0, &mut res);
-    println!("prob    \ttime    \tctime");
+    println!("prob            time            ctime");
     for ((&p, &t), &ct) in res[..g.len()]
         .iter()
         .zip(&res[g.len()..2 * g.len()])
         .zip(&res[2 * g.len()..])
     {
-        println!("{p}\t{t}\t{ct}");
+        println!("{p: <16}{t: <16}{ct}");
     }
 }
 
