@@ -11,7 +11,7 @@ struct WorkState {
 
 #[derive(Clone, Copy)]
 struct Side {
-    changes: [f32; 2],
+    ulp_diffs: [u32; 2],
     epoch: u32,
     queued: u64,
     done: u64,
@@ -26,7 +26,7 @@ impl Schedule {
             Mutex::new(WorkState {
                 cease: false,
                 sides: [Side {
-                    changes: [f32::MAX / 4.0; 2],
+                    ulp_diffs: [!0; 2],
                     epoch: 0,
                     queued: u64::MAX,
                     done: 0,
@@ -44,22 +44,22 @@ impl Schedule {
     }
 
     /// Ask the scheduler for a division to compute, providing the previously
-    /// computed division, and the total difference of the changed values. A
-    /// result of `None` indicates that the computation is already complete.
-    pub fn next(&self, prev: u8, change: f32) -> Option<u8> {
+    /// computed division, and the ULP change of the maximally-changed scalar.
+    /// A result of `None` indicates that the computation is already complete.
+    pub fn next(&self, prev: u8, diff: u32) -> Option<u8> {
         let mut guard = self.0.lock().unwrap();
 
         let i = (prev >= 0x80) as usize;
         guard.sides[i].done |= 1 << ((prev >> 1) & 0x3f);
-        guard.sides[i].changes[1] += change;
+        let c = &mut guard.sides[i].ulp_diffs[1];
+        *c = diff.max(*c);
         if guard.sides[i].done == u64::MAX {
-            let change = guard.sides[0]
-                .changes
-                .iter()
-                .chain(&guard.sides[1].changes)
-                .sum::<f32>();
-            guard.cease = change <= 0.0;
-            guard.sides[i].changes = [guard.sides[i].changes[1], 0.0];
+            let diff = (0..=1)
+                .flat_map(|i| guard.sides[i].ulp_diffs)
+                .max()
+                .unwrap();
+            guard.cease = diff <= 0x3f;
+            guard.sides[i].ulp_diffs = [guard.sides[i].ulp_diffs[1], 0];
             (guard.sides[i].queued, guard.sides[i].done) = (u64::MAX, 0);
             guard.sides[i].epoch += 1;
             self.1.notify_all();

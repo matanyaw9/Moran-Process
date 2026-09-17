@@ -94,7 +94,10 @@ impl Graph {
     /// Run a single Gauss-Siedel step through the `idx`th division, out of 256 (zero-indexed),
     /// entries are updates in an arbitrary order. Does not update the very first, or very last
     /// entries of the data, if the section given is `0` or `255` respectively.
-    pub fn step_division(&self, x: &Data, idx: u8, action: Action) -> f32 {
+    ///
+    /// Returns the ∞-norm of the pairwise ULP distances between the old and new values of the
+    /// division.
+    pub fn step_division(&self, x: &Data, idx: u8, action: Action) -> u32 {
         assert!(self.size >= 8);
 
         let topbits = (idx as u64) << (self.size - 8);
@@ -110,20 +113,20 @@ impl Graph {
             }
         }
 
-        let mut change = 0.0;
-        if idx != 0 {
-            change = self.update_entry(&weights, x, topbits, action);
-        }
+        let mut diff = match idx {
+            0 => 0,
+            _ => self.update_entry(&weights, x, topbits, action),
+        };
         let last = idx == 0xff;
         let twothirds = 2 * division / 3;
 
         for i in 1..if last { twothirds } else { division } {
             let state = (i ^ (i >> 1)) | topbits;
             self.adjust_neighbours(&mut weights, state, i.trailing_zeros() as usize);
-            change += self.update_entry(&weights, x, state, action);
+            diff = diff.max(self.update_entry(&weights, x, state, action));
         }
         if !last {
-            return change;
+            return diff;
         }
         std::hint::cold_path();
         weights.fill(0.0);
@@ -133,9 +136,9 @@ impl Graph {
         for i in twothirds + 1..division {
             let state = (i ^ (i >> 1)) | topbits;
             self.adjust_neighbours(&mut weights, state, i.trailing_zeros() as usize);
-            change += self.update_entry(&weights, x, state, action);
+            diff = diff.max(self.update_entry(&weights, x, state, action));
         }
-        change
+        diff
     }
 
     /// Assuming `weights` describe the transition probabilities from `state ^ (1 << idx)`, adjusts
@@ -163,7 +166,9 @@ impl Graph {
     }
 
     /// Updates the entry at index `state` using the transition probabilities in `weights`.
-    fn update_entry(&self, weights: &[f32; 63], x: &Data, state: u64, action: Action) -> f32 {
+    /// Returns the difference between the old and new values in
+    /// [ULP](https://en.wikipedia.org/wiki/Unit_in_the_last_place)s.
+    fn update_entry(&self, weights: &[f32; 63], x: &Data, state: u64, action: Action) -> u32 {
         const OVER_RLX: f32 = 1.5;
 
         debug_assert!(state < 1 << self.size);
@@ -203,7 +208,7 @@ impl Graph {
                 / w.iter().sum::<f32>()
                 - old);
         x.set(state, old + c);
-        c
+        old.to_bits().abs_diff((old + c).to_bits())
     }
 }
 
