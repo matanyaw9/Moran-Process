@@ -46,8 +46,8 @@ pub fn crunch(g: &Graph, action: Action, thrds: usize, res: &mut [f32]) {
     let cruncher = || {
         let mut section = schd.first();
         while let Some(s) = section {
-            let change = g.step_division(x, s, action);
-            section = schd.next(s, change);
+            let diff = g.step_division(x, s, action);
+            section = schd.next(s, diff);
         }
     };
     let thrds = match thrds {
