@@ -1,4 +1,3 @@
-use super::Action;
 use super::data::Data;
 use std::slice;
 
@@ -97,7 +96,7 @@ impl Graph {
     ///
     /// Returns the ∞-norm of the pairwise ULP distances between the old and new values of the
     /// division.
-    pub fn step_division(&self, x: &Data, idx: u8, action: Action) -> u32 {
+    pub fn step_division(&self, prob: &Data, time: &Data, idx: u8) -> u32 {
         assert!(self.size >= 8);
 
         let topbits = (idx as u64) << (self.size - 8);
@@ -115,7 +114,7 @@ impl Graph {
 
         let mut diff = match idx {
             0 => 0,
-            _ => self.update_entry(&weights, x, topbits, action),
+            _ => self.update_entries(&weights, prob, time, topbits),
         };
         let last = idx == 0xff;
         let twothirds = 2 * division / 3;
@@ -123,20 +122,18 @@ impl Graph {
         for i in 1..if last { twothirds } else { division } {
             let state = (i ^ (i >> 1)) | topbits;
             self.adjust_neighbours(&mut weights, state, i.trailing_zeros() as usize);
-            diff = diff.max(self.update_entry(&weights, x, state, action));
+            diff = diff.max(self.update_entries(&weights, prob, time, state));
         }
         if !last {
             return diff;
         }
         std::hint::cold_path();
         weights.fill(0.0);
-        if let Action::Prob = action {
-            x.set((1 << self.size) - 1, 1.0);
-        };
+        prob.set((1 << self.size) - 1, 1.0);
         for i in twothirds + 1..division {
             let state = (i ^ (i >> 1)) | topbits;
             self.adjust_neighbours(&mut weights, state, i.trailing_zeros() as usize);
-            diff = diff.max(self.update_entry(&weights, x, state, action));
+            diff = diff.max(self.update_entries(&weights, prob, time, state));
         }
         diff
     }
@@ -165,50 +162,45 @@ impl Graph {
         }
     }
 
-    /// Updates the entry at index `state` using the transition probabilities in `weights`.
-    /// Returns the difference between the old and new values in
-    /// [ULP](https://en.wikipedia.org/wiki/Unit_in_the_last_place)s.
-    fn update_entry(&self, weights: &[f32; 63], x: &Data, state: u64, action: Action) -> u32 {
+    /// Updates the probability and time entries at index `state` using the
+    /// transition probabilities in `weights`. Returns the greater of the
+    /// two differences between the old and new values in ULPs.
+    fn update_entries(&self, weights: &[f32; 63], prob: &Data, time: &Data, state: u64) -> u32 {
         const OVER_RLX: f32 = 1.5;
 
         debug_assert!(state < 1 << self.size);
 
-        let old = x.get(state);
-        let mut w: [f32; 63];
-        let w = match action {
-            Action::Time { cond: true } if state.count_ones() == 1 => {
-                // TODO: precompute this?
-                std::hint::cold_path();
-                w = [0.0; _];
-                let idx = state.trailing_zeros() as usize;
-                let mut adjs = self.adjs[idx];
-                let system_strength = self.size as f32 + self.r - 1.0;
-                let weight = self.r * system_strength
-                    / (system_strength - self.vulns[idx])
-                    / adjs.count_ones() as f32;
-                while adjs != 0 {
-                    w[adjs.trailing_zeros() as usize] = weight;
-                    adjs &= adjs - 1;
-                }
-                &w[..self.size]
-            }
-            _ => &weights[..self.size],
-        };
-        let c = OVER_RLX
+        let prev_prob = prob.get(state);
+        let prev_time = time.get(state);
+        let w = &weights[..self.size];
+        let w_sum = w.iter().sum::<f32>();
+
+        let delta_prob = OVER_RLX
             * (w.iter()
                 .enumerate()
-                .map(|(i, p)| p * x.get((1 << i) ^ state))
+                .map(|(i, p)| p * prob.get((1 << i) ^ state))
                 .sum::<f32>()
-                .algebraic_add(match action {
-                    Action::Prob => 0.0,
-                    Action::Time { .. } => {
-                        self.size as f32 + (self.r - 1.0) * state.count_ones() as f32
-                    }
-                })
-                / w.iter().sum::<f32>()
-                - old);
-        x.set(state, old + c);
-        old.to_bits().abs_diff((old + c).to_bits())
+                / w_sum
+                - prev_prob);
+
+        let delta_time = OVER_RLX
+            * (w.iter()
+                .enumerate()
+                .map(|(i, p)| p * time.get((1 << i) ^ state))
+                .sum::<f32>()
+                .algebraic_add(self.size as f32 + (self.r - 1.0) * state.count_ones() as f32)
+                / w_sum
+                - prev_time);
+
+        prob.set(state, prev_prob + delta_prob);
+        time.set(state, prev_time + delta_time);
+        let p = prev_prob
+            .to_bits()
+            .abs_diff((prev_prob + delta_prob).to_bits());
+        let t = prev_time
+            .to_bits()
+            .abs_diff((prev_time + delta_time).to_bits());
+        p.max(t)
     }
 }
 

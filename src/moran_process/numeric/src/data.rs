@@ -6,11 +6,15 @@ impl Data {
     /// Create a new state-space vector, zero initialised
     pub fn new(size: usize) -> Data {
         Data(
-            std::iter::repeat_n(0f32.to_bits(), 1 << size)
+            std::iter::repeat_n(0, 1 << size)
                 .map(AtomicU32::new)
                 .collect::<Vec<_>>()
                 .into_boxed_slice(),
         )
+    }
+
+    pub fn clear(&mut self) {
+        self.0.fill_with(|| AtomicU32::new(0));
     }
 
     pub fn get(&self, idx: u64) -> f32 {
