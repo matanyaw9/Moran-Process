@@ -4,6 +4,7 @@ import os.path
 import numpy as np
 import numpy.typing as npt
 import datetime as dt
+from dataclasses import dataclass
 from moran_process.core.graph_core import GraphCore
 
 dir_path = os.path.dirname(__file__)
@@ -39,85 +40,48 @@ rustlib.compute.argtypes = [
     ctypes.c_float,
     ptr_f32,
     ctypes.c_uint64,
-    ctypes.c_uint64,
 ]
 
 
-def fixation_prob(
+@dataclass
+class Result:
+    prob: npt.NDArray[np.float32]
+    time: npt.NDArray[np.float32]
+    ctime: npt.NDArray[np.float32]
+
+
+def compute(
     g: GraphCore,
     selection_cffnt: float,
     thrds: int = 0,
-) -> npt.NDArray[np.float32]:
+) -> Result:
     """
+    TODO doc me
+
     Computes the mutant's fixation probability for each starting point on the
     graph. Returned array is of the graph's size, with the value at each index
     representing the result of the mutant starting in the corresponding node.
 
-    The `thrds` parameter dictates the number of threads to use in the
-    computation, a value of `0` uses all available cores.
-    """
-    res = np.zeros([g.n_nodes], dtype=np.float32)
-    rustlib.compute(
-        g.n_nodes,
-        ctypes.cast(g.nbrs.ctypes.data, ptr_u32),
-        ctypes.cast(g.offsets.ctypes.data, ptr_u32),
-        selection_cffnt,
-        ctypes.cast(res.ctypes.data, ptr_f32),
-        0,
-        thrds,
-    )
-    return res
-
-
-def absorb_time(
-    g: GraphCore,
-    selection_cffnt: float,
-    thrds: int = 0,
-) -> npt.NDArray[np.float32]:
-    """
     Computes the system's average time to homogenity (unconditional fixation
-    time) for every possible mutant starting point. Returned array is of the
-    graph's size, with the value at each index representing the result of the
-    mutant starting in the corresponding node.
+    time) for every possible mutant starting point.
 
-    The `thrds` parameter dictates the number of threads to use in the
-    computation, a value of `0` uses all available cores.
-    """
-    res = np.zeros([g.n_nodes], dtype=np.float32)
-    rustlib.compute(
-        g.n_nodes,
-        ctypes.cast(g.nbrs.ctypes.data, ptr_u32),
-        ctypes.cast(g.offsets.ctypes.data, ptr_u32),
-        selection_cffnt,
-        ctypes.cast(res.ctypes.data, ptr_f32),
-        1,
-        thrds,
-    )
-    return res
-
-
-def fixation_time(
-    g: GraphCore,
-    selection_coefficient: float,
-    thrds: int = 0,
-) -> npt.NDArray[np.float32]:
-    """
     Computes the system's average time to mutant takeover (conditional fixation
-    time) for every possible mutant starting point. Returned array is of the
-    graph's size, with the value at each index representing the result of the
-    mutant starting in the corresponding node.
+    time) for every possible mutant starting point.
 
     The `thrds` parameter dictates the number of threads to use in the
     computation, a value of `0` uses all available cores.
     """
-    res = np.zeros([g.n_nodes], dtype=np.float32)
+    res = np.zeros([3 * g.n_nodes], dtype=np.float32)
     rustlib.compute(
         g.n_nodes,
         ctypes.cast(g.nbrs.ctypes.data, ptr_u32),
         ctypes.cast(g.offsets.ctypes.data, ptr_u32),
         selection_cffnt,
         ctypes.cast(res.ctypes.data, ptr_f32),
-        2,
         thrds,
     )
-    return res
+    return Result(
+        prob=res[: g.n_nodes],
+        time=res[g.n_nodes : 2 * g.n_nodes],
+        ctime=res[2 * g.n_nodes :],
+    )
