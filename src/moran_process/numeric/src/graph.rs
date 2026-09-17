@@ -16,6 +16,15 @@ pub enum Shape {
     Tree,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Phase {
+    /// Compute fixation probabilities and homogeneity times.
+    First,
+    /// Compute fixation times, assuming probabilities have already been
+    /// computed.
+    Second,
+}
+
 impl Graph {
     /// Creates a `Graph` out of the given cross-language representation.
     ///
@@ -96,7 +105,7 @@ impl Graph {
     ///
     /// Returns the ∞-norm of the pairwise ULP distances between the old and new values of the
     /// division.
-    pub fn step_division(&self, prob: &Data, time: &Data, idx: u8) -> u32 {
+    pub fn step_division(&self, phase: Phase, prob: &Data, time: &Data, idx: u8) -> u32 {
         assert!(self.size >= 8);
 
         let topbits = (idx as u64) << (self.size - 8);
@@ -114,7 +123,7 @@ impl Graph {
 
         let mut diff = match idx {
             0 => 0,
-            _ => self.update_entries(&weights, prob, time, topbits),
+            _ => self.update_entries(phase, &weights, prob, time, topbits),
         };
         let last = idx == 0xff;
         let twothirds = 2 * division / 3;
@@ -122,18 +131,17 @@ impl Graph {
         for i in 1..if last { twothirds } else { division } {
             let state = (i ^ (i >> 1)) | topbits;
             self.adjust_neighbours(&mut weights, state, i.trailing_zeros() as usize);
-            diff = diff.max(self.update_entries(&weights, prob, time, state));
+            diff = diff.max(self.update_entries(phase, &weights, prob, time, state));
         }
         if !last {
             return diff;
         }
         std::hint::cold_path();
         weights.fill(0.0);
-        prob.set((1 << self.size) - 1, 1.0);
         for i in twothirds + 1..division {
             let state = (i ^ (i >> 1)) | topbits;
             self.adjust_neighbours(&mut weights, state, i.trailing_zeros() as usize);
-            diff = diff.max(self.update_entries(&weights, prob, time, state));
+            diff = diff.max(self.update_entries(phase, &weights, prob, time, state));
         }
         diff
     }
@@ -165,42 +173,59 @@ impl Graph {
     /// Updates the probability and time entries at index `state` using the
     /// transition probabilities in `weights`. Returns the greater of the
     /// two differences between the old and new values in ULPs.
-    fn update_entries(&self, weights: &[f32; 63], prob: &Data, time: &Data, state: u64) -> u32 {
+    fn update_entries(
+        &self,
+        phase: Phase,
+        weights: &[f32; 63],
+        prob: &Data,
+        time: &Data,
+        state: u64,
+    ) -> u32 {
         const OVER_RLX: f32 = 1.5;
 
         debug_assert!(state < 1 << self.size);
 
-        let prev_prob = prob.get(state);
-        let prev_time = time.get(state);
         let w = &weights[..self.size];
         let w_sum = w.iter().sum::<f32>();
 
-        let delta_prob = OVER_RLX
-            * (w.iter()
-                .enumerate()
-                .map(|(i, p)| p * prob.get((1 << i) ^ state))
-                .sum::<f32>()
-                / w_sum
-                - prev_prob);
+        let p = match phase {
+            Phase::First => {
+                let prev_prob = prob.get(state);
+                let delta_prob = OVER_RLX
+                    * (w.iter()
+                        .enumerate()
+                        .map(|(i, p)| p * prob.get((1 << i) ^ state))
+                        .sum::<f32>()
+                        / w_sum
+                        - prev_prob);
+                prob.set(state, prev_prob + delta_prob);
+                prev_prob
+                    .to_bits()
+                    .abs_diff((prev_prob + delta_prob).to_bits())
+            }
+            Phase::Second => 0,
+        };
 
+        let prev_time = time.get(state);
         let delta_time = OVER_RLX
             * (w.iter()
                 .enumerate()
                 .map(|(i, p)| p * time.get((1 << i) ^ state))
                 .sum::<f32>()
-                .algebraic_add(self.size as f32 + (self.r - 1.0) * state.count_ones() as f32)
+                .algebraic_add(
+                    match phase {
+                        Phase::First => 1.0,
+                        Phase::Second => prob.get(state),
+                    }
+                    .algebraic_mul(self.size as f32 + (self.r - 1.0) * state.count_ones() as f32),
+                )
                 / w_sum
                 - prev_time);
-
-        prob.set(state, prev_prob + delta_prob);
         time.set(state, prev_time + delta_time);
-        let p = prev_prob
+        prev_time
             .to_bits()
-            .abs_diff((prev_prob + delta_prob).to_bits());
-        let t = prev_time
-            .to_bits()
-            .abs_diff((prev_time + delta_time).to_bits());
-        p.max(t)
+            .abs_diff((prev_time + delta_time).to_bits())
+            .max(p)
     }
 }
 
