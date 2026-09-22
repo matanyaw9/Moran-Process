@@ -1,3 +1,4 @@
+use super::graph::Change;
 #[cfg(debug_assertions)]
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Condvar, Mutex, MutexGuard};
@@ -7,13 +8,18 @@ use std::sync::{Condvar, Mutex, MutexGuard};
 pub struct Schedule(Mutex<WorkState>, Condvar);
 
 struct WorkState {
-    cease: bool,
+    /// A 4-bit vector of the significance of change, of the two most recent
+    /// epochs, in the two sides.
+    /// - bit `0`: side `0`, current epoch
+    /// - bit `1`: side `1`, current epoch
+    /// - bit `2`: side `0`, previous epoch
+    /// - bit `3`: side `1`, previous epoch
+    changes: u8,
     sides: [Side; 2],
 }
 
 #[derive(Clone, Copy)]
 struct Side {
-    ulp_diffs: [u32; 2],
     epoch: u32,
     queued: u64,
     done: u64,
@@ -26,9 +32,8 @@ impl Schedule {
     pub fn new() -> Schedule {
         Schedule(
             Mutex::new(WorkState {
-                cease: false,
+                changes: 0b1111,
                 sides: [Side {
-                    ulp_diffs: [!0; 2],
                     epoch: 0,
                     queued: u64::MAX,
                     done: 0,
@@ -46,28 +51,28 @@ impl Schedule {
     }
 
     /// Ask the scheduler for a division to compute, providing the previously
-    /// computed division, and the ULP change of the maximally-changed scalar.
-    /// A result of `None` indicates that the computation is already complete.
-    pub fn next(&self, prev: u8, diff: u32) -> Option<u8> {
+    /// computed division, and whether any entry wherein was significantly
+    /// changed. A result of `None` indicates that the computation is already
+    /// complete.
+    pub fn next(&self, prev: u8, change: Change) -> Option<u8> {
         let mut guard = self.0.lock().unwrap();
 
         let i = (prev >= 0x80) as usize;
-        guard.sides[i].done |= 1 << ((prev >> 1) & 0x3f);
-        let c = &mut guard.sides[i].ulp_diffs[1];
-        *c = diff.max(*c);
-        if guard.sides[i].done == u64::MAX {
-            let diff = (0..=1)
-                .flat_map(|i| guard.sides[i].ulp_diffs)
-                .max()
-                .unwrap();
+        guard.sides[i].done |= 1 << (prev << 1 >> 2);
+
+        if change == Change::Significant {
+            guard.changes |= 1 << i;
+        }
+        if guard.sides[i].done == !0 {
             #[cfg(debug_assertions)]
             println!(
-                "({:0>4}, {:0>4}) diff {diff:x}",
-                guard.sides[0].epoch, guard.sides[1].epoch
+                "({:0>4}, {:0>4}) significant changes {:0>4b}",
+                guard.sides[0].epoch, guard.sides[1].epoch, guard.changes,
             );
-            guard.cease = diff <= 0x3f;
-            guard.sides[i].ulp_diffs = [guard.sides[i].ulp_diffs[1], 0];
-            (guard.sides[i].queued, guard.sides[i].done) = (u64::MAX, 0);
+            let bit = guard.changes & 1 << i;
+            guard.changes &= 0b1010 >> i;
+            guard.changes |= bit << 2;
+            (guard.sides[i].queued, guard.sides[i].done) = (!0, 0);
             guard.sides[i].epoch += 1;
             self.1.notify_all();
         }
@@ -75,7 +80,7 @@ impl Schedule {
     }
 
     fn get_division(&self, mut guard: MutexGuard<'_, WorkState>) -> Option<u8> {
-        while !guard.cease {
+        while guard.changes != 0 {
             // attempt to take a queued task from a lagging/levelled side
             for i in [0, 1] {
                 if guard.sides[i].epoch <= guard.sides[1 - i].epoch

@@ -8,12 +8,27 @@ pub struct Graph {
     vulns: [f32; 63],
 }
 
-#[allow(dead_code)]
 pub enum Shape {
     Complete,
     Cycle,
     Star,
     Tree,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Change {
+    /// No vector entry greatly changed values.
+    Minor,
+    /// Some vector entry was changed significantly.
+    Significant,
+}
+
+impl std::ops::BitOrAssign for Change {
+    fn bitor_assign(&mut self, rhs: Self) {
+        if *self == Change::Minor {
+            *self = rhs;
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -29,8 +44,8 @@ impl Graph {
     /// Creates a `Graph` out of the given cross-language representation.
     ///
     /// # Safety
-    /// `nbrs` and `offsets` must be valid as per the definition in `GraphCore` with respect to
-    /// `size`.
+    /// `nbrs` and `offsets` must be valid as per the definition in `GraphCore`
+    /// with respect to `size`.
     pub unsafe fn from_ffi(size: usize, nbrs: *const u32, offsets: *const u32, r: f32) -> Graph {
         assert!(size < 64);
         let mut adjs = [0; _];
@@ -99,13 +114,14 @@ impl Graph {
         self.len() == 0
     }
 
-    /// Run a single Gauss-Siedel step through the `idx`th division, out of 256 (zero-indexed),
-    /// entries are updates in an arbitrary order. Does not update the very first, or very last
-    /// entries of the data, if the section given is `0` or `255` respectively.
+    /// Run a single Gauss-Siedel step through the `idx`th division, out of 256
+    /// (zero-indexed), entries are updates in an arbitrary order. Does not
+    /// update the very first, or very last entries of the data, if the section
+    /// given is `0` or `255` respectively.
     ///
-    /// Returns the ∞-norm of the pairwise ULP distances between the old and new values of the
-    /// division.
-    pub fn step_division(&self, phase: Phase, prob: &Data, time: &Data, idx: u8) -> u32 {
+    /// Returns whether any entry was changed enough so as to be counted as
+    /// "significant".
+    pub fn step_division(&self, phase: Phase, prob: &Data, time: &Data, idx: u8) -> Change {
         assert!(self.size >= 8);
 
         let topbits = (idx as u64) << (self.size - 8);
@@ -121,8 +137,8 @@ impl Graph {
             }
         }
 
-        let mut diff = match idx {
-            0 => 0,
+        let mut chng = match idx {
+            0 => Change::Minor,
             _ => self.update_entries(phase, &weights, prob, time, topbits),
         };
         let last = idx == 0xff;
@@ -131,23 +147,24 @@ impl Graph {
         for i in 1..if last { twothirds } else { division } {
             let state = (i ^ (i >> 1)) | topbits;
             self.adjust_neighbours(&mut weights, state, i.trailing_zeros() as usize);
-            diff = diff.max(self.update_entries(phase, &weights, prob, time, state));
+            chng |= self.update_entries(phase, &weights, prob, time, state);
         }
         if !last {
-            return diff;
+            return chng;
         }
         std::hint::cold_path();
         weights.fill(0.0);
         for i in twothirds + 1..division {
             let state = (i ^ (i >> 1)) | topbits;
             self.adjust_neighbours(&mut weights, state, i.trailing_zeros() as usize);
-            diff = diff.max(self.update_entries(phase, &weights, prob, time, state));
+            chng |= self.update_entries(phase, &weights, prob, time, state);
         }
-        diff
+        chng
     }
 
-    /// Assuming `weights` describe the transition probabilities from `state ^ (1 << idx)`, adjusts
-    /// the weights to the transition probabilities of `state`.
+    /// Assuming `weights` describe the transition probabilities from
+    /// `state ^ (1 << idx)`, adjusts the weights to the transition
+    /// probabilities of `state`.
     fn adjust_neighbours(&self, weights: &mut [f32; 63], state: u64, idx: usize) {
         debug_assert!(state < 1 << self.size);
         debug_assert!(idx < self.size);
@@ -171,8 +188,8 @@ impl Graph {
     }
 
     /// Updates the probability and time entries at index `state` using the
-    /// transition probabilities in `weights`. Returns the greater of the
-    /// two differences between the old and new values in ULPs.
+    /// transition probabilities in `weights`. Returns whether the change was
+    /// big enough to be counted as "significant".
     fn update_entries(
         &self,
         phase: Phase,
@@ -180,7 +197,7 @@ impl Graph {
         prob: &Data,
         time: &Data,
         state: u64,
-    ) -> u32 {
+    ) -> Change {
         const OVER_RLX: f32 = 1.5;
 
         debug_assert!(state < 1 << self.size);
@@ -222,10 +239,17 @@ impl Graph {
                 / w_sum
                 - prev_time);
         time.set(state, prev_time + delta_time);
-        prev_time
+
+        // A change is regarded as significant if the ULP difference between
+        // the old and new values is greater than or equal to `0x40`.
+        match prev_time
             .to_bits()
             .abs_diff((prev_time + delta_time).to_bits())
             .max(p)
+        {
+            ..0x40 => Change::Minor,
+            _ => Change::Significant,
+        }
     }
 }
 
