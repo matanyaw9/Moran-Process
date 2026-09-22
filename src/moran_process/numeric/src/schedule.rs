@@ -1,3 +1,5 @@
+#[cfg(debug_assertions)]
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Condvar, Mutex, MutexGuard};
 
 // TODO: see whether we can make the schedule lock-free
@@ -58,6 +60,11 @@ impl Schedule {
                 .flat_map(|i| guard.sides[i].ulp_diffs)
                 .max()
                 .unwrap();
+            #[cfg(debug_assertions)]
+            println!(
+                "({:0>4}, {:0>4}) diff {diff:x}",
+                guard.sides[0].epoch, guard.sides[1].epoch
+            );
             guard.cease = diff <= 0x3f;
             guard.sides[i].ulp_diffs = [guard.sides[i].ulp_diffs[1], 0];
             (guard.sides[i].queued, guard.sides[i].done) = (u64::MAX, 0);
@@ -90,6 +97,11 @@ impl Schedule {
                     let pairity = (ctz.count_ones() ^ guard.sides[i].epoch ^ i as u32) & 1;
                     return Some(((i as u32) << 7 | ctz << 1 | pairity) as u8);
                 }
+            }
+            #[cfg(debug_assertions)]
+            {
+                static WAITS: AtomicUsize = AtomicUsize::new(0);
+                println!("threadsleep {}", WAITS.fetch_add(1, Ordering::Relaxed));
             }
             guard = self.1.wait(guard).unwrap();
         }
