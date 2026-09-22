@@ -45,8 +45,8 @@ pub fn crunch(g: &Graph, thrds: usize, res: &mut [f32]) {
         let cruncher = || {
             let mut section = schd.first();
             while let Some(s) = section {
-                let diff = g.step_division(phase, prob, time, s);
-                section = schd.next(s, diff);
+                let chng = g.step_division(phase, prob, time, s);
+                section = schd.next(s, chng);
             }
         };
         std::thread::scope(|s| {
