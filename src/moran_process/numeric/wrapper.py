@@ -4,6 +4,7 @@ import os.path
 import numpy as np
 import numpy.typing as npt
 import datetime as dt
+from warnings import deprecated
 from dataclasses import dataclass
 from moran_process.core.graph_core import GraphCore
 
@@ -45,8 +46,11 @@ rustlib.compute.argtypes = [
 
 @dataclass
 class Result:
+    # Fixation probabilties
     prob: npt.NDArray[np.float32]
+    # Average steps to homogeneity
     time: npt.NDArray[np.float32]
+    # Average steps to fixation
     ctime: npt.NDArray[np.float32]
 
 
@@ -56,17 +60,11 @@ def compute(
     thrds: int = 0,
 ) -> Result:
     """
-    TODO doc me
-
-    Computes the mutant's fixation probability for each starting point on the
-    graph. Returned array is of the graph's size, with the value at each index
-    representing the result of the mutant starting in the corresponding node.
-
-    Computes the system's average time to homogenity (unconditional fixation
-    time) for every possible mutant starting point.
-
-    Computes the system's average time to mutant takeover (conditional fixation
-    time) for every possible mutant starting point.
+    Computes the mutant's fixation probabilities, system's average steps to
+    homogeneity (unconditional fixation time), and system's average steps to
+    fixation (conditional fixation time), for every possible mutant spawn
+    node. The values at each index represents the results of the mutant
+    starting in the corresponding node.
 
     The `thrds` parameter dictates the number of threads to use in the
     computation, a value of `0` uses all available cores.
@@ -85,3 +83,30 @@ def compute(
         time=res[g.n_nodes : 2 * g.n_nodes],
         ctime=res[2 * g.n_nodes :],
     )
+
+
+@deprecated("use the more general `compute`")
+def fixation_prob(
+    g: GraphCore,
+    selection_cffnt: float,
+    thrds: int = 0,
+) -> npt.NDArray[np.float32]:
+    compute(g, selection_cffnt, thrds).prob
+
+
+@deprecated("use the more general `compute`")
+def absorb_time(
+    g: GraphCore,
+    selection_cffnt: float,
+    thrds: int = 0,
+) -> npt.NDArray[np.float32]:
+    compute(g, selection_cffnt, thrds).time
+
+
+@deprecated("use the more general `compute`")
+def fixation_time(
+    g: GraphCore,
+    selection_cffnt: float,
+    thrds: int = 0,
+) -> npt.NDArray[np.float32]:
+    compute(g, selection_cffnt, thrds).ctime
