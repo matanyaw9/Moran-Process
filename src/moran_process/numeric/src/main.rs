@@ -1,5 +1,12 @@
 use numeric::graph::{Graph, Shape};
 
+macro_rules! abort {
+    ($($arg:tt)*) => {{
+        eprintln!($($arg)*);
+        std::process::exit(1)
+    }};
+}
+
 pub fn main() {
     let args = std::env::args().collect::<Vec<_>>();
     let args = args.iter().map(String::as_str).collect::<Vec<_>>();
@@ -13,45 +20,37 @@ pub fn main() {
                 "tree" => Shape::Tree,
                 _ => unreachable!(),
             };
-            let Ok(size) = size.parse::<usize>() else {
-                badexit("bad size")
-            };
-            let Ok(r) = r.parse::<f32>() else {
-                badexit("bad r")
-            };
+            let size = size.parse::<usize>().unwrap_or_else(|_| abort!("bad size"));
+            let r = r.parse::<f32>().unwrap_or_else(|_| abort!("bad r"));
             Graph::from_shape(size, shape, r)
         }
         [_, "--file", filepath, r] => {
-            let Ok(r) = r.parse::<f32>() else {
-                badexit("bad r")
-            };
-            let Ok(text) = std::fs::read_to_string(filepath) else {
-                badexit("could not read file")
-            };
-            let Some(g) = Graph::from_text(&text, r) else {
-                badexit("bad file contents")
-            };
-            g
+            let r = r.parse::<f32>().unwrap_or_else(|_| abort!("bad r"));
+            let text =
+                std::fs::read_to_string(filepath).unwrap_or_else(|_| abort!("could not read file"));
+            Graph::from_text(&text, r).unwrap_or_else(|| abort!("bad file contents"))
         }
-        _ => badexit(&format!(
+        _ => abort!(
             "Usage: {} ((complete | cycle | star | tree) <size> | --file <pathname>) <r>",
             args[0]
-        )),
+        ),
     };
 
     let mut res = vec![0.0; 3 * g.len()];
     numeric::crunch(&g, 0, &mut res);
     println!("prob            time            ctime");
-    for ((&p, &t), &ct) in res[..g.len()]
-        .iter()
-        .zip(&res[g.len()..2 * g.len()])
-        .zip(&res[2 * g.len()..])
-    {
-        println!("{p: <16}{t: <16}{ct}");
+    for i in 0..g.len() {
+        println!(
+            "{: <16}{: <16}{}",
+            res[i],
+            res[i + g.len()],
+            res[i + 2 * g.len()]
+        );
     }
-}
-
-fn badexit(msg: &str) -> ! {
-    eprintln!("{}", msg);
-    std::process::exit(1)
+    println!(
+        "means\n{: <16}{: <16}{}",
+        res[..g.len()].iter().sum::<f32>() / g.len() as f32,
+        res[g.len()..2 * g.len()].iter().sum::<f32>() / g.len() as f32,
+        res[2 * g.len()..].iter().sum::<f32>() / g.len() as f32
+    );
 }
