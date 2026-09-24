@@ -1,9 +1,7 @@
-pub mod data;
 pub mod graph;
-pub mod schedule;
-use crate::data::Data;
+mod statespace;
 use crate::graph::{Graph, Phase};
-use crate::schedule::Schedule;
+use crate::statespace::StateSpace;
 use std::num::NonZero;
 use std::slice;
 
@@ -35,18 +33,22 @@ pub fn crunch(g: &Graph, thrds: usize, res: &mut [f32]) {
         0 => std::thread::available_parallelism().map_or(1, NonZero::get),
         _ => thrds,
     };
-    let prob = &Data::new_prob(g.len());
-    let time = &mut Data::new_time(g.len());
+    let mut space = StateSpace::new_with(g.len(), |i| {
+        if i == (1 << g.len()) - 1 {
+            [1.0, 0.0]
+        } else {
+            [0.0, 0.0]
+        }
+    });
     let (p, t) = res.split_at_mut(g.len());
     let (t, ct) = t.split_at_mut(g.len());
 
     for phase in [Phase::First, Phase::Second] {
-        let schd = Schedule::new();
         let cruncher = || {
-            let mut section = schd.first();
-            while let Some(s) = section {
-                let chng = g.step_division(phase, prob, time, s);
-                section = schd.next(s, chng);
+            let mut idxr = space.get_indexer();
+            while let Some(mut i) = idxr {
+                let chng = g.step_division(phase, &mut i);
+                idxr = space.next_indexer(i, chng);
             }
         };
         std::thread::scope(|s| {
@@ -57,15 +59,19 @@ pub fn crunch(g: &Graph, thrds: usize, res: &mut [f32]) {
         });
         match phase {
             Phase::First => {
+                let data = space.all_data();
                 for (i, (p, t)) in p.iter_mut().zip(&mut *t).enumerate() {
-                    *p = prob.get(1 << i);
-                    *t = time.get(1 << i);
+                    [*p, *t] = data[1 << i];
                 }
-                time.clear();
+                for datum in space.all_data() {
+                    datum[1] = 0.0;
+                }
+                space.reset_schedule();
             }
             Phase::Second => {
+                let data = space.all_data();
                 for (i, ct) in ct.iter_mut().enumerate() {
-                    *ct = time.get(1 << i) / prob.get(1 << i);
+                    *ct = data[1 << i][1] / data[1 << i][0];
                 }
             }
         }

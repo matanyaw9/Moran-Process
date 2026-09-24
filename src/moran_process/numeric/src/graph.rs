@@ -1,4 +1,4 @@
-use super::data::Data;
+use super::statespace::Indexer;
 use std::slice;
 
 pub struct Graph {
@@ -114,6 +114,7 @@ impl Graph {
         self.len() == 0
     }
 
+    // TODO: update docs
     /// Run a single Gauss-Siedel step through the `idx`th division, out of 256
     /// (zero-indexed), entries are updates in an arbitrary order. Does not
     /// update the very first, or very last entries of the data, if the section
@@ -121,12 +122,10 @@ impl Graph {
     ///
     /// Returns whether any entry was changed enough so as to be counted as
     /// "significant".
-    pub fn step_division(&self, phase: Phase, prob: &Data, time: &Data, idx: u8) -> Change {
+    pub fn step_division(&self, phase: Phase, idxr: &mut Indexer<'_, [f32; 2]>) -> Change {
         assert!(self.size >= 8);
 
-        let topbits = (idx as u64) << (self.size - 8);
-        let division = 1 << (self.size - 8);
-
+        let topbits = idxr.div_idx() as u64 * idxr.div_size();
         let mut weights = [0.0; _];
         {
             let mut s = topbits;
@@ -137,27 +136,27 @@ impl Graph {
             }
         }
 
-        let mut chng = match idx {
+        let mut chng = match idxr.div_idx() {
             0 => Change::Minor,
-            _ => self.update_entries(phase, &weights, prob, time, topbits),
+            _ => self.update_entries(phase, &weights, idxr, 0),
         };
-        let last = idx == 0xff;
-        let twothirds = 2 * division / 3;
+        let last = idxr.div_idx() == 0xff;
+        let twothirds = 2 * idxr.div_size() / 3;
 
-        for i in 1..if last { twothirds } else { division } {
-            let state = (i ^ (i >> 1)) | topbits;
-            self.adjust_neighbours(&mut weights, state, i.trailing_zeros() as usize);
-            chng |= self.update_entries(phase, &weights, prob, time, state);
+        for i in 1..if last { twothirds } else { idxr.div_size() } {
+            let state = i ^ i >> 1;
+            self.adjust_neighbours(&mut weights, state | topbits, i.trailing_zeros() as usize);
+            chng |= self.update_entries(phase, &weights, idxr, state);
         }
         if !last {
             return chng;
         }
         std::hint::cold_path();
         weights.fill(0.0);
-        for i in twothirds + 1..division {
-            let state = (i ^ (i >> 1)) | topbits;
-            self.adjust_neighbours(&mut weights, state, i.trailing_zeros() as usize);
-            chng |= self.update_entries(phase, &weights, prob, time, state);
+        for i in twothirds + 1..idxr.div_size() {
+            let state = i ^ i >> 1;
+            self.adjust_neighbours(&mut weights, state | topbits, i.trailing_zeros() as usize);
+            chng |= self.update_entries(phase, &weights, idxr, state);
         }
         chng
     }
@@ -194,8 +193,7 @@ impl Graph {
         &self,
         phase: Phase,
         weights: &[f32; 63],
-        prob: &Data,
-        time: &Data,
+        idxr: &mut Indexer<'_, [f32; 2]>,
         state: u64,
     ) -> Change {
         const OVER_RLX: f32 = 1.5;
@@ -207,15 +205,15 @@ impl Graph {
 
         let p = match phase {
             Phase::First => {
-                let prev_prob = prob.get(state);
+                let prev_prob = idxr[state][0];
                 let delta_prob = OVER_RLX
                     * (w.iter()
-                        .enumerate()
-                        .map(|(i, p)| p * prob.get((1 << i) ^ state))
+                        .zip(idxr.neighbours(state))
+                        .map(|(w, [p, _])| w * p)
                         .sum::<f32>()
                         / w_sum
                         - prev_prob);
-                prob.set(state, prev_prob + delta_prob);
+                idxr[state][0] = prev_prob + delta_prob;
                 prev_prob
                     .to_bits()
                     .abs_diff((prev_prob + delta_prob).to_bits())
@@ -223,22 +221,26 @@ impl Graph {
             Phase::Second => 0,
         };
 
-        let prev_time = time.get(state);
+        let prev_time = idxr[state][1];
         let delta_time = OVER_RLX
             * (w.iter()
-                .enumerate()
-                .map(|(i, p)| p * time.get((1 << i) ^ state))
+                .zip(idxr.neighbours(state))
+                .map(|(w, [_, t])| w * t)
                 .sum::<f32>()
                 .algebraic_add(
                     match phase {
                         Phase::First => 1.0,
-                        Phase::Second => prob.get(state),
+                        Phase::Second => idxr[state][0],
                     }
-                    .algebraic_mul(self.size as f32 + (self.r - 1.0) * state.count_ones() as f32),
+                    .algebraic_mul(
+                        self.size as f32
+                            + (self.r - 1.0)
+                                * (state.count_ones() + idxr.div_idx().count_ones()) as f32,
+                    ),
                 )
                 / w_sum
                 - prev_time);
-        time.set(state, prev_time + delta_time);
+        idxr[state][1] = prev_time + delta_time;
 
         // A change is regarded as significant if the ULP difference between
         // the old and new values is greater than or equal to `0x40`.
