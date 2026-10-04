@@ -28,10 +28,12 @@ CATEGORY_COLOR_DICT = {
     "Avian": "#2E7D32",  # Forest Green
     "Fish": "#084182",  # Dark Blue
     # Structural
-    "Random": "#E0E0E0",
+    "Random": "#A09E9E",
     "Complete": "#000000",
     "Cycle": "#5C6BC0",
     "Star": "#E4C306",
+    "Line": "#C2185B",  # Crimson Pink
+    "Grid": "#00897B",  # Teal
     # --- PROBABILITY (Blues/Purples) ---
     "maximize LR Fixation Probability": "#08519C",  # Navy Blue
     "maximize XGBOOST Fixation Probability": "#6BAED6",  # Soft Sky Blue
@@ -43,10 +45,6 @@ CATEGORY_COLOR_DICT = {
     "minimize LR Fixation Time": "#D94801",  # Burnt Orange
     "minimize XGBOOST Fixation Time": "#FDBB84",  # Peach
     # --- SIMULATION-DRIVEN GA (pipeline.ga_search) ---
-    # Fitness is measured rather than predicted, so there is no LR/XGBOOST axis and the
-    # category is just objective + metric. Each takes the same hue as its ML-driven
-    # counterpart above -- probability in blues, time in reds -- so a simulation-driven
-    # run and the ML-driven run it is being compared against share a color.
     "maximize prob_fixation": "#08519C",  # Navy Blue
     "minimize prob_fixation": "#54278F",  # Deep Indigo
     "maximize mean_steps": "#A50F15",  # Blood Red

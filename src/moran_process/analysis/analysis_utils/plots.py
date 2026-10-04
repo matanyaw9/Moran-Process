@@ -1066,7 +1066,7 @@ def plot_steps_histogram(
 def plot_outcome_vs_property(
     df,
     x_prop,
-    y_outcome="prob_fixation",
+    y_outcome,
     color_dict=None,
     density_threshold=50,
     highlight_categories=None,

@@ -70,6 +70,30 @@ def _colorbar_ticks(norm):
     return tickvals, ticktext
 
 
+def _stamp_batch(fig, batch_name):
+    """Bottom-right source label: the plotly twin of ``plots._stamp_batch``.
+
+    matplotlib stamps in figure fractions; plotly's only paper space is the
+    *plotting area*, so the label is anchored to that area's bottom-right corner
+    and pushed under the x-axis with a pixel shift. The bottom margin is widened
+    to match, otherwise the shifted text falls off the canvas and is cropped.
+    Italic comes from inline HTML because ``font`` carries no style attribute.
+    """
+    fig.add_annotation(
+        text=f"<i>source: {batch_name}</i>",
+        xref="paper",
+        yref="paper",
+        x=1,
+        y=0,
+        xanchor="right",
+        yanchor="top",
+        yshift=-58,
+        showarrow=False,
+        font=dict(size=10, color="#666666"),
+    )
+    fig.update_layout(margin=dict(b=95))
+
+
 def plot_two_property_effect_plotly(
     df,
     x_prop,
@@ -79,6 +103,7 @@ def plot_two_property_effect_plotly(
     colorscale="Viridis",
     highlight_categories=None,
     fig_title=None,
+    batch_name=None,
     html_path=None,
 ):
     """Interactive twin of ``plot_two_property_effect``. Returns a plotly Figure.
@@ -86,6 +111,9 @@ def plot_two_property_effect_plotly(
     Same leading signature as the static version. Color encodes ``outcome`` on the
     same norm; each point is a graph and hovering reveals its category and exact
     outcome value (the capability the static figure cannot offer).
+
+    ``batch_name`` stamps a 'source: ...' label in the bottom-right corner, as in
+    the static twins, so a saved figure records which batch produced it.
     """
     if color_dict is None:
         color_dict = {}
@@ -266,6 +294,8 @@ def plot_two_property_effect_plotly(
     fig.update_xaxes(showgrid=True, griddash="dash", gridcolor="rgba(0,0,0,0.12)")
     fig.update_yaxes(showgrid=True, griddash="dash", gridcolor="rgba(0,0,0,0.12)")
 
+    if batch_name:
+        _stamp_batch(fig, batch_name)
     if html_path is not None:
         fig.write_html(html_path)
         print(f"[prototype] wrote {html_path}")
@@ -295,6 +325,7 @@ def plot_outcome_vs_property_plotly(
     highlight_categories=None,
     filter_categories=None,
     fig_title=None,
+    batch_name=None,
     html_path=None,
 ):
     """Interactive twin of ``plot_outcome_vs_property``. Returns a plotly Figure.
@@ -303,6 +334,9 @@ def plot_outcome_vs_property_plotly(
     for dense discrete x positions, exactly as the static version decides them.
     Jitter, the correlation box, and the property gloss are intentionally dropped
     (see the module docstring): hover and the violins replace what jitter bought.
+
+    ``batch_name`` stamps a 'source: ...' label in the bottom-right corner, as in
+    the static twins, so a saved figure records which batch produced it.
     """
     if color_dict is None:
         color_dict = {}
@@ -525,23 +559,29 @@ def plot_outcome_vs_property_plotly(
         if len(n_col) > 0:
             if x_prop == "n_nodes":
                 xr = np.linspace(max(1, n_col.min()), n_col.max(), 300)
-                fig.add_trace(
-                    go.Scatter(
-                        x=xr,
-                        y=1.0 / xr,
-                        mode="lines",
-                        name="Neutral  1/N",
-                        line=dict(color="black", dash="dash", width=1.4),
-                    )
-                )
-                if len(r_values) == 1:
+                # One reference curve only, same rule as the hline branch below:
+                # complete-graph ρ(N, r) at the r actually simulated, falling back
+                # to neutral 1/N when r is ambiguous. ρ equals 1/N at r=1, so the
+                # neutral curve is not lost, it is the r=1 case of the same formula.
+                if len(r_values) == 1 and r_values[0] != 1:
+                    rv = r_values[0]
                     fig.add_trace(
                         go.Scatter(
                             x=xr,
-                            y=analytic_moran_fc_fixation_prob(xr, r_values[0]),
+                            y=analytic_moran_fc_fixation_prob(xr, rv),
                             mode="lines",
-                            name="Moran  ρ(N,r)",
+                            name=f"Fully Connected Moran  ρ(N, r={rv:g})",
                             line=dict(color="royalblue", dash="dash", width=1.4),
+                        )
+                    )
+                else:
+                    fig.add_trace(
+                        go.Scatter(
+                            x=xr,
+                            y=1.0 / xr,
+                            mode="lines",
+                            name="Neutral  1/N",
+                            line=dict(color="black", dash="dash", width=1.4),
                         )
                     )
             else:
@@ -589,6 +629,8 @@ def plot_outcome_vs_property_plotly(
     )
     fig.update_xaxes(showgrid=True, griddash="dash", gridcolor="rgba(0,0,0,0.12)")
     fig.update_yaxes(showgrid=True, griddash="dash", gridcolor="rgba(0,0,0,0.12)")
+    if batch_name:
+        _stamp_batch(fig, batch_name)
     if html_path is not None:
         fig.write_html(html_path)
         print(f"[prototype] wrote {html_path}")
@@ -636,6 +678,7 @@ if __name__ == "__main__":
         outcome="mean_steps",
         highlight_categories=["Mammalian", "Avian"],
         color_dict=CATEGORY_COLOR_DICT,
+        batch_name="2026_08_31-demo-batch",
         html_path=os.path.join(out_dir, "two_property_prototype.html"),
     )
     # n_nodes vs prob_fixation: exercises the neutral 1/N + Moran reference curves.
@@ -645,6 +688,7 @@ if __name__ == "__main__":
         "prob_fixation",
         color_dict=CATEGORY_COLOR_DICT,
         highlight_categories=["Mammalian", "Avian"],
+        batch_name="2026_08_31-demo-batch",
         html_path=os.path.join(out_dir, "outcome_vs_property_refs.html"),
     )
     # avg_degree (discrete) vs prob_fixation: exercises the dense-x violins.
