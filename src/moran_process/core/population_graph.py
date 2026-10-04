@@ -70,6 +70,7 @@ class PopulationGraph:
 
         # Pre-calculate static metrics (Vital for analysis later)
         self.n_nodes = self.graph.number_of_nodes()
+        self.n_edges = self.graph.number_of_edges()
         self.is_directed = self.graph.is_directed()
         self.labeled_edges = labeled_edges
 
