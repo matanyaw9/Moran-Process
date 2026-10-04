@@ -106,7 +106,7 @@ def make_plan(
     engine="cpp",
     queue="gsla-cpu",
     memory="1GB",
-    max_steps=1_000_000,
+    max_steps=10_000_000_000,
     post_batch="all",
     description="",
     notes="",
