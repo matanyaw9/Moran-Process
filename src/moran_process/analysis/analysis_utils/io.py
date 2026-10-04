@@ -19,6 +19,8 @@ from .provenance import load_batch_info
 from .theory import (
     analytic_moran_fc_fixation_prob,
     analytic_moran_fc_fixation_time,
+    analytic_star_fixation_prob,
+    analytic_star_fixation_time,
 )
 
 __all__ = [
@@ -32,6 +34,7 @@ __all__ = [
     "add_analytic_reference_columns",
     "build_graph_statistics",
     "load_graph_statistics",
+    "add_analytic_star_rows",
     "load_fixation_steps_by_category",
     "compute_fixation_steps_by_category",
     "build_fixation_steps_cache",
@@ -254,6 +257,93 @@ def add_analytic_reference_columns(df, n_col="n_nodes", r_col="r"):
         out["fc_fixation_time"]
     )
     return out
+
+
+def add_analytic_star_rows(df, n_nodes=None, category="Analytic-Star"):
+    """Append EXACT star-graph rows to a loaded statistics frame, simulating nothing.
+
+    The undirected star is the textbook amplifier of selection (Lieberman et al. 2005),
+    so it is the natural upper reference for "how much can topology alone help a mutant"
+    next to the complete-graph lower reference already attached by
+    ``add_analytic_reference_columns``. It is also, along with the complete graph, one of
+    only two topologies here whose symmetry collapses the 2^n state space to something
+    solvable, so its rho and its fixation time can be computed rather than measured. A
+    1e6-repeat simulated cell costs ~1000 core-hours and still carries Monte Carlo error;
+    these rows cost a millisecond and carry none.
+
+    One row is emitted per ``(batch, r, n_nodes)`` already present in ``df``. The star is
+    the same graph in every batch, but the *comparison* is not: each plan drew its own
+    edge-matched random cloud, so a star row has to exist inside each batch to be read
+    against that batch's cloud. Note the star has exactly n-1 edges, so it is genuinely
+    edge-matched to the tree-like clouds of the lung and gill plans and is NOT
+    edge-matched to the denser avian cloud.
+
+    ``prob_fixation`` and ``mean_steps`` carry the same meaning as in a simulated row:
+    fixation probability from one uniformly placed mutant, and expected elementary
+    birth-death steps CONDITIONED on fixation, null events included. ``n_grouped`` is 0
+    because no runs stand behind an exact value, and ``std_steps`` is NaN because an
+    exact value has no spread; consumers that divide by ``n_grouped`` must treat 0 as
+    "not measured", not as "measured zero".
+
+    Only the undirected star is produced. The directed star is a degenerate case with a
+    known answer that needs no chain at all: the hub is a source and every leaf a sink,
+    so a mutant fixates iff it is born on the hub, giving rho = 1/n at every r.
+
+    Args:
+        df: a frame from ``load_graph_statistics``.
+        n_nodes: restrict to these sizes; None uses every size present in each batch.
+        category: the category label for the new rows. "Star" already has a color in
+            ``CATEGORY_COLOR_DICT``.
+
+    Returns:
+        A new frame: ``df`` with the star rows concatenated. ``df`` is not modified.
+    """
+    keys = [c for c in ("batch", "r") if c in df.columns] + ["n_nodes"]
+    grid = df[keys].drop_duplicates()
+    if n_nodes is not None:
+        grid = grid[grid["n_nodes"].isin(_as_list(n_nodes))]
+    # A star needs a hub and at least two leaves for the collapsed chain to exist.
+    grid = grid[grid["n_nodes"] >= 3].sort_values(keys).reset_index(drop=True)
+    if grid.empty:
+        return df.copy()
+
+    n = grid["n_nodes"].to_numpy(dtype=float)
+    r = grid["r"].to_numpy(dtype=float) if "r" in grid else np.ones(len(grid))
+
+    star = grid.copy()
+    star["prob_fixation"] = analytic_star_fixation_prob(n, r)
+    star["mean_steps"] = analytic_star_fixation_time(n, r)
+    star["std_steps"] = np.nan
+    star["n_grouped"] = 0
+    if "n_censored" in df.columns:
+        # Exact, so nothing was capped. Written only when the batch measured censoring
+        # at all, keeping the column's "absent means never measured" meaning intact.
+        star["n_censored"] = 0
+    star["category"] = category
+    star["is_directed"] = False
+    star["graph_name"] = "star_n" + grid["n_nodes"].astype(int).astype(str)
+    star["wl_hash"] = "analytic_" + star["graph_name"]
+
+    # Exact structural properties of a star on n nodes, so these rows also land somewhere
+    # sensible on the property axes of the explorer instead of being a hole in every
+    # scatter. All closed form: one hub of degree n-1, n-1 leaves of degree 1, no
+    # triangles, and every leaf-leaf path running through the hub.
+    star["n_edges"] = grid["n_nodes"] - 1
+    star["is_connected"] = True
+    star["density"] = 2.0 / grid["n_nodes"]
+    star["avg_degree"] = 2.0 * (grid["n_nodes"] - 1) / grid["n_nodes"]
+    star["max_degree"] = grid["n_nodes"] - 1
+    star["min_degree"] = 1
+    star["diameter"] = 2
+    star["radius"] = 1
+    star["average_shortest_path_length"] = 2.0 - 2.0 / grid["n_nodes"]
+    star["average_clustering"] = 0.0
+    star["transitivity"] = 0.0
+
+    star = add_analytic_reference_columns(star)
+    sizes = ", ".join(str(v) for v in sorted(star["n_nodes"].unique()))
+    print(f"Added {len(star)} exact '{category}' rows over n_nodes {sizes} (no simulation)")
+    return pd.concat([df, star], ignore_index=True, sort=False)
 
 
 # wl_hash is the graph identity (graph_name is just a per-graph label carried in

@@ -29,6 +29,8 @@ Validated against the simulated ``complete_n31`` graphs of batch
 See ``scripts/validate_theory.py``.
 """
 
+from functools import lru_cache
+
 import numpy as np
 from scipy.linalg import solve_banded
 
@@ -36,6 +38,8 @@ __all__ = [
     "analytic_moran_fc_fixation_prob",
     "analytic_moran_fc_fixation_time",
     "analytic_moran_fc_absorption_time",
+    "analytic_star_fixation_prob",
+    "analytic_star_fixation_time",
 ]
 
 
@@ -158,3 +162,136 @@ def _fixation_time_scalar(n, r):
 
 def _absorption_time_scalar(n, r):
     return _solve_chain(n, r, np.ones(n - 1))[0]
+
+
+# ---------------------------------------------------------------------------
+# The star: the other topology whose symmetry makes it exactly solvable
+# ---------------------------------------------------------------------------
+#
+# One hub (node 0) and m = n-1 leaves, undirected, matching
+# PopulationGraph.star_graph. The leaves are interchangeable, so the state
+# collapses from 2^n to the pair
+#
+#     (a, j)   a = hub type (0 wild, 1 mutant),  j = number of mutant leaves
+#
+# which is 2n states. It does NOT collapse to the mutant count alone the way
+# the complete graph does: the hub is the only bridge between leaves, so
+# whether it is a mutant is what decides which way the next event can go.
+#
+# Transitions, read straight off MoranProcess.step (reproducer drawn
+# proportional to fitness, victim uniform among ITS neighbours):
+#
+#   from (1, j):  F = r(1+j) + (m-j)
+#       -> (1, j+1)  w.p. (r/F) * (m-j)/m     hub seeds a wild leaf
+#       -> (0, j)    w.p. (m-j)/F             a wild leaf overwrites the hub
+#   from (0, j):  F = r*j + (1+m-j)
+#       -> (0, j-1)  w.p. (1/F) * j/m         hub overwrites a mutant leaf
+#       -> (1, j)    w.p. r*j/F               a mutant leaf takes the hub
+#
+# The leftover probability is a null event (a node copying onto a same-type
+# neighbour). It still costs a step, so it stays in the time equations, as on
+# the complete graph.
+#
+# Note what these rates say about why the star amplifies. A leaf reproduces
+# into the hub, and the hub reproduces into a leaf; the hub therefore acts
+# as an amplifier of whichever type most recently captured it, and a mutant
+# leaf captures it at rate r while a wild leaf captures it at rate 1. The
+# selective advantage gets applied twice per round trip, which is the origin
+# of the classic r -> r^2 asymptotic.
+
+_STAR_ABSORB_OFFSET = 1  # transient index t = k - 1; k = 0 is extinction
+
+
+def _star_bands(n, r):
+    """Transition probabilities of the (hub, mutant-leaf-count) chain.
+
+    Returns the four off-diagonal probability vectors indexed by the transient
+    state t = 2j + a - 1, t = 0 .. 2m-1, plus the count of transient states.
+    """
+    m = n - 1
+    j1 = np.arange(0, m, dtype=float)  # states (1, j), j = 0..m-1, at t = 2j
+    f1 = r * (1.0 + j1) + (m - j1)
+    up1 = (r / f1) * (m - j1) / m  # (1,j) -> (1,j+1),  t -> t+2
+    down1 = (m - j1) / f1  # (1,j) -> (0,j),    t -> t-1
+
+    j0 = np.arange(1, m + 1, dtype=float)  # states (0, j), j = 1..m, at t = 2j-1
+    f0 = r * j0 + (1.0 + m - j0)
+    up0 = r * j0 / f0  # (0,j) -> (1,j),    t -> t+1
+    down0 = (1.0 / f0) * (j0 / m)  # (0,j) -> (0,j-1),  t -> t-2
+    return up1, down1, up0, down0, 2 * m
+
+
+def _star_system(n, r):
+    """Build (I - P) for the transient states, in solve_banded's (2, 2) layout.
+
+    Also returns b, the one-step probability of landing in the FIXATION state,
+    which is the right-hand side of the fixation-probability system.
+    """
+    up1, down1, up0, down0, size = _star_bands(n, r)
+
+    ab = np.zeros((5, size))
+    ab[2, 0::2] = up1 + down1  # diagonal, rows (1, j)
+    ab[2, 1::2] = up0 + down0  # diagonal, rows (0, j)
+
+    # solve_banded stores A[i, j] at ab[2 + i - j, j], so each off-diagonal is
+    # indexed by its COLUMN. Transient index t: even t = 2j is state (1, j),
+    # j = 0..m-1; odd t = 2j-1 is state (0, j), j = 1..m.
+    ab[0, 2::2] = -up1[:-1]  # A[t, t+2], t even: -> (1, j+1), columns 2..2m-2
+    ab[1, 2::2] = -up0[:-1]  # A[t, t+1], t odd:  -> (1, j),   columns 2..2m-2
+    ab[3, 1:-1:2] = -down1[1:]  # A[t, t-1], t even: -> (0, j),   columns 1..2m-3
+    ab[4, 1:-1:2] = -down0[1:]  # A[t, t-2], t odd:  -> (0, j-1), columns 1..2m-3
+
+    # The two ways out of the transient set and into FIXATION (1, m): the hub
+    # seeding the last wild leaf, and the last wild leaf being the hub itself.
+    b = np.zeros(size)
+    b[-2] = up1[-1]  # (1, m-1) -> (1, m)
+    b[-1] = up0[-1]  # (0, m)   -> (1, m)
+    return ab, b
+
+
+@lru_cache(maxsize=None)
+def _star_solve(n, r):
+    """Exact (rho, E[steps | fixation]) for one uniformly placed mutant.
+
+    Cached because a results frame holds tens of thousands of rows over a
+    handful of distinct (n, r) cells, and because both public functions below
+    want both halves of the same pair of solves.
+    """
+    if n < 3:
+        raise ValueError("a star needs a hub and at least two leaves")
+    ab, b = _star_system(n, r)
+    phi = solve_banded((2, 2), ab, b)  # P(fixation | state)
+    u = solve_banded((2, 2), ab, phi)  # E[T * 1{fixation} | state]
+
+    # initialize_random_mutant picks one node uniformly: the hub with
+    # probability 1/n, giving state (1, 0) at t = 0, otherwise a leaf, giving
+    # state (0, 1) at t = 1.
+    w_hub, w_leaf = 1.0 / n, (n - 1.0) / n
+    rho = w_hub * phi[0] + w_leaf * phi[1]
+    # Conditional time over the mixture is the ratio of the mixed E[T*1_fix]
+    # to the mixed P(fix), which is exactly how mean_steps averages steps over
+    # whichever runs happened to fixate.
+    return rho, (w_hub * u[0] + w_leaf * u[1]) / rho
+
+
+def analytic_star_fixation_prob(n, r):
+    """Fixation probability of one mutant of fitness r on an undirected star of size n.
+
+    Exact for finite n, from the collapsed 2n-state chain: not the familiar
+    (1 - r^-2) / (1 - r^-2n) asymptotic, which assumes the hub equilibrates
+    between leaf events and is only the n -> infinity limit.
+
+    Matches PopulationGraph.star_graph(n) simulated with MoranProcess, with the
+    mutant placed uniformly at random (hub with probability 1/n).
+    """
+    return _elementwise(lambda nn, rr: _star_solve(nn, rr)[0], n, r)
+
+
+def analytic_star_fixation_time(n, r):
+    """Expected steps to fixation on an undirected star, CONDITIONED on the mutant winning.
+
+    The counterpart of analytic_moran_fc_fixation_time: same units (elementary
+    birth-death events, null events included), same conditioning, so it is
+    directly comparable to a simulated ``mean_steps``.
+    """
+    return _elementwise(lambda nn, rr: _star_solve(nn, rr)[1], n, r)
