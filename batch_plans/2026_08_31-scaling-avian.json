@@ -1,0 +1,204 @@
+{
+  "schema_version": 1,
+  "batch_name": "2026_08_31-scaling-avian",
+  "description": "See how avian lungs behave on different sizes compared to random graphs.",
+  "notes": "bla",
+  "zoo_seed": 45,
+  "sim": {
+    "r_values": [
+      1.1
+    ],
+    "n_repeats": 1000000,
+    "n_jobs": 1000,
+    "batch_seed": 45,
+    "engine": "cpp",
+    "queue": "gsla-cpu",
+    "memory": "1GB",
+    "max_steps": 100000000,
+    "post_batch": "all"
+  },
+  "specs": [
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "kwargs": {
+        "n_rods": 6,
+        "rod_length": 2,
+        "directed": false
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "kwargs": {
+        "n_rods": 6,
+        "rod_length": 2,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_connected_graph",
+      "count": 500,
+      "kwargs": {
+        "n_nodes": 15,
+        "n_edges": 20
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "kwargs": {
+        "n_rods": 14,
+        "rod_length": 2,
+        "directed": false
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "kwargs": {
+        "n_rods": 14,
+        "rod_length": 2,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_connected_graph",
+      "count": 500,
+      "kwargs": {
+        "n_nodes": 31,
+        "n_edges": 44
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "kwargs": {
+        "n_rods": 30,
+        "rod_length": 2,
+        "directed": false
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "kwargs": {
+        "n_rods": 30,
+        "rod_length": 2,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_connected_graph",
+      "count": 500,
+      "kwargs": {
+        "n_nodes": 63,
+        "n_edges": 92
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "kwargs": {
+        "n_rods": 62,
+        "rod_length": 2,
+        "directed": false
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "kwargs": {
+        "n_rods": 62,
+        "rod_length": 2,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_connected_graph",
+      "count": 500,
+      "kwargs": {
+        "n_nodes": 127,
+        "n_edges": 188
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "kwargs": {
+        "n_rods": 126,
+        "rod_length": 2,
+        "directed": false
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "kwargs": {
+        "n_rods": 126,
+        "rod_length": 2,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_connected_graph",
+      "count": 500,
+      "kwargs": {
+        "n_nodes": 255,
+        "n_edges": 380
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "kwargs": {
+        "n_rods": 254,
+        "rod_length": 2,
+        "directed": false
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "kwargs": {
+        "n_rods": 254,
+        "rod_length": 2,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_connected_graph",
+      "count": 500,
+      "kwargs": {
+        "n_nodes": 511,
+        "n_edges": 764
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "kwargs": {
+        "n_rods": 510,
+        "rod_length": 2,
+        "directed": false
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "kwargs": {
+        "n_rods": 510,
+        "rod_length": 2,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_connected_graph",
+      "count": 500,
+      "kwargs": {
+        "n_nodes": 1023,
+        "n_edges": 1532
+      }
+    }
+  ]
+}

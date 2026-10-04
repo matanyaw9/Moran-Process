@@ -1,0 +1,806 @@
+{
+  "schema_version": 1,
+  "batch_name": "2026_09_08-check-star-non-monotonues-behavior",
+  "description": "Have star graphs of sizes 3-100 to see if indeed they behave in a non monotonous way. ",
+  "notes": "bla",
+  "zoo_seed": 45,
+  "sim": {
+    "r_values": [
+      1.1
+    ],
+    "n_repeats": 1000000,
+    "n_jobs": 200,
+    "batch_seed": 45,
+    "engine": "cpp",
+    "queue": "gsla-cpu",
+    "memory": "1GB",
+    "max_steps": 10000000000,
+    "post_batch": "all"
+  },
+  "specs": [
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 3,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 4,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 5,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 6,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 7,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 8,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 9,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 10,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 11,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 12,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 13,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 14,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 15,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 16,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 17,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 18,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 19,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 20,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 21,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 22,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 23,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 24,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 25,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 26,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 27,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 28,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 29,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 30,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 31,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 32,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 33,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 34,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 35,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 36,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 37,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 38,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 39,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 40,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 41,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 42,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 43,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 44,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 45,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 46,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 47,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 48,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 49,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 50,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 51,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 52,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 53,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 54,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 55,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 56,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 57,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 58,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 59,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 60,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 61,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 62,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 63,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 64,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 65,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 66,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 67,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 68,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 69,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 70,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 71,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 72,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 73,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 74,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 75,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 76,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 77,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 78,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 79,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 80,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 81,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 82,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 83,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 84,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 85,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 86,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 87,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 88,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 89,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 90,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 91,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 92,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 93,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 94,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 95,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 96,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 97,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 98,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 99,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 100,
+        "directed": false
+      }
+    }
+  ]
+}

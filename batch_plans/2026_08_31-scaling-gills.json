@@ -1,0 +1,124 @@
+{
+  "schema_version": 1,
+  "batch_name": "2026_08_31-scaling-gills",
+  "description": "See how gills lungs behave on different sizes compared to random graphs.",
+  "notes": "bla",
+  "zoo_seed": 45,
+  "sim": {
+    "r_values": [
+      1.1
+    ],
+    "n_repeats": 1000000,
+    "n_jobs": 1000,
+    "batch_seed": 45,
+    "engine": "cpp",
+    "queue": "gsla-cpu",
+    "memory": "1GB",
+    "max_steps": 100000000,
+    "post_batch": "all"
+  },
+  "specs": [
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "kwargs": {
+        "n_rods": 1,
+        "rod_length": 2,
+        "fillaments": 10
+      }
+    },
+    {
+      "factory": "random_connected_graph",
+      "count": 500,
+      "kwargs": {
+        "n_nodes": 23,
+        "n_edges": 22
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "kwargs": {
+        "n_rods": 3,
+        "rod_length": 2,
+        "fillaments": 10
+      }
+    },
+    {
+      "factory": "random_connected_graph",
+      "count": 500,
+      "kwargs": {
+        "n_nodes": 69,
+        "n_edges": 68
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "kwargs": {
+        "n_rods": 6,
+        "rod_length": 2,
+        "fillaments": 10
+      }
+    },
+    {
+      "factory": "random_connected_graph",
+      "count": 500,
+      "kwargs": {
+        "n_nodes": 138,
+        "n_edges": 137
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "kwargs": {
+        "n_rods": 11,
+        "rod_length": 2,
+        "fillaments": 10
+      }
+    },
+    {
+      "factory": "random_connected_graph",
+      "count": 500,
+      "kwargs": {
+        "n_nodes": 253,
+        "n_edges": 252
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "kwargs": {
+        "n_rods": 22,
+        "rod_length": 2,
+        "fillaments": 10
+      }
+    },
+    {
+      "factory": "random_connected_graph",
+      "count": 500,
+      "kwargs": {
+        "n_nodes": 506,
+        "n_edges": 505
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "kwargs": {
+        "n_rods": 44,
+        "rod_length": 2,
+        "fillaments": 10
+      }
+    },
+    {
+      "factory": "random_connected_graph",
+      "count": 500,
+      "kwargs": {
+        "n_nodes": 1012,
+        "n_edges": 1011
+      }
+    }
+  ]
+}

@@ -1,0 +1,407 @@
+{
+  "schema_version": 1,
+  "batch_name": "2026_09_02-scaling-more-shapes",
+  "description": "See how different shapes behave on different sizes compared to random graphs.",
+  "notes": "bla",
+  "zoo_seed": 45,
+  "sim": {
+    "r_values": [
+      1.1
+    ],
+    "n_repeats": 1000000,
+    "n_jobs": 1000,
+    "batch_seed": 45,
+    "engine": "cpp",
+    "queue": "gsla-cpu",
+    "memory": "1GB",
+    "max_steps": 10000000000,
+    "post_batch": "all"
+  },
+  "specs": [
+    {
+      "factory": "cycle_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 15,
+        "directed": false
+      }
+    },
+    {
+      "factory": "cycle_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 15,
+        "directed": true
+      }
+    },
+    {
+      "factory": "line_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 15,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 15,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 15,
+        "directed": true
+      }
+    },
+    {
+      "factory": "grid_graph",
+      "count": 1,
+      "kwargs": {
+        "width": 4,
+        "height": 4
+      }
+    },
+    {
+      "factory": "complete_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 15
+      }
+    },
+    {
+      "factory": "cycle_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 31,
+        "directed": false
+      }
+    },
+    {
+      "factory": "cycle_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 31,
+        "directed": true
+      }
+    },
+    {
+      "factory": "line_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 31,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 31,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 31,
+        "directed": true
+      }
+    },
+    {
+      "factory": "grid_graph",
+      "count": 1,
+      "kwargs": {
+        "width": 6,
+        "height": 6
+      }
+    },
+    {
+      "factory": "complete_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 31
+      }
+    },
+    {
+      "factory": "cycle_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 63,
+        "directed": false
+      }
+    },
+    {
+      "factory": "cycle_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 63,
+        "directed": true
+      }
+    },
+    {
+      "factory": "line_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 63,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 63,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 63,
+        "directed": true
+      }
+    },
+    {
+      "factory": "grid_graph",
+      "count": 1,
+      "kwargs": {
+        "width": 8,
+        "height": 8
+      }
+    },
+    {
+      "factory": "complete_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 63
+      }
+    },
+    {
+      "factory": "cycle_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 127,
+        "directed": false
+      }
+    },
+    {
+      "factory": "cycle_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 127,
+        "directed": true
+      }
+    },
+    {
+      "factory": "line_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 127,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 127,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 127,
+        "directed": true
+      }
+    },
+    {
+      "factory": "grid_graph",
+      "count": 1,
+      "kwargs": {
+        "width": 11,
+        "height": 11
+      }
+    },
+    {
+      "factory": "complete_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 127
+      }
+    },
+    {
+      "factory": "cycle_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 255,
+        "directed": false
+      }
+    },
+    {
+      "factory": "cycle_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 255,
+        "directed": true
+      }
+    },
+    {
+      "factory": "line_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 255,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 255,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 255,
+        "directed": true
+      }
+    },
+    {
+      "factory": "grid_graph",
+      "count": 1,
+      "kwargs": {
+        "width": 16,
+        "height": 16
+      }
+    },
+    {
+      "factory": "complete_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 255
+      }
+    },
+    {
+      "factory": "cycle_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 511,
+        "directed": false
+      }
+    },
+    {
+      "factory": "cycle_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 511,
+        "directed": true
+      }
+    },
+    {
+      "factory": "line_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 511,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 511,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 511,
+        "directed": true
+      }
+    },
+    {
+      "factory": "grid_graph",
+      "count": 1,
+      "kwargs": {
+        "width": 23,
+        "height": 23
+      }
+    },
+    {
+      "factory": "complete_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 511
+      }
+    },
+    {
+      "factory": "cycle_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 1023,
+        "directed": false
+      }
+    },
+    {
+      "factory": "cycle_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 1023,
+        "directed": true
+      }
+    },
+    {
+      "factory": "line_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 1023,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 1023,
+        "directed": false
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 1023,
+        "directed": true
+      }
+    },
+    {
+      "factory": "grid_graph",
+      "count": 1,
+      "kwargs": {
+        "width": 32,
+        "height": 32
+      }
+    },
+    {
+      "factory": "complete_graph",
+      "count": 1,
+      "kwargs": {
+        "n_nodes": 1023
+      }
+    }
+  ]
+}
