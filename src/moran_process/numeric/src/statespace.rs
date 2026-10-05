@@ -78,17 +78,6 @@ impl<T> StateSpace<T> {
         }
     }
 
-    pub fn reset_schedule(&mut self) {
-        *self.schedule.get_mut().unwrap() = Schedule {
-            changes: 0b1111,
-            sides: [Side {
-                epoch: 0,
-                queued: !0,
-                done: 0,
-            }; _],
-        };
-    }
-
     pub fn data(&mut self) -> &mut [T] {
         // SAFETY: `self.data` points to a valid, initialised `[T]` of the
         // correct length. Since the only ways to get access to `self.data`'s
@@ -97,7 +86,7 @@ impl<T> StateSpace<T> {
         unsafe { &mut *self.data }
     }
 
-    pub fn get_indexer(&self) -> Option<Indexer<'_, T>> {
+    pub fn indexer(&self) -> Option<Indexer<'_, T>> {
         self.create_indexer(self.schedule.lock().unwrap())
     }
 
