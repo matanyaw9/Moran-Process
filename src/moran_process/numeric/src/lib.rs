@@ -1,6 +1,6 @@
 pub mod graph;
 mod statespace;
-use crate::graph::{Graph, Phase};
+use crate::graph::Graph;
 use crate::statespace::StateSpace;
 use std::num::NonZero;
 use std::slice;
@@ -33,44 +33,28 @@ pub fn crunch(g: &Graph, thrds: usize, res: &mut [f32]) {
         0 => std::thread::available_parallelism().map_or(1, NonZero::get),
         _ => thrds,
     };
-    let mut space = StateSpace::new_with(g.len(), |i| match (1 << g.len()) - i {
-        1 => [1.0, 0.0],
-        _ => [0.0, 0.0],
+    let mut space = StateSpace::new_with(g.len(), |i| {
+        [(i == (1 << g.len()) - 1) as u32 as f32, 0.0, 0.0]
     });
-    let (p, t) = res.split_at_mut(g.len());
-    let (t, ct) = t.split_at_mut(g.len());
 
-    for phase in [Phase::First, Phase::Second] {
+    std::thread::scope(|s| {
         let cruncher = || {
-            let mut idxr = space.get_indexer();
+            let mut idxr = space.indexer();
             while let Some(mut i) = idxr {
-                let chng = g.step_division(phase, &mut i);
+                let chng = g.step_division(&mut i);
                 idxr = space.next_indexer(i, chng);
             }
         };
-        std::thread::scope(|s| {
-            for _ in 1..thrds {
-                s.spawn(cruncher);
-            }
-            cruncher();
-        });
-        match phase {
-            Phase::First => {
-                let data = space.data();
-                for (i, (p, t)) in p.iter_mut().zip(&mut *t).enumerate() {
-                    [*p, *t] = data[1 << i];
-                }
-                for datum in space.data() {
-                    datum[1] = 0.0;
-                }
-                space.reset_schedule();
-            }
-            Phase::Second => {
-                let data = space.data();
-                for (i, ct) in ct.iter_mut().enumerate() {
-                    *ct = data[1 << i][1] / data[1 << i][0];
-                }
-            }
+        for _ in 1..thrds {
+            s.spawn(cruncher);
         }
+        cruncher();
+    });
+
+    let data = space.data();
+    for i in 0..g.len() {
+        res[i] = data[1 << i][0];
+        res[g.len()..][i] = data[1 << i][1];
+        res[2 * g.len()..][i] = data[1 << i][2] / data[1 << i][0];
     }
 }
