@@ -1,10 +1,12 @@
 import numpy as np
+import pandas as pd
 import scipy.sparse as sp
 
 from moran_graphs import _engine
 
 WILD_TYPE = -1
 CENSORED = -2
+HIST_BINS = 257  # 4 bins per doubling of steps + 1, enough for any uint64
 
 
 def simulate(
@@ -49,3 +51,30 @@ def simulate(
     )
     return {"winner": winner, "steps": steps, "n_changes": n_changes, "censored": winner == CENSORED}
 
+
+def steps_bin(steps):
+    """Histogram bin of a step count: 4 bins per doubling, bin k starts at 2**(k/4) - 1."""
+    return np.floor(4 * np.log2(np.asarray(steps, dtype=np.float64) + 1)).astype(np.int64)
+
+
+def summarize(res):
+    """One row per winner value: count, mean and M2 (sum of squared deviations) of steps
+    and n_changes, min/max steps, and a histogram of steps. Mean and M2 let chunks be
+    combined exactly later (Chan et al.), without keeping the runs."""
+    rows = []
+    for w in np.unique(res["winner"]):
+        mask = res["winner"] == w
+        steps, changes = res["steps"][mask], res["n_changes"][mask]
+        s, c = steps.astype(np.float64), changes.astype(np.float64)
+        rows.append({
+            "winner": int(w),
+            "count": int(mask.sum()),
+            "steps_mean": s.mean(),
+            "steps_m2": ((s - s.mean()) ** 2).sum(),
+            "steps_min": int(steps.min()),
+            "steps_max": int(steps.max()),
+            "changes_mean": c.mean(),
+            "changes_m2": ((c - c.mean()) ** 2).sum(),
+            "steps_hist": np.bincount(steps_bin(steps), minlength=HIST_BINS).astype(np.uint32),
+        })
+    return pd.DataFrame(rows)

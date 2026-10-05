@@ -470,7 +470,7 @@ class PopulationGraph:
                 if any(nx.is_isomorphic(pg.graph, h) for h in bucket):
                     continue
                 bucket.append(pg.graph)
-            pg.name = f"{pg.name}_{len(graphs)}"
+            pg.name = f"{pg.name}_i{len(graphs)}"
             graphs.append(pg)
         else:
             if len(graphs) < M:
