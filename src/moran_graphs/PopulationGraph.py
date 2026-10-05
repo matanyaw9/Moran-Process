@@ -10,8 +10,8 @@ class PopulationGraph:
         self.category = category
 
     
-    @classmethod
-    def complete_graph(cls, n_nodes: int):
+    @classmethod    
+    def complete_graph(cls, n_nodes: int) -> "PopulationGraph":
         """
         Creates a Fully Connected graph (everyone connected to everyone).
         """
@@ -23,7 +23,7 @@ class PopulationGraph:
         )
 
     @classmethod
-    def cycle_graph(cls, n_nodes: int, directed: bool = False):
+    def cycle_graph(cls, n_nodes: int, directed: bool = False)-> "PopulationGraph":
         """
         Creates a ring graph.
 
@@ -45,7 +45,7 @@ class PopulationGraph:
         )
 
     @classmethod
-    def line_graph(cls, n_nodes: int, directed: bool = False):
+    def line_graph(cls, n_nodes: int, directed: bool = False)-> "PopulationGraph":
         """
         Args:
             n_nodes (int): Number of nodes in the chain.
@@ -65,14 +65,14 @@ class PopulationGraph:
 
     @classmethod
     def star_graph(
-        cls, n_nodes: int, directed: bool = False):
+        cls, n_nodes: int, directed: bool = False)-> "PopulationGraph":
         """
         Args:
             n_nodes (int): Total nodes (1 hub + n_nodes-1 leaves).
             directed (bool): If True, returns a DiGraph with edges hub -> leaf.
         """
         # nx.star_graph(k) produces k+1 nodes (hub + k leaves), so pass n_nodes-1.
-        # create_using=DiGraph emits exactly the (0, i) edges, i.e. hub -> leaf.
+        # create_using=DiGraph emits exactly the (0, i) edges, i.e. hub -> leaf.    
         G = nx.star_graph(n_nodes - 1, create_using=nx.DiGraph if directed else None)
 
         # Layout: hub at center, leaves on a unit circle
@@ -91,7 +91,7 @@ class PopulationGraph:
 
 
     @classmethod
-    def grid_graph(cls, width: int, height: int):
+    def grid_graph(cls, width: int, height: int)-> "PopulationGraph":
         """
         Creates a rectangular grid (2D lattice) of size width x height.
 
@@ -128,7 +128,7 @@ class PopulationGraph:
         branching_factor: int = 2,
         directed: bool = False,
         name=None,
-    ):
+    )-> "PopulationGraph":
         """Generates a tree shaped population graph mimicking mammalian lung topology.
 
         With directed=True every edge points parent -> child, i.e. The root is then the only source.
@@ -142,7 +142,7 @@ class PopulationGraph:
             branching_factor, depth, create_using=nx.DiGraph if directed else None
         )
         if name is None:
-            name = f"mammalian_b{branching_factor}_d{depth}",
+            name = f"mammalian_b{branching_factor}_d{depth}"
 
         pos = {}
         def assign_pos(node, x_min, x_max, cur_depth):
@@ -166,7 +166,6 @@ class PopulationGraph:
             G,
             name=name,
             category="Mammalian",
-            params={"branching": branching_factor, "depth": depth},
         )
 
     @classmethod
@@ -176,7 +175,7 @@ class PopulationGraph:
         l_parabronchi: int,
         directed: bool = False,
         name="avian",
-    ):
+    )-> "PopulationGraph": 
         """
         Generates a graph mimicking Avian Lungs topology.
 
@@ -254,7 +253,7 @@ class PopulationGraph:
         fillaments: int = 2,
         directed: bool = False,
         name="fish",
-    ):
+    )-> "PopulationGraph":
         """Generates a 'Comb' structure: Vertical arch, horizontal filaments.
 
         Each of the n_rods gill filaments hangs off the vertical arch as a chain of
@@ -368,7 +367,7 @@ class PopulationGraph:
         seed=None,
         max_tries: int = 100,
         mixing_steps: int | None = None,
-    ):
+    )-> "PopulationGraph":
         """
         Samples a graph uniformly from all CONNECTED labeled graphs with N nodes
         and E edges (a disconnected population can never fixate).
@@ -578,3 +577,7 @@ class PopulationGraph:
 
             ax.axis("off")
             return ax
+
+    def csr(self):
+        """W[i, j] = weight of edge i -> j (1 if unweighted); row i is node i."""
+        return nx.to_scipy_sparse_array(self.graph, format="csr")
