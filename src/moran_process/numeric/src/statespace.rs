@@ -1,29 +1,36 @@
 use crate::graph::Change;
+#[cfg(debug_assertions)]
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::{
     marker::PhantomData,
-    ops::{Index, IndexMut},
-    sync::{
-        Condvar, Mutex, MutexGuard,
-        atomic::{AtomicUsize, Ordering},
-    },
+    sync::{Condvar, Mutex, MutexGuard},
 };
 
 // TODO: see whether we can make the schedule lock-free
 
+// TODO: make all `StateSpace`'s contents live on the heap, remove
+// `next_indexer` and make it a consuming method on `Indexer`
 #[repr(align(64))]
 pub struct StateSpace<T> {
-    data: Box<[T]>,
+    /// This pointer is actually the guts of a `Box<[T]>`, we store it as raw
+    /// mutable pointer to allow shared mutable access to (disjoint parts of)
+    /// its contents, using more raw pointers.
+    data: *mut [T],
     schedule: Mutex<Schedule>,
     no_work: Condvar,
-
-    // Remove blanket `Send` and `Sync`, make invariant on `T`.
+    // No blanket `Send` and `Sync`, invariant on `T`.
     //
     // `StateSpace<T>` must be invariant on `T` since `&StateSpace<T>` is
     // covariant on `StateSpace<T>` and allows write access (by means of
-    // `get_indexer`). If `StateSpace<T>` were covariant on `T`, one could:
-    // `&StateSpace<Cat>` -> `&StateSpace<Animal>` -> `Indexer<'_, Animal>` and
-    // store an animal in a state-space of cats.
-    _ph: PhantomData<*mut T>,
+    // `get_indexer`). https://counterexamples.org/general-covariance.html
+}
+
+impl<T> Drop for StateSpace<T> {
+    fn drop(&mut self) {
+        // SAFETY: `self.data` was created via `Box::into_raw`, no other
+        // references to `self.data` exist at this point.
+        drop(unsafe { Box::from_raw(self.data) });
+    }
 }
 
 // SAFETY: `StateSpace<T>` acts as a container of `T`s; it therefore can only
@@ -35,30 +42,30 @@ unsafe impl<T: Send> Send for StateSpace<T> {}
 // and `&T`s (`T: Sync`) can be moved accross threads.
 unsafe impl<T: Send + Sync> Sync for StateSpace<T> {}
 
-pub struct Indexer<'s, T> {
-    // `!Send`, `!Sync`, invariant on `T`.
-
+pub struct Indexer<'space, T> {
     // TODO: think whether we can relax the `Send`/`Sync` constraints
     data: *mut T,
     log2_div_len: u8,
     division: u8,
-    _ph: PhantomData<&'s StateSpace<T>>,
+    _ph: PhantomData<&'space StateSpace<T>>,
+    // `!Send`, `!Sync`, invariant on `T`.
 }
 
-pub struct NeighbourIter<'i, T> {
-    // `!Send`, `!Sync`, invariant on `T`.
+pub struct Neighbours<'idxr, T> {
     data: *mut T,
     state: u64,
     curbit: u8,
     endbit: u8,
-    _ph: PhantomData<&'i [T]>,
+    _ph: PhantomData<&'idxr [T]>,
+    // `!Send`, `!Sync`, invariant on `T`.
 }
 
 impl<T> StateSpace<T> {
     pub fn new_with(size: usize, f: impl FnMut(usize) -> T) -> Self {
         assert!(size >= 8);
+        let data = Box::into_raw((0..1 << size).map(f).collect::<Vec<_>>().into_boxed_slice());
         Self {
-            data: (0..1 << size).map(f).collect::<Vec<_>>().into_boxed_slice(),
+            data,
             schedule: Mutex::new(Schedule {
                 changes: 0b1111,
                 sides: [Side {
@@ -68,7 +75,6 @@ impl<T> StateSpace<T> {
                 }; _],
             }),
             no_work: Condvar::new(),
-            _ph: PhantomData,
         }
     }
 
@@ -83,8 +89,12 @@ impl<T> StateSpace<T> {
         };
     }
 
-    pub fn all_data(&mut self) -> &mut [T] {
-        &mut self.data
+    pub fn data(&mut self) -> &mut [T] {
+        // SAFETY: `self.data` points to a valid, initialised `[T]` of the
+        // correct length. Since the only ways to get access to `self.data`'s
+        // contents are through this method, and other methods that take
+        // `&self`, we know no one else aliases the memory.
+        unsafe { &mut *self.data }
     }
 
     pub fn get_indexer(&self) -> Option<Indexer<'_, T>> {
@@ -92,13 +102,13 @@ impl<T> StateSpace<T> {
     }
 
     pub fn next_indexer(&self, idxr: Indexer<'_, T>, change: Change) -> Option<Indexer<'_, T>> {
-        assert!(std::ptr::eq(idxr.data, self.data.as_ptr()));
+        assert!(std::ptr::eq(idxr.data, self.data.cast()));
 
         let mut guard = self.schedule.lock().unwrap();
         let i = (idxr.division >= 0x80) as usize;
         guard.sides[i].done |= 1 << (idxr.division << 1 >> 2);
 
-        if change == Change::Significant {
+        if change == Change::Major {
             guard.changes |= 1 << i;
         }
         if guard.sides[i].done == !0 {
@@ -155,33 +165,11 @@ impl<T> StateSpace<T> {
         let log2_div_len = self.data.len().ilog2() as u8 - 8;
         let division = ((i as u32) << 7 | ctz << 1 | pairity) as u8;
         Some(Indexer {
-            // TODO: ensure writes via this pointer do not violate the aliasing
-            // model
-            data: self.data.as_ptr().cast_mut(),
+            data: self.data.cast(),
             log2_div_len,
             division,
             _ph: PhantomData,
         })
-    }
-}
-
-impl<'s, T> Index<u64> for Indexer<'s, T> {
-    type Output = T;
-
-    fn index(&self, idx: u64) -> &Self::Output {
-        assert!(idx >> self.log2_div_len == 0);
-        let idx = (self.division as usize) << self.log2_div_len ^ idx as usize;
-        // SAFETY: `idx` was asserted to be within bounds
-        unsafe { &*self.data.add(idx) }
-    }
-}
-
-impl<'s, T> IndexMut<u64> for Indexer<'s, T> {
-    fn index_mut(&mut self, idx: u64) -> &mut Self::Output {
-        assert!(idx >> self.log2_div_len == 0);
-        let idx = (self.division as usize) << self.log2_div_len ^ idx as usize;
-        // SAFETY: `idx` was asserted to be within bounds
-        unsafe { &mut *self.data.add(idx) }
     }
 }
 
@@ -190,15 +178,22 @@ impl<'s, T> Indexer<'s, T> {
         self.division
     }
 
-    pub fn div_size(&self) -> u64 {
+    pub fn div_len(&self) -> u64 {
         1 << self.log2_div_len
     }
 
-    pub fn neighbours(&mut self, state: u64) -> NeighbourIter<'_, T> {
-        assert!(state >> self.log2_div_len == 0);
-        NeighbourIter {
+    pub fn at(&mut self, idx: u64) -> &mut T {
+        assert!(idx >> self.log2_div_len == 0);
+        let idx = (self.division as usize) << self.log2_div_len ^ idx as usize;
+        // SAFETY: `idx` was asserted to be within bounds
+        unsafe { &mut *self.data.add(idx) }
+    }
+
+    pub fn neighbours(&mut self, idx: u64) -> Neighbours<'_, T> {
+        assert!(idx >> self.log2_div_len == 0);
+        Neighbours {
             data: self.data,
-            state: state | (self.division as u64) << self.log2_div_len,
+            state: idx | (self.division as u64) << self.log2_div_len,
             curbit: 0,
             endbit: self.log2_div_len + 8,
             _ph: PhantomData,
@@ -206,19 +201,18 @@ impl<'s, T> Indexer<'s, T> {
     }
 }
 
-impl<'i, T> Iterator for NeighbourIter<'i, T> {
+impl<'i, T> Iterator for Neighbours<'i, T> {
     type Item = &'i T;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.curbit < self.endbit {
-            let state = self.state as usize ^ 1 << self.curbit;
-            self.curbit += 1;
-            // SAFETY: `self` was constructed after the state was asserted to
-            // be in bounds
-            Some(unsafe { &*self.data.add(state) })
-        } else {
-            None
+        if self.curbit >= self.endbit {
+            return None;
         }
+        let state = self.state as usize ^ 1 << self.curbit;
+        self.curbit += 1;
+        // SAFETY: `self` was constructed after the state was asserted to be in
+        // bounds
+        Some(unsafe { &*self.data.add(state) })
     }
 }
 

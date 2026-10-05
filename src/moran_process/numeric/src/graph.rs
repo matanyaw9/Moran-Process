@@ -20,15 +20,7 @@ pub enum Change {
     /// No vector entry greatly changed values.
     Minor,
     /// Some vector entry was changed significantly.
-    Significant,
-}
-
-impl std::ops::BitOrAssign for Change {
-    fn bitor_assign(&mut self, rhs: Self) {
-        if *self == Change::Minor {
-            *self = rhs;
-        }
-    }
+    Major,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -114,70 +106,64 @@ impl Graph {
         self.len() == 0
     }
 
-    // TODO: update docs
-    /// Run a single Gauss-Siedel step through the `idx`th division, out of 256
-    /// (zero-indexed), entries are updates in an arbitrary order. Does not
-    /// update the very first, or very last entries of the data, if the section
-    /// given is `0` or `255` respectively.
+    /// Runs a single Gauss-Siedel step through all elements in `indexer`'s
+    /// range, entries are updated in an arbitrary order. Does not update the
+    /// very first, or very last entries in the state-space, if they happen to
+    /// be included in `indexer`'s range.
     ///
-    /// Returns whether any entry was changed enough so as to be counted as
-    /// "significant".
-    pub fn step_division(&self, phase: Phase, idxr: &mut Indexer<'_, [f32; 2]>) -> Change {
+    /// Returns whether any entry was changed significantly.
+    pub fn step_division(&self, phase: Phase, indexer: &mut Indexer<'_, [f32; 2]>) -> Change {
         assert!(self.size >= 8);
 
-        let topbits = idxr.div_idx() as u64 * idxr.div_size();
+        let topbits = indexer.div_idx() as u64 * indexer.div_len();
         let mut weights = [0.0; _];
         {
             let mut s = topbits;
             while s != 0 {
-                let idx = s.trailing_zeros() as usize;
+                let bit = s.trailing_zeros() as usize;
                 s &= s - 1;
-                self.adjust_neighbours(&mut weights, topbits - s, idx);
+                self.adjust_neighbours(&mut weights, topbits - s, bit);
             }
         }
 
-        let mut chng = match idxr.div_idx() {
+        let mut chng = match indexer.div_idx() {
             0 => Change::Minor,
-            _ => self.update_entries(phase, &weights, idxr, 0),
+            _ => self.update_entries(phase, &weights, indexer, 0),
         };
-        let last = idxr.div_idx() == 0xff;
-        let twothirds = 2 * idxr.div_size() / 3;
-
-        for i in 1..if last { twothirds } else { idxr.div_size() } {
-            let state = i ^ i >> 1;
-            self.adjust_neighbours(&mut weights, state | topbits, i.trailing_zeros() as usize);
-            chng |= self.update_entries(phase, &weights, idxr, state);
-        }
-        if !last {
-            return chng;
-        }
-        std::hint::cold_path();
-        weights.fill(0.0);
-        for i in twothirds + 1..idxr.div_size() {
-            let state = i ^ i >> 1;
-            self.adjust_neighbours(&mut weights, state | topbits, i.trailing_zeros() as usize);
-            chng |= self.update_entries(phase, &weights, idxr, state);
+        for i in 1..indexer.div_len() {
+            let bit = i.trailing_zeros() as usize;
+            let i = i ^ i >> 1;
+            if indexer.div_idx() == 0xff && i == indexer.div_len() - 1 {
+                std::hint::cold_path();
+                weights.fill(0.0);
+                continue;
+            }
+            self.adjust_neighbours(&mut weights, topbits | i, bit);
+            match self.update_entries(phase, &weights, indexer, i) {
+                Change::Minor => {}
+                Change::Major => chng = Change::Major,
+            }
         }
         chng
     }
 
     /// Assuming `weights` describe the transition probabilities from
-    /// `state ^ (1 << idx)`, adjusts the weights to the transition
+    /// `state ^ (1 << bit)`, adjusts the weights to the transition
     /// probabilities of `state`.
-    fn adjust_neighbours(&self, weights: &mut [f32; 63], state: u64, idx: usize) {
+    fn adjust_neighbours(&self, weights: &mut [f32; 63], state: u64, bit: usize) {
         debug_assert!(state < 1 << self.size);
-        debug_assert!(idx < self.size);
+        debug_assert!(bit < self.size);
 
-        let mut adjs = self.adjs[idx];
-        let vuln = self.vulns[idx];
+        let mut adjs = self.adjs[bit];
+        let vuln = self.vulns[bit];
 
-        let epidemic = (state >> idx) & 1 != 0;
+        let epidemic = (state >> bit) & 1 != 0;
         let x = if epidemic { -1.0 } else { 1.0 } / adjs.count_ones() as f32;
         let y = -self.r * x;
-        weights[idx] = if epidemic {
-            vuln - weights[idx] / self.r
+        weights[bit] = if epidemic {
+            vuln - weights[bit] / self.r
         } else {
-            (vuln - weights[idx]) * self.r
+            (vuln - weights[bit]) * self.r
         };
         while adjs != 0 {
             let adj = adjs.trailing_zeros() as usize;
@@ -186,34 +172,35 @@ impl Graph {
         }
     }
 
-    /// Updates the probability and time entries at index `state` using the
-    /// transition probabilities in `weights`. Returns whether the change was
-    /// big enough to be counted as "significant".
+    /// Updates entry `indexer.at(idx)` using the transition probabilities in
+    /// `weights`, which are assumed to match the indexed entry.
+    ///
+    /// Returns whether the change was large enough to be judged significant.
     fn update_entries(
         &self,
         phase: Phase,
         weights: &[f32; 63],
-        idxr: &mut Indexer<'_, [f32; 2]>,
-        state: u64,
+        indexer: &mut Indexer<'_, [f32; 2]>,
+        idx: u64,
     ) -> Change {
         const OVER_RLX: f32 = 1.5;
 
-        debug_assert!(state < 1 << self.size);
+        debug_assert!(idx < 1 << self.size);
 
         let w = &weights[..self.size];
         let w_sum = w.iter().sum::<f32>();
 
         let p = match phase {
             Phase::First => {
-                let prev_prob = idxr[state][0];
+                let prev_prob = indexer.at(idx)[0];
                 let delta_prob = OVER_RLX
                     * (w.iter()
-                        .zip(idxr.neighbours(state))
+                        .zip(indexer.neighbours(idx))
                         .map(|(w, [p, _])| w * p)
                         .sum::<f32>()
                         / w_sum
                         - prev_prob);
-                idxr[state][0] = prev_prob + delta_prob;
+                indexer.at(idx)[0] = prev_prob + delta_prob;
                 prev_prob
                     .to_bits()
                     .abs_diff((prev_prob + delta_prob).to_bits())
@@ -221,26 +208,26 @@ impl Graph {
             Phase::Second => 0,
         };
 
-        let prev_time = idxr[state][1];
+        let prev_time = indexer.at(idx)[1];
         let delta_time = OVER_RLX
             * (w.iter()
-                .zip(idxr.neighbours(state))
+                .zip(indexer.neighbours(idx))
                 .map(|(w, [_, t])| w * t)
                 .sum::<f32>()
                 .algebraic_add(
                     match phase {
                         Phase::First => 1.0,
-                        Phase::Second => idxr[state][0],
+                        Phase::Second => indexer.at(idx)[0],
                     }
                     .algebraic_mul(
                         self.size as f32
                             + (self.r - 1.0)
-                                * (state.count_ones() + idxr.div_idx().count_ones()) as f32,
+                                * (idx.count_ones() + indexer.div_idx().count_ones()) as f32,
                     ),
                 )
                 / w_sum
                 - prev_time);
-        idxr[state][1] = prev_time + delta_time;
+        indexer.at(idx)[1] = prev_time + delta_time;
 
         // A change is regarded as significant if the ULP difference between
         // the old and new values is greater than or equal to `0x40`.
@@ -250,7 +237,7 @@ impl Graph {
             .max(p)
         {
             ..0x40 => Change::Minor,
-            _ => Change::Significant,
+            _ => Change::Major,
         }
     }
 }

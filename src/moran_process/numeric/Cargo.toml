@@ -15,7 +15,7 @@ path = "src/lib.rs"
 crate-type = ["lib", "cdylib"]
 
 [[bin]]
-name = "numeric_cli"
+name = "numeric-cli"
 path = "src/main.rs"
 
 [dependencies]

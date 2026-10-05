@@ -33,12 +33,9 @@ pub fn crunch(g: &Graph, thrds: usize, res: &mut [f32]) {
         0 => std::thread::available_parallelism().map_or(1, NonZero::get),
         _ => thrds,
     };
-    let mut space = StateSpace::new_with(g.len(), |i| {
-        if i == (1 << g.len()) - 1 {
-            [1.0, 0.0]
-        } else {
-            [0.0, 0.0]
-        }
+    let mut space = StateSpace::new_with(g.len(), |i| match (1 << g.len()) - i {
+        1 => [1.0, 0.0],
+        _ => [0.0, 0.0],
     });
     let (p, t) = res.split_at_mut(g.len());
     let (t, ct) = t.split_at_mut(g.len());
@@ -59,17 +56,17 @@ pub fn crunch(g: &Graph, thrds: usize, res: &mut [f32]) {
         });
         match phase {
             Phase::First => {
-                let data = space.all_data();
+                let data = space.data();
                 for (i, (p, t)) in p.iter_mut().zip(&mut *t).enumerate() {
                     [*p, *t] = data[1 << i];
                 }
-                for datum in space.all_data() {
+                for datum in space.data() {
                     datum[1] = 0.0;
                 }
                 space.reset_schedule();
             }
             Phase::Second => {
-                let data = space.all_data();
+                let data = space.data();
                 for (i, ct) in ct.iter_mut().enumerate() {
                     *ct = data[1 << i][1] / data[1 << i][0];
                 }
