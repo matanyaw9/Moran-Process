@@ -1,10 +1,10 @@
 
-# Reviewer brief: lung-selection
+# Brief: lung-selection
 
-You are reviewing code in `lung-selection`, the rewrite of an MSc thesis codebase
-(Weizmann, Computational Biology). I write the code myself. Your job is to REVIEW, not
-to write it: explain problems, point to `file:line`, suggest the fix in words or a short
-snippet, and let me apply it. Do not rewrite whole functions unless I ask.
+`lung-selection` is the rewrite of an MSc thesis codebase (Weizmann, Computational
+Biology). You both write and review code here. When I ask for a review, point to
+`file:line`, explain the problem, and suggest the fix; do not rewrite unless I ask.
+When I ask for code, follow "Writing code" below.
 
 ## Research question
 Do respiratory topologies (mammalian lungs, including asymmetric and mouse variants;
@@ -15,16 +15,18 @@ death-Birth (dB) updating. Paper draft due mid-November 2026.
 
 ## Layout (the whole package; keep it this small)
 ```
-src/lungsel/
-  graph.py       # Graph dataclass + every factory (lungs, avian, fish, random, ...)
-  properties.py  # structural metrics as pure functions of a Graph
-  engine.py      # simulate() -> C++ core, exact() -> Rust solver; same output columns
-  plan.py        # batch plans: JSON recipes, seeding, zoo building, dedup
-  hpc.py         # one LSF array submitter + aggregation
-  plots.py       # one function per paper figure, each takes a tidy DataFrame
-  _cpp/          # Moran hot loop (pybind11)
-  _rust/         # exact solver for small N
+src/moran_graphs/
+  PopulationGraph.py  # Graph dataclass + every factory (lungs, avian, fish, random, ...)
+  properties.py       # structural metrics as pure functions of a Graph
+  engine.py           # simulate() and (later) exact(); same output columns
+  plan.py             # batch plans: JSON recipes, seeding, zoo building, dedup
+  hpc.py              # one LSF array submitter + aggregation
+  plots.py            # (planned) one function per paper figure, takes a tidy DataFrame
+rust/                 # current Moran simulation engine (pyo3)
 ```
+Possible later ports from the old repo (tag `v1-archive`), only when I ask: the C++
+Moran simulation (pybind11) as a faster `simulate()` backend, and the Rust exact
+solver for small N behind `exact()`. Until then, `simulate()` runs on `rust/`.
 Data lives outside the repo (path from config), never inside it.
 
 ## Core design decisions (flag code that breaks these)
@@ -75,46 +77,18 @@ Data lives outside the repo (path from config), never inside it.
   statistics), explain the alternatives and wait for my answer.
 - Do not run heavy computations. Ask before running anything beyond a quick unit test.
 
-## Out of scope unless I ask
-GA search and ML predictors (archived in v1 at tag `v1-archive`, figures pinned to
-commits there). Null-step skipping (Chatterjee et al.) is a possible later engine, not now.
-
-## Review output format
-1. Correctness bugs (with a concrete failing input), most severe first.
-2. Violations of the design decisions above.
-3. Simplifications.
-Keep each item to a few lines. If nothing is wrong, say so.
-
-  notebooks. A reader raises if its file is missing; it never computes silently.
-
-## Correctness checklist (highest priority in review)
-- **Statistics**: rho and time must match the archived v1 engine within Monte Carlo
-  error on the validation graphs (complete, cycle, star, one lung, one random).
-  The exact solver must match simulation on the same graphs, including directed ones.
-- **Censoring**: a run that hits `max_steps` is recorded as `censored=True`, never as
-  an extinction. Mean time is conditional on fixation; say so wherever it is computed.
-- **Seeding**: every random draw traces back to a seed recorded in the output.
-- **Update rules**: Bd = pick reproducer by fitness, then neighbor by W row.
-  dB = pick dying node uniformly, then parent among in-neighbors by fitness x weight.
-  Check that the direction of W is used consistently in both.
-- **Out-degree 0** (directed graphs): a wasted step, not an error, in every engine.
-
-## Known infrastructure lessons (WEXAC / LSF)
-- The login node kills CPU-heavy processes (exit 144). Nothing heavy runs outside bsub/inode.
-- `/tmp` is node-local: bsub scripts and `-o/-e` paths go under /home/labs.
-- SSUSP is not a terminal state; short-queue jobs get preempted and restart from scratch.
-- Pipe bsub scripts on stdin; command strings get re-evaluated and mangled.
-- Never fuse result shards into one Parquet file (polars u32 row limit); scan as a glob.
-
-## Style rules
-- Keep it simple. Flag over-engineering: unneeded classes, config layers, compatibility
-  shims, abstractions with one caller. No legacy support for v1 batches.
-- No new files or modules without a stated reason.
-- Match the surrounding code; comments explain *why*, briefly.
-- Never use em dashes.
-- Before suggesting a change that involves a design decision (algorithm, filtering,
-  statistics), explain the alternatives and wait for my answer.
-- Do not run heavy computations. Ask before running anything beyond a quick unit test.
+## Writing code
+Simple is best. The simplest code that is correct and fast wins.
+- Clear names that say what a thing is (`fixation_prob`, not `fp` or `res`). No
+  abbreviations except standard ones (`W`, `r`, `N`, `rng`).
+- Short, flat functions. Plain functions over classes; a class only when it holds state.
+- Comments only where the code cannot say it: a non-obvious *why*, a formula's source.
+  No docstrings that restate the signature, no section banners, no commented-out code.
+- Fast by default: vectorize with numpy/scipy, keep hot loops in the compiled engine,
+  no needless copies or Python loops over nodes or repeats.
+- No defensive checks for cases that cannot happen, no unused parameters, no
+  "for future use" hooks. Fail loudly on bad input instead of guessing.
+- Smallest diff that does the job. Touch only what the task needs.
 
 ## Out of scope unless I ask
 GA search and ML predictors (archived in v1 at tag `v1-archive`, figures pinned to
@@ -125,9 +99,3 @@ commits there). Null-step skipping (Chatterjee et al.) is a possible later engin
 2. Violations of the design decisions above.
 3. Simplifications.
 Keep each item to a few lines. If nothing is wrong, say so.
-
-★ Insight ─────────────────────────────────────
-- The brief states what the code must preserve (design decisions, the correctness checklist) and says very little about how it is implemented. That keeps it valid while the code changes. The old CLAUDE.md described implementations, so every refactor made it stale.
-- The "REVIEW, not write" framing at the top is doing the real work for your fluency goal. Without it, a reviewing agent tends to hand back rewritten code, and you're back to not knowing your own repo.
-- The one line with weight: the dB definition mentions in-neighbors. On a directed W, "who can replace me" and "whom can I replace" differ, and that is exactly the kind of bug that stays silent on undirected graphs and only shows up on directed ones.
-  ─────────────────────────────────────────────────
