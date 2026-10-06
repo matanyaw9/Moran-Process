@@ -34,5 +34,6 @@ cache-keys = [{ file = "pyproject.toml" }, { file = "rust/Cargo.toml" }, { file 
 
 [dependency-groups]
 dev = [
+    "nbstripout>=0.9.1",
     "pytest>=9.1.1",
 ]
