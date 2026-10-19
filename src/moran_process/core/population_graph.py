@@ -1188,6 +1188,12 @@ class PopulationGraph:
 
         return graph_obj
 
+@staticmethod
+def calc_star_statistics(n_nodes, fitness) -> pd.array:
+    """ Return the analytical solution for time and prob of fixation for star graph"""
+    prob = (1-1/fitness**2) /  (1-1/fitness**(2*n_nodes))
+    
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Register graphs in the database.")

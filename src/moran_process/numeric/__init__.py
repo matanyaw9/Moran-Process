@@ -1,1 +1,1 @@
-from .wrapper import fixation_prob, absorb_time
+from .wrapper import compute
