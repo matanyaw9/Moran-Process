@@ -9,6 +9,7 @@ stack. Each name is resolved (and cached) on first access, so the flat API
 """
 
 import importlib
+from moran_process.core.population_graph import PopulationGraph
 
 # Public name -> "submodule:attribute". Nothing here is imported until accessed.
 _LAZY_EXPORTS = {

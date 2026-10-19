@@ -4,7 +4,6 @@ import os.path
 import numpy as np
 import numpy.typing as npt
 import datetime as dt
-# from warnings import deprecated
 from dataclasses import dataclass
 from moran_process.core.graph_core import GraphCore
 
@@ -83,30 +82,3 @@ def compute(
         time=res[g.n_nodes : 2 * g.n_nodes],
         ctime=res[2 * g.n_nodes :],
     )
-
-
-# @deprecated("use the more general `compute`")
-def fixation_prob(
-    g: GraphCore,
-    selection_cffnt: float,
-    thrds: int = 0,
-) -> npt.NDArray[np.float32]:
-    compute(g, selection_cffnt, thrds).prob
-
-
-# @deprecated("use the more general `compute`")
-def absorb_time(
-    g: GraphCore,
-    selection_cffnt: float,
-    thrds: int = 0,
-) -> npt.NDArray[np.float32]:
-    compute(g, selection_cffnt, thrds).time
-
-
-# @deprecated("use the more general `compute`")
-def fixation_time(
-    g: GraphCore,
-    selection_cffnt: float,
-    thrds: int = 0,
-) -> npt.NDArray[np.float32]:
-    compute(g, selection_cffnt, thrds).ctime
