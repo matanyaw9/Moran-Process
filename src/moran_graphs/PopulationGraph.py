@@ -1,5 +1,55 @@
+from collections import Counter
+from math import comb
+
 import networkx as nx
 import numpy as np
+
+TRACHEA_DIAMETER_MM = 20.0  # Kundu & Panchagnula 2023, Methods
+
+
+def _bronchiole_diameter(n_major, n_minor, flow_ratio):
+    """Diameter after n_major major and n_minor minor branchings (Kundu & Panchagnula
+    2023, Eq. 8 with Hess-Murray n = 3). Every bronchiole with the same counts has
+    the same diameter, whatever the order of the branchings.
+
+    Computed from the counts rather than multiplied down the path, and rounded, so
+    equal counts give identical floats and ties (all of them at flow_ratio = 0.5)
+    fall on the same side of the cut-off.
+    """
+    diameter = (
+        TRACHEA_DIAMETER_MM
+        * (1 - flow_ratio) ** (n_major / 3)
+        * flow_ratio ** (n_minor / 3)
+    )
+    return round(diameter, 9)
+
+
+def _cutoff_for_size(flow_ratio, n_nodes):
+    """The cut-off diameter whose tree has the node count closest to n_nodes.
+
+    The tree keeps every bronchiole with diameter >= cut-off, and C(a + b, a) of them
+    have a major and b minor branchings. Lowering the cut-off past a diameter adds
+    all of those bronchioles at once, so N grows in jumps and n_nodes itself may be
+    unreachable.
+    """
+    floor = TRACHEA_DIAMETER_MM * 1e-4  # far below any tree size we simulate
+    count_by_diameter = Counter()
+    n_major = 0
+    while _bronchiole_diameter(n_major, 0, flow_ratio) >= floor:
+        n_minor = 0
+        while (diameter := _bronchiole_diameter(n_major, n_minor, flow_ratio)) >= floor:
+            count_by_diameter[diameter] += comb(n_major + n_minor, n_major)
+            n_minor += 1
+        n_major += 1
+
+    total, best_cutoff, best_total = 0, None, None
+    for diameter in sorted(count_by_diameter, reverse=True):
+        total += count_by_diameter[diameter]
+        if best_total is None or abs(total - n_nodes) < abs(best_total - n_nodes):
+            best_cutoff, best_total = diameter, total
+        if total > n_nodes:
+            return best_cutoff
+    raise ValueError(f"no tree with flow_ratio={flow_ratio} reaches {n_nodes} nodes")
 
 class PopulationGraph:
     "Container of networkx graph. Used for respiratory graph factories."
@@ -167,6 +217,64 @@ class PopulationGraph:
             name=name,
             category="Mammalian",
         )
+
+    @classmethod
+    def asymmetric_lung_graph(
+        cls,
+        flow_ratio: float = 0.326,
+        cutoff_diameter: float | None = None,
+        n_nodes: int | None = None,
+        directed: bool = False,
+    ) -> "PopulationGraph":
+        """Asymmetric bronchial tree of Kundu & Panchagnula 2023 (Sci Rep 13:9040).
+
+        Every bronchiole splits into a major and a minor daughter, which carry
+        1 - flow_ratio and flow_ratio of its air flow. A bronchiole narrower than
+        cutoff_diameter is not added, so the tree ends where the airways get too thin
+        and the major side reaches deeper generations than the minor side.
+        flow_ratio = 0.5 is symmetric and gives a complete binary tree, the same graph
+        as mammalian_lung_graph(depth); the default 0.326 is the human value.
+
+        Give either cutoff_diameter (mm, trachea = 20 mm) or n_nodes, which picks the
+        cut-off whose tree size is closest; the result may miss n_nodes because N
+        grows in jumps (see _cutoff_for_size).
+
+        Nodes are bronchioles, node 0 is the trachea, and each stores its diameter.
+        With directed=True edges point parent -> child, as in mammalian_lung_graph.
+        """
+        if (cutoff_diameter is None) == (n_nodes is None):
+            raise ValueError("pass exactly one of cutoff_diameter, n_nodes")
+        if not 0 < flow_ratio <= 0.5:
+            raise ValueError(f"flow_ratio must be in (0, 0.5], got {flow_ratio}")
+        if n_nodes is not None:
+            cutoff_diameter = _cutoff_for_size(flow_ratio, n_nodes)
+
+        G = nx.DiGraph() if directed else nx.Graph()
+        G.add_node(0, diameter=TRACHEA_DIAMETER_MM, pos=np.array([50.0, 0.0]))
+        # Depth-first build. Each entry is a node, its branching counts and its slice
+        # of the x axis for drawing, which its two daughters split in half.
+        stack = [(0, 0, 0, 0.0, 100.0)]
+        while stack:
+            parent, n_major, n_minor, x_min, x_max = stack.pop()
+            x_mid = (x_min + x_max) / 2
+            daughters = [
+                (n_major + 1, n_minor, x_min, x_mid),
+                (n_major, n_minor + 1, x_mid, x_max),
+            ]
+            for child_major, child_minor, child_x_min, child_x_max in daughters:
+                diameter = _bronchiole_diameter(child_major, child_minor, flow_ratio)
+                if diameter < cutoff_diameter:
+                    continue
+                child = G.number_of_nodes()
+                generation = child_major + child_minor
+                pos = np.array([(child_x_min + child_x_max) / 2, -generation])
+                G.add_node(child, diameter=diameter, pos=pos)
+                G.add_edge(parent, child)
+                stack.append((child, child_major, child_minor, child_x_min, child_x_max))
+
+        prefix = "directed_asymmetric_lung" if directed else "asymmetric_lung"
+        name = f"{prefix}_f{flow_ratio}_n{G.number_of_nodes()}"
+        return cls(G, name=name, category="Asymmetric lung")
 
     @classmethod
     def avian_graph(
