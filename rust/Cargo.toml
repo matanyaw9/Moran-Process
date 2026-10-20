@@ -1,11 +1,15 @@
 [package]
 name = "moran_engine"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 
 [lib]
 name = "_engine"
 crate-type = ["cdylib"]
+
+[[bin]]
+name = "sim-cli"
+path = "src/main.rs"
 
 # Off by default so `cargo test` builds the pure-Rust core without Python.
 [features]

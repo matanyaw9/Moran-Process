@@ -5,8 +5,8 @@
 
 use std::ops::Range;
 
-pub const WILD_TYPE: i8 = -1;
-pub const CENSORED: i8 = -2;
+pub const WILD_TYPE: i8 = -1;   
+pub const CENSORED: i8 = -2; // TODO might be wasteful, we can see n_steps
 
 /// One run: winner (mutant k, WILD_TYPE or CENSORED), Moran steps, and n_changes, the
 /// steps in which a node changed type. Both engines give all three the same distribution.
@@ -14,7 +14,7 @@ type Outcome = (i8, u64, u64);
 
 /// Outcomes of all runs, one column each, so they map straight onto numpy arrays.
 #[derive(Default)]
-pub struct Runs {
+pub struct Runs {  // TODO Those Vecs can be boxes, since we know how many runs we do.
     pub winner: Vec<i8>,
     pub steps: Vec<u64>,
     pub n_changes: Vec<u64>,
