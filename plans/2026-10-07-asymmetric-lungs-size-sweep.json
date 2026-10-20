@@ -1,0 +1,1344 @@
+{
+  "batch_name": "2026-10-07-asymmetric-lungs-size-sweep",
+  "description": "asymmetric lungs, flow_ratio 0.1 to 0.5 by 0.05 and 0.326, n_nodes 15 to 1023",
+  "zoo_seed": 3,
+  "batch_seed": 3,
+  "sim": {
+    "update_rule": "Bd",
+    "r_values": [
+      1.1
+    ],
+    "n_repeats": 100000,
+    "max_steps": 10000000000,
+    "keep_runs": false,
+    "chunk_target_steps": 10000000000.0
+  },
+  "lsf": {
+    "n_workers": 1000,
+    "queue": "gsla-cpu",
+    "memory_mb": 2000,
+    "big_memory_mb": 8000
+  },
+  "specs": [
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.1,
+        "n_nodes": 15
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.15,
+        "n_nodes": 15
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.2,
+        "n_nodes": 15
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.25,
+        "n_nodes": 15
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.3,
+        "n_nodes": 15
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.326,
+        "n_nodes": 15
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.35,
+        "n_nodes": 15
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.4,
+        "n_nodes": 15
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.45,
+        "n_nodes": 15
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.5,
+        "n_nodes": 15
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.1,
+        "n_nodes": 31
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.15,
+        "n_nodes": 31
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.2,
+        "n_nodes": 31
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.25,
+        "n_nodes": 31
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.3,
+        "n_nodes": 31
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.326,
+        "n_nodes": 31
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.35,
+        "n_nodes": 31
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.4,
+        "n_nodes": 31
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.45,
+        "n_nodes": 31
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.5,
+        "n_nodes": 31
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.1,
+        "n_nodes": 63
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.15,
+        "n_nodes": 63
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.2,
+        "n_nodes": 63
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.25,
+        "n_nodes": 63
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.3,
+        "n_nodes": 63
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.326,
+        "n_nodes": 63
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.35,
+        "n_nodes": 63
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.4,
+        "n_nodes": 63
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.45,
+        "n_nodes": 63
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.5,
+        "n_nodes": 63
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.1,
+        "n_nodes": 127
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.15,
+        "n_nodes": 127
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.2,
+        "n_nodes": 127
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.25,
+        "n_nodes": 127
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.3,
+        "n_nodes": 127
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.326,
+        "n_nodes": 127
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.35,
+        "n_nodes": 127
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.4,
+        "n_nodes": 127
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.45,
+        "n_nodes": 127
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.5,
+        "n_nodes": 127
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.1,
+        "n_nodes": 255
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.15,
+        "n_nodes": 255
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.2,
+        "n_nodes": 255
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.25,
+        "n_nodes": 255
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.3,
+        "n_nodes": 255
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.326,
+        "n_nodes": 255
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.35,
+        "n_nodes": 255
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.4,
+        "n_nodes": 255
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.45,
+        "n_nodes": 255
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.5,
+        "n_nodes": 255
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.1,
+        "n_nodes": 511
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.15,
+        "n_nodes": 511
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.2,
+        "n_nodes": 511
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.25,
+        "n_nodes": 511
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.3,
+        "n_nodes": 511
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.326,
+        "n_nodes": 511
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.35,
+        "n_nodes": 511
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.4,
+        "n_nodes": 511
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.45,
+        "n_nodes": 511
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.5,
+        "n_nodes": 511
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.1,
+        "n_nodes": 1023
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.15,
+        "n_nodes": 1023
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.2,
+        "n_nodes": 1023
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.25,
+        "n_nodes": 1023
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.3,
+        "n_nodes": 1023
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.326,
+        "n_nodes": 1023
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.35,
+        "n_nodes": 1023
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.4,
+        "n_nodes": 1023
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.45,
+        "n_nodes": 1023
+      }
+    },
+    {
+      "factory": "asymmetric_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "flow_ratio": 0.5,
+        "n_nodes": 1023
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 10,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 15,
+        "n_edges": 14
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 10,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 14,
+        "n_edges": 13
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 10,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 16,
+        "n_edges": 15
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 10,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 13,
+        "n_edges": 12
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 10,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 31,
+        "n_edges": 30
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 10,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 28,
+        "n_edges": 27
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 10,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 32,
+        "n_edges": 31
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 10,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 33,
+        "n_edges": 32
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 10,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 65,
+        "n_edges": 64
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 10,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 62,
+        "n_edges": 61
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 10,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 59,
+        "n_edges": 58
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 10,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 60,
+        "n_edges": 59
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 10,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 63,
+        "n_edges": 62
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 10,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 64,
+        "n_edges": 63
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 10,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 126,
+        "n_edges": 125
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 10,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 120,
+        "n_edges": 119
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 10,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 132,
+        "n_edges": 131
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 10,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 127,
+        "n_edges": 126
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 10,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 129,
+        "n_edges": 128
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 10,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 119,
+        "n_edges": 118
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 10,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 134,
+        "n_edges": 133
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 10,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 128,
+        "n_edges": 127
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 10,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 252,
+        "n_edges": 251
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 10,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 256,
+        "n_edges": 255
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 10,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 262,
+        "n_edges": 261
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 10,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 264,
+        "n_edges": 263
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 10,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 272,
+        "n_edges": 271
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 10,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 242,
+        "n_edges": 241
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 10,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 238,
+        "n_edges": 237
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 10,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 263,
+        "n_edges": 262
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 10,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 255,
+        "n_edges": 254
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 10,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 511,
+        "n_edges": 510
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 10,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 507,
+        "n_edges": 506
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 10,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 517,
+        "n_edges": 516
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 10,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 487,
+        "n_edges": 486
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 10,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 475,
+        "n_edges": 474
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 10,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 525,
+        "n_edges": 524
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 10,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 518,
+        "n_edges": 517
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 10,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 552,
+        "n_edges": 551
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 10,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 520,
+        "n_edges": 519
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 10,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 1015,
+        "n_edges": 1014
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 10,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 964,
+        "n_edges": 963
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 10,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 1029,
+        "n_edges": 1028
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 10,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 1035,
+        "n_edges": 1034
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 10,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 966,
+        "n_edges": 965
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 10,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 1018,
+        "n_edges": 1017
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 10,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 1004,
+        "n_edges": 1003
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 10,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 1014,
+        "n_edges": 1013
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 10,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 1070,
+        "n_edges": 1069
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 10,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 1023,
+        "n_edges": 1022
+      }
+    }
+  ]
+}

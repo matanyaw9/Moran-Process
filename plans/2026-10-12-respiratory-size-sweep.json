@@ -1,0 +1,1480 @@
+{
+  "batch_name": "2026-10-12-respiratory-size-sweep",
+  "description": "complete, grid, cycle, line, star, mammal, avian, fish (+ directed) and random matches, N 15 to 1023",
+  "zoo_seed": 4,
+  "batch_seed": 4,
+  "sim": {
+    "update_rule": "Bd",
+    "r_values": [
+      1.1
+    ],
+    "n_repeats": 100000,
+    "max_steps": 10000000000,
+    "keep_runs": false,
+    "chunk_target_steps": 10000000000.0
+  },
+  "lsf": {
+    "n_workers": 1000,
+    "queue": "gsla-cpu",
+    "memory_mb": 2000,
+    "big_memory_mb": 8000
+  },
+  "specs": [
+    {
+      "factory": "complete_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_nodes": 15
+      }
+    },
+    {
+      "factory": "grid_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 100,
+      "up_to": false,
+      "kwargs": {
+        "width": 4,
+        "height": 4
+      }
+    },
+    {
+      "factory": "cycle_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 100,
+      "up_to": false,
+      "kwargs": {
+        "n_nodes": 15
+      }
+    },
+    {
+      "factory": "cycle_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "directed": true,
+        "n_nodes": 15
+      }
+    },
+    {
+      "factory": "line_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 100,
+      "up_to": false,
+      "kwargs": {
+        "n_nodes": 15
+      }
+    },
+    {
+      "factory": "line_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "directed": true,
+        "n_nodes": 15
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 100,
+      "up_to": false,
+      "kwargs": {
+        "n_nodes": 15
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "directed": true,
+        "n_nodes": 15
+      }
+    },
+    {
+      "factory": "mammalian_lung_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 100,
+      "up_to": false,
+      "kwargs": {
+        "depth": 3
+      }
+    },
+    {
+      "factory": "mammalian_lung_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "directed": true,
+        "depth": 3
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 100,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 6,
+        "l_parabronchi": 2
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "directed": true,
+        "n_parabronchi": 6,
+        "l_parabronchi": 2
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 100,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 1,
+        "l_rod": 3,
+        "fillaments": 4
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "directed": true,
+        "n_rods": 1,
+        "l_rod": 3,
+        "fillaments": 4
+      }
+    },
+    {
+      "factory": "complete_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_nodes": 31
+      }
+    },
+    {
+      "factory": "grid_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 100,
+      "up_to": false,
+      "kwargs": {
+        "width": 6,
+        "height": 6
+      }
+    },
+    {
+      "factory": "cycle_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 100,
+      "up_to": false,
+      "kwargs": {
+        "n_nodes": 31
+      }
+    },
+    {
+      "factory": "cycle_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "directed": true,
+        "n_nodes": 31
+      }
+    },
+    {
+      "factory": "line_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 100,
+      "up_to": false,
+      "kwargs": {
+        "n_nodes": 31
+      }
+    },
+    {
+      "factory": "line_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "directed": true,
+        "n_nodes": 31
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 100,
+      "up_to": false,
+      "kwargs": {
+        "n_nodes": 31
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "directed": true,
+        "n_nodes": 31
+      }
+    },
+    {
+      "factory": "mammalian_lung_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 100,
+      "up_to": false,
+      "kwargs": {
+        "depth": 4
+      }
+    },
+    {
+      "factory": "mammalian_lung_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "directed": true,
+        "depth": 4
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 100,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 14,
+        "l_parabronchi": 2
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "directed": true,
+        "n_parabronchi": 14,
+        "l_parabronchi": 2
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 100,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 1,
+        "l_rod": 3,
+        "fillaments": 10
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "directed": true,
+        "n_rods": 1,
+        "l_rod": 3,
+        "fillaments": 10
+      }
+    },
+    {
+      "factory": "complete_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_nodes": 63
+      }
+    },
+    {
+      "factory": "grid_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 100,
+      "up_to": false,
+      "kwargs": {
+        "width": 8,
+        "height": 8
+      }
+    },
+    {
+      "factory": "cycle_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 100,
+      "up_to": false,
+      "kwargs": {
+        "n_nodes": 63
+      }
+    },
+    {
+      "factory": "cycle_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "directed": true,
+        "n_nodes": 63
+      }
+    },
+    {
+      "factory": "line_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 100,
+      "up_to": false,
+      "kwargs": {
+        "n_nodes": 63
+      }
+    },
+    {
+      "factory": "line_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "directed": true,
+        "n_nodes": 63
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 100,
+      "up_to": false,
+      "kwargs": {
+        "n_nodes": 63
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "directed": true,
+        "n_nodes": 63
+      }
+    },
+    {
+      "factory": "mammalian_lung_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 100,
+      "up_to": false,
+      "kwargs": {
+        "depth": 5
+      }
+    },
+    {
+      "factory": "mammalian_lung_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "directed": true,
+        "depth": 5
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 100,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 30,
+        "l_parabronchi": 2
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "directed": true,
+        "n_parabronchi": 30,
+        "l_parabronchi": 2
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 100,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 2,
+        "l_rod": 3,
+        "fillaments": 10
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "directed": true,
+        "n_rods": 2,
+        "l_rod": 3,
+        "fillaments": 10
+      }
+    },
+    {
+      "factory": "complete_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_nodes": 127
+      }
+    },
+    {
+      "factory": "grid_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 100,
+      "up_to": false,
+      "kwargs": {
+        "width": 11,
+        "height": 11
+      }
+    },
+    {
+      "factory": "cycle_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 100,
+      "up_to": false,
+      "kwargs": {
+        "n_nodes": 127
+      }
+    },
+    {
+      "factory": "cycle_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "directed": true,
+        "n_nodes": 127
+      }
+    },
+    {
+      "factory": "line_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 100,
+      "up_to": false,
+      "kwargs": {
+        "n_nodes": 127
+      }
+    },
+    {
+      "factory": "line_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "directed": true,
+        "n_nodes": 127
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 100,
+      "up_to": false,
+      "kwargs": {
+        "n_nodes": 127
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "directed": true,
+        "n_nodes": 127
+      }
+    },
+    {
+      "factory": "mammalian_lung_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 100,
+      "up_to": false,
+      "kwargs": {
+        "depth": 6
+      }
+    },
+    {
+      "factory": "mammalian_lung_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "directed": true,
+        "depth": 6
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 100,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 62,
+        "l_parabronchi": 2
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "directed": true,
+        "n_parabronchi": 62,
+        "l_parabronchi": 2
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 100,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 4,
+        "l_rod": 3,
+        "fillaments": 10
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "directed": true,
+        "n_rods": 4,
+        "l_rod": 3,
+        "fillaments": 10
+      }
+    },
+    {
+      "factory": "complete_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_nodes": 255
+      }
+    },
+    {
+      "factory": "grid_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 100,
+      "up_to": false,
+      "kwargs": {
+        "width": 16,
+        "height": 16
+      }
+    },
+    {
+      "factory": "cycle_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 100,
+      "up_to": false,
+      "kwargs": {
+        "n_nodes": 255
+      }
+    },
+    {
+      "factory": "cycle_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "directed": true,
+        "n_nodes": 255
+      }
+    },
+    {
+      "factory": "line_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 100,
+      "up_to": false,
+      "kwargs": {
+        "n_nodes": 255
+      }
+    },
+    {
+      "factory": "line_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "directed": true,
+        "n_nodes": 255
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 100,
+      "up_to": false,
+      "kwargs": {
+        "n_nodes": 255
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "directed": true,
+        "n_nodes": 255
+      }
+    },
+    {
+      "factory": "mammalian_lung_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 100,
+      "up_to": false,
+      "kwargs": {
+        "depth": 7
+      }
+    },
+    {
+      "factory": "mammalian_lung_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "directed": true,
+        "depth": 7
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 100,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 126,
+        "l_parabronchi": 2
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "directed": true,
+        "n_parabronchi": 126,
+        "l_parabronchi": 2
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 100,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 8,
+        "l_rod": 3,
+        "fillaments": 10
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "directed": true,
+        "n_rods": 8,
+        "l_rod": 3,
+        "fillaments": 10
+      }
+    },
+    {
+      "factory": "complete_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_nodes": 511
+      }
+    },
+    {
+      "factory": "grid_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 100,
+      "up_to": false,
+      "kwargs": {
+        "width": 23,
+        "height": 23
+      }
+    },
+    {
+      "factory": "cycle_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 100,
+      "up_to": false,
+      "kwargs": {
+        "n_nodes": 511
+      }
+    },
+    {
+      "factory": "cycle_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "directed": true,
+        "n_nodes": 511
+      }
+    },
+    {
+      "factory": "line_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 100,
+      "up_to": false,
+      "kwargs": {
+        "n_nodes": 511
+      }
+    },
+    {
+      "factory": "line_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "directed": true,
+        "n_nodes": 511
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 100,
+      "up_to": false,
+      "kwargs": {
+        "n_nodes": 511
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "directed": true,
+        "n_nodes": 511
+      }
+    },
+    {
+      "factory": "mammalian_lung_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 100,
+      "up_to": false,
+      "kwargs": {
+        "depth": 8
+      }
+    },
+    {
+      "factory": "mammalian_lung_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "directed": true,
+        "depth": 8
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 100,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 254,
+        "l_parabronchi": 2
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "directed": true,
+        "n_parabronchi": 254,
+        "l_parabronchi": 2
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 100,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 15,
+        "l_rod": 3,
+        "fillaments": 10
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "directed": true,
+        "n_rods": 15,
+        "l_rod": 3,
+        "fillaments": 10
+      }
+    },
+    {
+      "factory": "complete_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_nodes": 1023
+      }
+    },
+    {
+      "factory": "grid_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 100,
+      "up_to": false,
+      "kwargs": {
+        "width": 32,
+        "height": 32
+      }
+    },
+    {
+      "factory": "cycle_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 100,
+      "up_to": false,
+      "kwargs": {
+        "n_nodes": 1023
+      }
+    },
+    {
+      "factory": "cycle_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "directed": true,
+        "n_nodes": 1023
+      }
+    },
+    {
+      "factory": "line_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 100,
+      "up_to": false,
+      "kwargs": {
+        "n_nodes": 1023
+      }
+    },
+    {
+      "factory": "line_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "directed": true,
+        "n_nodes": 1023
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 100,
+      "up_to": false,
+      "kwargs": {
+        "n_nodes": 1023
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "directed": true,
+        "n_nodes": 1023
+      }
+    },
+    {
+      "factory": "mammalian_lung_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 100,
+      "up_to": false,
+      "kwargs": {
+        "depth": 9
+      }
+    },
+    {
+      "factory": "mammalian_lung_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "directed": true,
+        "depth": 9
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 100,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 510,
+        "l_parabronchi": 2
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "directed": true,
+        "n_parabronchi": 510,
+        "l_parabronchi": 2
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 100,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 30,
+        "l_rod": 3,
+        "fillaments": 10
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "directed": true,
+        "n_rods": 30,
+        "l_rod": 3,
+        "fillaments": 10
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 16,
+        "n_edges": 24
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 15,
+        "n_edges": 15
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 15,
+        "n_edges": 14
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 15,
+        "n_edges": 20
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 16,
+        "n_edges": 15
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 36,
+        "n_edges": 60
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 31,
+        "n_edges": 31
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 31,
+        "n_edges": 30
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 31,
+        "n_edges": 44
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 34,
+        "n_edges": 33
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 64,
+        "n_edges": 112
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 63,
+        "n_edges": 63
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 63,
+        "n_edges": 62
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 63,
+        "n_edges": 92
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 68,
+        "n_edges": 67
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 121,
+        "n_edges": 220
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 127,
+        "n_edges": 127
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 127,
+        "n_edges": 126
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 127,
+        "n_edges": 188
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 136,
+        "n_edges": 135
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 256,
+        "n_edges": 480
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 255,
+        "n_edges": 255
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 255,
+        "n_edges": 254
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 255,
+        "n_edges": 380
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 272,
+        "n_edges": 271
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 529,
+        "n_edges": 1012
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 511,
+        "n_edges": 511
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 511,
+        "n_edges": 510
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 511,
+        "n_edges": 764
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 510,
+        "n_edges": 509
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 1024,
+        "n_edges": 1984
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 1023,
+        "n_edges": 1023
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 1023,
+        "n_edges": 1022
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 1023,
+        "n_edges": 1532
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 1020,
+        "n_edges": 1019
+      }
+    }
+  ]
+}
