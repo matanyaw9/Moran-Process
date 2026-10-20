@@ -431,6 +431,19 @@ def _speed_report(batch, t):
     print("\n".join(lines), flush=True)
 
 
+def _duration(seconds):
+    m, s = divmod(int(seconds), 60)
+    h, m = divmod(m, 60)
+    d, h = divmod(h, 24)
+    return f"{d}d {h}h {m:02d}m" if d else f"{h}h {m:02d}m" if h else f"{m}m {s:02d}s"
+
+
+def _bar(done, claimed, n, width=50):
+    """'#' done, '>' claimed but not done, '.' not started. ASCII so `watch` renders it."""
+    n_done, n_claimed = done * width // n, claimed * width // n
+    return "[" + "#" * n_done + ">" * (n_claimed - n_done) + "." * (width - n_claimed) + "]"
+
+
 def status(batch):
     batch = batch_path(batch)
     if not (batch / "chunks.parquet").exists():
@@ -441,11 +454,13 @@ def status(batch):
         claimed = len(os.listdir(batch / "claims")) if (batch / "claims").exists() else 0
         print(f"{batch.name}: {len(done)}/{n} chunks done, {claimed - len(done)} running or orphaned, "
               f"{n - claimed} not started")
+        print(f"  {_bar(len(done), claimed, n)} {len(done) / n:.1%}")
         if done:
-            times = [p.stat().st_mtime for p in done]
-            rate = len(done) / max(time.time() - min(times), 1)
+            elapsed = max(time.time() - min(p.stat().st_mtime for p in done), 1)
             if len(done) < n:
-                print(f"  rough ETA {(n - len(done)) / rate / 3600:.2f} h at the current rate")
+                left = (n - len(done)) * elapsed / len(done)
+                finish = time.strftime("%a %H:%M", time.localtime(time.time() + left))
+                print(f"  rough ETA {_duration(left)}, around {finish} (rate over the last {_duration(elapsed)})")
     subs = batch / "submissions.json"
     if subs.exists():
         ids = [str(v) for s in json.loads(subs.read_text()) for k, v in s.items() if k != "time" and k != "n_workers"]
