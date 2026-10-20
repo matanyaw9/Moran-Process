@@ -249,7 +249,7 @@ class PopulationGraph:
     def fish_graph(
         cls,
         n_rods: int,
-        rod_length: int,
+        l_rod: int,
         fillaments: int = 2,
         directed: bool = False,
         name="fish",
@@ -257,17 +257,17 @@ class PopulationGraph:
         """Generates a 'Comb' structure: Vertical arch, horizontal filaments.
 
         Each of the n_rods gill filaments hangs off the vertical arch as a chain of
-        rod_length center nodes, and every center node carries `fillaments` lamellae
+        l_rod center nodes, and every center node carries `fillaments` lamellae
         split between its two sides (the upper side takes the extra one when the
         count is odd). fillaments=2 is the original one-up-one-down comb, so the
         default reproduces graphs built before this parameter existed, wl_hash
         included; only an explicit value creates a new topology.
 
-        N = n_rods * (1 + rod_length * (1 + fillaments))
+        N = n_rods * (1 + l_rod * (1 + fillaments))
 
         Args:
             n_rods (int): Number of filaments along the arch.
-            rod_length (int): Center nodes per filament.
+            l_rod (int): Center nodes per filament.
             fillaments (int): Lamellae per center node, TOTAL across both sides.
             directed (bool): If True, returns a DiGraph flowing out from the root,
                 the middle arch node (main_{(n_rods - 1) // 2}): along the arch
@@ -321,7 +321,7 @@ class PopulationGraph:
             pos[main_id] = np.array([main_rod_x, y_base])
 
             # Filament backbone (c); lamellae hang off each of its nodes
-            c_nodes = [f"r{i}c{j}" for j in range(rod_length)]
+            c_nodes = [f"r{i}c{j}" for j in range(l_rod)]
 
             # Connect Main -> First Filament Node
             G.add_edge(main_id, c_nodes[0])
@@ -351,7 +351,7 @@ class PopulationGraph:
         nx.set_node_attributes(G, pos, "pos")
         G = nx.convert_node_labels_to_integers(G)
         prefix = "directed_fish" if directed else "fish"
-        name = f"{prefix}_r{n_rods}_l{rod_length}_f{fillaments}"
+        name = f"{prefix}_r{n_rods}_l{l_rod}_f{fillaments}"
         return cls(
             G,
             name,
