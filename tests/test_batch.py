@@ -98,3 +98,30 @@ def test_series_graphs_are_indexed():
     assert names == ["random_n31_e40_i0", "random_n31_e40_i1", "random_n31_e40_i2", "star_n5",
                      "random_n31_e40_i3", "random_n31_e40_i4"]
     assert [g.name for g in pg.sample_random_graphs(31, 40, 2, seed=0)] == ["random_n31_e40_i0", "random_n31_e40_i1"]
+
+
+def test_random_matches_share_one_cloud_per_size():
+    specs = [spec("star_graph", n_nodes=5, random_matches=2), spec("mammalian_lung_graph", depth=3, random_matches=2),
+             spec("line_graph", n_nodes=5, random_matches=3), spec("random_graph", count=1, n_nodes=15, n_edges=14)]
+    plan = make_plan("x", specs, [1.0], 10, zoo_seed=0, batch_seed=0)
+    matches = [(s["count"], s["up_to"], s["kwargs"]["n_nodes"], s["kwargs"]["n_edges"]) for s in plan["specs"][4:]]
+    assert matches == [(3, True, 5, 4), (1, True, 15, 14)]
+
+
+def test_random_matches_skip_null_steps_like_their_graph():
+    specs = [spec("star_graph", n_nodes=5, random_matches=2),
+             spec("line_graph", n_nodes=5, skip_null_steps=True, random_matches=2),
+             spec("cycle_graph", n_nodes=5, random_matches=2)]
+    plan = make_plan("x", specs, [1.0], 10, zoo_seed=0, batch_seed=0)
+    assert [(s["kwargs"]["n_edges"], s["skip_null_steps"]) for s in plan["specs"][3:]] == [(4, True), (5, False)]
+
+
+def test_random_matches_stop_when_size_is_exhausted():
+    plan = make_plan("x", [spec("complete_graph", n_nodes=5, random_matches=3)], [1.0], 10, zoo_seed=0, batch_seed=0)
+    assert [rec["graph"].name for rec in build_zoo(plan)] == ["complete_n5"]
+
+
+def test_too_few_distinct_random_graphs_raises():
+    plan = make_plan("x", [spec("random_graph", count=2, n_nodes=3, n_edges=3)], [1.0], 10, zoo_seed=0, batch_seed=0)
+    with pytest.raises(ValueError, match="only 1 of 2"):
+        build_zoo(plan)

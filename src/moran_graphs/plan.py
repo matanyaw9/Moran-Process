@@ -38,14 +38,21 @@ def _seedable(fn):
     return "seed" in inspect.signature(fn).parameters
 
 
-def spec(factory, count=1, skip_null_steps=False, **kwargs):
-    """One plan line: `count` graphs from PopulationGraph.<factory>(**kwargs)."""
+def spec(factory, count=1, skip_null_steps=False, random_matches=0, up_to=False, **kwargs):
+    """One plan line: `count` graphs from PopulationGraph.<factory>(**kwargs).
+
+    random_matches > 0 asks for that many random graphs with the same N and E (see
+    _random_match_specs). up_to makes count a maximum, for sizes with fewer distinct graphs.
+    """
     fn = _factory(factory)
     if count < 1:
         raise ValueError(f"count must be >= 1, got {count}")
+    if random_matches and factory == "random_graph":
+        raise ValueError("random_matches on a random_graph spec: raise its count instead")
     if count > 1 and not (_seedable(fn) and "seed" not in kwargs):
         raise ValueError(f"{factory}({kwargs}) is deterministic, count={count} would repeat one graph")
-    return {"factory": factory, "count": int(count), "skip_null_steps": bool(skip_null_steps), "kwargs": kwargs}
+    return {"factory": factory, "count": int(count), "skip_null_steps": bool(skip_null_steps),
+            "random_matches": int(random_matches), "up_to": bool(up_to), "kwargs": kwargs}
 
 
 def make_plan(
@@ -71,10 +78,12 @@ def make_plan(
     memory_mb is per worker; big_memory_mb is for the prepare and finalize jobs.
     keep_runs also stores every run (winner, steps, n_changes), not only summaries.
     chunk_target_steps sizes the chunks a worker claims (see make_chunks).
+    Specs with random_matches get their random graphs appended (see _random_match_specs).
     """
     specs = list(specs)
     if not specs or not all(isinstance(s, dict) and "factory" in s for s in specs):
         raise TypeError("specs must be a non-empty list of spec(...) dicts")
+    specs += _random_match_specs(specs)
     r_values = [float(r) for r in r_values]
     if not r_values or min(r_values) <= 0:
         raise ValueError("r_values must be non-empty and positive")
@@ -133,7 +142,8 @@ def describe(plan):
         steps += s["count"] * n_r * reps * n**2
         kw = ", ".join(f"{k}={v!r}" for k, v in s["kwargs"].items())
         skip = "  skip_null_steps" if s["skip_null_steps"] else ""
-        print(f"  [{i:>3}] {s['factory']}({kw}) x{s['count']}  N={n}{skip}")
+        up_to = " up to" if s["up_to"] else ""
+        print(f"  [{i:>3}] {s['factory']}({kw}) x{s['count']}{up_to}  N={n}{skip}")
     runs = n_graphs * n_r * reps
     hours = steps / STEPS_PER_SECOND / 3600
     print(f"  {n_graphs:,} graphs x {n_r} r values x {reps:,} repeats = {runs:,} runs")
@@ -150,12 +160,40 @@ def _example(s):
     return fn(**kwargs)
 
 
+def _random_match_specs(specs):
+    """One up_to random_graph spec per (N, E) that specs with random_matches ask for.
+
+    Specs of the same size share one cloud of the largest random_matches, and random_graph
+    specs already in the plan count toward it. Sizes keep first-appearance order, so a new
+    size does not reorder the others. The specs come after the given ones, so they never
+    change those graphs' seeds. A cloud skips null steps if any spec of its size does:
+    skipping leaves the output distribution unchanged, so it only saves time.
+    """
+    cloud, skip = {}, {}
+    for s in specs:
+        if s["random_matches"]:
+            G = _example(s).graph
+            if G.is_directed():
+                raise ValueError(f"{s['factory']}({s['kwargs']}) is directed, random_graph has no directed match")
+            size = (G.number_of_nodes(), G.number_of_edges())
+            cloud[size] = max(cloud.get(size, 0), s["random_matches"])
+            skip[size] = skip.get(size, False) or s["skip_null_steps"]
+    for s in specs:
+        size = (s["kwargs"].get("n_nodes"), s["kwargs"].get("n_edges"))
+        if s["factory"] == "random_graph" and size in cloud:
+            cloud[size] -= s["count"]
+    return [spec("random_graph", count=k, up_to=True, skip_null_steps=skip[(n, e)], n_nodes=n, n_edges=e)
+            for (n, e), k in cloud.items() if k > 0]
+
+
 def build_zoo(plan):
     """The plan's graphs as records {graph, spec_idx, kwargs, hash}, deduplicated by hash.
 
     Spec i draws its graph seeds from the i-th child of zoo_seed, so appending a spec
-    never changes earlier graphs. A seedable spec redraws on a hash collision; a
-    deterministic one that collides is a duplicate line and is dropped.
+    never changes earlier graphs. A seedable spec redraws on a hash collision and raises
+    if it cannot find `count` distinct graphs, unless it is up_to: then that size has no
+    graphs left that are not in the zoo, and it stops. A deterministic spec that collides
+    is a duplicate line and is dropped.
 
     Graphs made as a series (a spec with count > 1) get an index in their name,
     random_n31_e40_i0, random_n31_e40_i1, ..., numbered across the whole zoo so two
@@ -166,7 +204,7 @@ def build_zoo(plan):
     for spec_idx, (s, rng) in enumerate(zip(plan["specs"], rngs)):
         fn = _factory(s["factory"])
         seedable = _seedable(fn) and "seed" not in s["kwargs"]
-        for _ in range(s["count"]):
+        for n_drawn in range(s["count"]):
             for _ in range(MAX_SEED_REDRAWS if seedable else 1):
                 kwargs = dict(s["kwargs"])
                 if seedable:
@@ -183,6 +221,15 @@ def build_zoo(plan):
                     zoo.append({"graph": graph, "W": W, "spec_idx": spec_idx, "kwargs": kwargs, "hash": h})
                     break
             else:
+                if s["up_to"]:
+                    print(f"spec[{spec_idx}] {graph.name}: drew {n_drawn} of {s['count']},"
+                          f" no new graph of this size after {MAX_SEED_REDRAWS} redraws", flush=True)
+                    break
+                if seedable:
+                    raise ValueError(
+                        f"spec[{spec_idx}] {s['factory']}({s['kwargs']}): only {n_drawn} of {s['count']} distinct"
+                        f" graphs after {MAX_SEED_REDRAWS} redraws, lower count"
+                    )
                 print(f"spec[{spec_idx}] {s['factory']}: duplicate graph dropped", flush=True)
     return zoo
 
