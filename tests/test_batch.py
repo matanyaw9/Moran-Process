@@ -4,13 +4,14 @@ from collections import Counter
 
 import numpy as np
 import pandas as pd
+import pytest
 import scipy.sparse as sp
 
 from moran_graphs import PopulationGraph as pg
 from moran_graphs import hpc
 from moran_graphs.engine import simulate, summarize
 from moran_graphs.plan import build_zoo, make_plan, save_plan, spec
-from moran_graphs.properties import wl_hash
+from moran_graphs.properties import graph_from_W, properties, wl_hash
 
 
 def tiny_plan(name, n_repeats=1000, chunk_target_steps=2_000, n_workers=8):
@@ -24,6 +25,7 @@ def prepared(tmp_path, **kw):
     batch = tmp_path / "batch"
     save_plan(tiny_plan("batch", **kw), batch / "plan.json")
     hpc.prepare(batch)
+    hpc.compute_properties(batch)
     return batch
 
 
@@ -72,6 +74,13 @@ def test_wl_hash_identity():
     weighted = cycle.copy()
     weighted.data[:2] = 5.0
     assert wl_hash(weighted) != wl_hash(cycle)
+
+
+@pytest.mark.parametrize("graph", [pg.star_graph(7, directed=True), pg.avian_graph(3, 2, directed=True),
+                                   pg.fish_graph(2, 2), pg.random_graph(12, 16, seed=0)], ids=lambda g: g.name)
+def test_properties_from_W_match_the_original_graph(graph):
+    pd.testing.assert_series_equal(pd.Series(properties(graph_from_W(graph.csr()))),
+                                   pd.Series(properties(graph.graph)))
 
 
 def test_csr_roundtrip(tmp_path):

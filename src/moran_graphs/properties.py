@@ -1,4 +1,4 @@
-"""Structural properties of a graph, computed once per graph by the batch prepare job."""
+"""Structural properties of a graph, computed once per graph by the batch properties job."""
 
 import warnings
 
@@ -12,15 +12,21 @@ EXACT_MAX_N = 2000
 SAMPLE = 100
 
 
-def wl_hash(W) -> str:
-    """Weisfeiler-Lehman hash of the graph with weights W (W[i, j] = weight of i -> j).
-
-    The graph is directed iff W is not symmetric, and weights enter the hash only if
-    they are not all equal, so an unweighted graph hashes the same whatever its weight.
-    """
+def graph_from_W(W) -> nx.Graph:
+    """The networkx graph with weights W (W[i, j] = weight of i -> j), directed iff W is not symmetric."""
     W = sp.csr_array(W)
     directed = (W != W.T).nnz > 0
-    G = nx.from_scipy_sparse_array(W, create_using=nx.DiGraph if directed else nx.Graph)
+    return nx.from_scipy_sparse_array(W, create_using=nx.DiGraph if directed else nx.Graph)
+
+
+def wl_hash(W) -> str:
+    """Weisfeiler-Lehman hash of the graph with weights W (see graph_from_W).
+
+    Weights enter the hash only if they are not all equal, so an unweighted graph
+    hashes the same whatever its weight.
+    """
+    W = sp.csr_array(W)
+    G = graph_from_W(W)
     weighted = W.nnz > 0 and not np.all(W.data == W.data[0])
     with warnings.catch_warnings():
         # networkx 3.5 changed WL hashes (so they differ from v1 batches) and warns on every call.
