@@ -1,4 +1,8 @@
-use numeric::graph::{Graph, Shape};
+mod graph;
+mod parse;
+mod statespace;
+use crate::graph::Graph;
+use crate::statespace::StateSpace;
 
 macro_rules! abort {
     ($($arg:tt)*) => {{
@@ -7,50 +11,104 @@ macro_rules! abort {
     }};
 }
 
-pub fn main() {
-    let args = std::env::args().collect::<Vec<_>>();
-    let args = args.iter().map(String::as_str).collect::<Vec<_>>();
-
-    let g = match args[..] {
-        [_, shape @ ("complete" | "cycle" | "star" | "tree"), size, r] => {
-            let shape = match shape {
-                "complete" => Shape::Complete,
-                "cycle" => Shape::Cycle,
-                "star" => Shape::Star,
-                "tree" => Shape::Tree,
-                _ => unreachable!(),
-            };
-            let size = size.parse::<usize>().unwrap_or_else(|_| abort!("bad size"));
-            let r = r.parse::<f32>().unwrap_or_else(|_| abort!("bad r"));
-            Graph::from_shape(size, shape, r)
+pub fn main() -> std::io::Result<()> {
+    let mut parser = parse::Parser::new();
+    loop {
+        let line = match parser.next() {
+            Ok(None) => break,
+            Ok(Some(line)) => line,
+            Err(parse::Error::Io(err)) => abort!("could not read line: {err}"),
+            Err(parse::Error::Parse(pos)) => abort!("parsing error at position {pos}"),
+        };
+        let g = match Graph::new(line.adjs, line.r) {
+            Ok(g) => g,
+            Err(graph::CreationError::NonexistentNode) => {
+                abort!("adjacency matrix refers to a non-existent node")
+            }
+            Err(graph::CreationError::NotStronglyConnected) => {
+                abort!("adjacency matrix is not strongly-connected")
+            }
+        };
+        if line
+            .report
+            .as_deref()
+            .unwrap_or(&[])
+            .iter()
+            .any(|&rep| rep >= 1 << g.len())
+        {
+            abort!("bad requested report state")
         }
-        [_, "--file", filepath, r] => {
-            let r = r.parse::<f32>().unwrap_or_else(|_| abort!("bad r"));
-            let text =
-                std::fs::read_to_string(filepath).unwrap_or_else(|_| abort!("could not read file"));
-            Graph::from_text(&text, r).unwrap_or_else(|| abort!("bad file contents"))
+        let thrds = match line.threads {
+            None => std::thread::available_parallelism().map_or(1, std::num::NonZero::get),
+            Some(t) => t,
+        };
+        let res = crunch(&g, thrds, line.report.as_deref());
+        print!("[");
+        if let &[first, ref rest @ ..] = &res[..] {
+            print!("{}", first);
+            for res in rest {
+                print!(",{}", res);
+            }
         }
-        _ => abort!(
-            "Usage: {} ((complete | cycle | star | tree) <size> | --file <pathname>) <r>",
-            args[0]
-        ),
-    };
-
-    let mut res = vec![0.0; 3 * g.len()];
-    numeric::crunch(&g, 0, &mut res);
-    println!("prob            time            ctime");
-    for i in 0..g.len() {
-        println!(
-            "{: <16}{: <16}{}",
-            res[i],
-            res[i + g.len()],
-            res[i + 2 * g.len()]
-        );
+        println!("]");
     }
-    println!(
-        "means\n{: <16}{: <16}{}",
-        res[..g.len()].iter().sum::<f32>() / g.len() as f32,
-        res[g.len()..2 * g.len()].iter().sum::<f32>() / g.len() as f32,
-        res[2 * g.len()..].iter().sum::<f32>() / g.len() as f32
-    );
+    Ok(())
+}
+
+/// Main computation function. Return value is a list of (fixation probability,
+/// absorption time, fixation time) triples. If `reports` is `Some`, index `n`
+/// of the output corresponds to the state at `retports.unwrap()[n]`,
+/// otherwise, return value is of length `g.len()`, and contains values for
+/// states `[1, 2, 4, ..., 2^(g.len() - 1)]`.
+fn crunch(g: &Graph, thrds: usize, reports: Option<&[u64]>) -> Vec<Result> {
+    let mut space = StateSpace::new_with(g.len(), |i| {
+        [(i == (1 << g.len()) - 1) as u32 as f32, 0.0, 0.0]
+    });
+
+    std::thread::scope(|s| {
+        let cruncher = || {
+            let mut idxr = space.indexer();
+            while let Some(mut i) = idxr {
+                let chng = g.step_division(&mut i);
+                idxr = space.next_indexer(i, chng);
+            }
+        };
+        for _ in 1..thrds {
+            s.spawn(cruncher);
+        }
+        cruncher();
+    });
+
+    let data = space.data();
+    reports
+        .unwrap_or(&[])
+        .iter()
+        .copied()
+        .chain((0..if reports.is_none() { g.len() } else { 0 }).map(|i| 1 << i))
+        .map(|i| {
+            let datum = data[i as usize];
+            Result {
+                prob: datum[0],
+                time: datum[1],
+                ctime: datum[2] / datum[0],
+            }
+        })
+        .collect::<Vec<_>>()
+}
+
+#[derive(Clone, Copy)]
+struct Result {
+    prob: f32,
+    time: f32,
+    ctime: f32,
+}
+
+impl std::fmt::Display for Result {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{{\"prob\":{},\"time\":{},\"ctime\":{}}}",
+            self.prob, self.time, self.ctime
+        )
+    }
 }

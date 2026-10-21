@@ -21,4 +21,4 @@ images/
 notebooks/figures/
 /figures/
 src/moran_process/numeric/target/
-src/moran_process/numeric/numeric.so
+src/moran_process/numeric/numeric-solve

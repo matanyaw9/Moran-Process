@@ -1,18 +1,10 @@
-use super::statespace::Indexer;
-use std::slice;
+use crate::statespace::Indexer;
 
 pub struct Graph {
     r: f32,
     size: usize,
     adjs: [u64; 63],
     vulns: [f32; 63],
-}
-
-pub enum Shape {
-    Complete,
-    Cycle,
-    Star,
-    Tree,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -23,65 +15,24 @@ pub enum Change {
     Major,
 }
 
+pub enum CreationError {
+    NotStronglyConnected,
+    NonexistentNode,
+}
+
 impl Graph {
-    /// Creates a `Graph` out of the given cross-language representation.
-    ///
-    /// # Safety
-    /// `nbrs` and `offsets` must be valid as per the definition in `GraphCore`
-    /// with respect to `size`.
-    pub unsafe fn from_ffi(size: usize, nbrs: *const u32, offsets: *const u32, r: f32) -> Graph {
-        assert!(size < 64);
-        let mut adjs = [0; _];
-        // SAFETY: Caller guarantees pointer validity
-        let offsets = unsafe { slice::from_raw_parts(offsets, size + 1) };
-        let nbrs = unsafe { slice::from_raw_parts(nbrs, offsets[size] as usize) };
-        for (i, &[x, y]) in offsets.array_windows().enumerate() {
-            for &nbr in &nbrs[x as usize..y as usize] {
-                adjs[i] |= 1 << nbr;
-            }
+    /// Attempts to create a graph out of the given adjacency matrix, errors if
+    /// the graph is not strongly connected, or if some node is connected to a
+    /// non-existent node.
+    pub fn new(adjs: [u64; 63], r: f32) -> Result<Graph, CreationError> {
+        let size = adjs.iter().take_while(|&&adj| adj != 0).count();
+        if adjs.iter().any(|&adj| adj >> size != 0) {
+            return Err(CreationError::NonexistentNode);
         }
-        Graph {
-            r,
-            size,
-            adjs,
-            vulns: calc_vuln(&adjs),
+        if !strongly_connected(&adjs[..size]) {
+            return Err(CreationError::NotStronglyConnected);
         }
-    }
-
-    /// Creates a `Graph` out of the given shape.
-    pub fn from_shape(size: usize, shape: Shape, r: f32) -> Graph {
-        assert!(size < 64);
-        let adjs = std::array::from_fn(|i| match shape {
-            _ if i >= size => 0,
-            Shape::Complete => (1 << size) - (1 << i) - 1,
-            Shape::Cycle => (1 << ((i + size - 1) % size)) | (1 << ((i + 1) % size)),
-            Shape::Star if i == 0 => (1 << size) - 2,
-            Shape::Star => 1,
-            Shape::Tree if i == 0 => 6 & ((1 << size) - 1),
-            Shape::Tree => ((6 << (i * 2)) | (1 << ((i - 1) / 2))) & ((1 << size) - 1),
-        });
-        Graph {
-            r,
-            size,
-            adjs,
-            vulns: calc_vuln(&adjs),
-        }
-    }
-
-    /// Attempts to create a graph out of the given text representation.
-    pub fn from_text(text: &str, r: f32) -> Option<Graph> {
-        let size = match text.chars().filter(|&c| c == ';').count() {
-            s @ ..63 => s + 1,
-            _ => return None,
-        };
-        let mut adjs = [0; _];
-        let mut i = 0;
-        for num in text.split_inclusive([',', ';']) {
-            let n = num.trim_end_matches([',', ';']).parse::<usize>().ok()?;
-            adjs[i] |= 1 << n;
-            i += num.ends_with(';') as usize;
-        }
-        Some(Graph {
+        Ok(Graph {
             r,
             size,
             adjs,
@@ -91,10 +42,6 @@ impl Graph {
 
     pub fn len(&self) -> usize {
         self.size
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
     }
 
     /// Runs a single Gauss-Siedel step through all elements in `indexer`'s
@@ -200,8 +147,8 @@ impl Graph {
 
         *indexer.at(idx) = [new_p, new_t, new_ct];
 
-        // A change is regarded as significant if the ULP difference between
-        // the old and new values is greater than or equal to `0x40`.
+        // A change is regarded as minor if the ULP difference between the old
+        // and new values is less than `0x40`.
         match [(prev_p, new_p), (prev_t, new_t), (prev_ct, new_ct)]
             .map(|(prev, new)| prev.to_bits().abs_diff(new.to_bits()))
         {
@@ -222,4 +169,20 @@ fn calc_vuln(adjs: &[u64; 63]) -> [f32; 63] {
         }
     }
     vulns
+}
+
+fn strongly_connected(adjs: &[u64]) -> bool {
+    for i in 0..adjs.len() {
+        let mut seen = 0;
+        let mut frontier: u64 = 1 << i;
+        while let Some(node) = frontier.lowest_one() {
+            seen |= 1 << node;
+            frontier &= frontier - 1;
+            frontier |= adjs[node as usize] & !seen;
+        }
+        if seen != (1 << adjs.len()) - 1 {
+            return false;
+        }
+    }
+    true
 }
