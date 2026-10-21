@@ -10,12 +10,8 @@ opt-level = 3
 opt-level = 3
 panic = "abort"
 
-[lib]
-path = "src/lib.rs"
-crate-type = ["lib", "cdylib"]
-
 [[bin]]
-name = "numeric-cli"
+name = "numeric-solver"
 path = "src/main.rs"
 
 [dependencies]
