@@ -22,6 +22,7 @@ from moran_graphs.engine import HIST_BINS
 from moran_graphs.hpc import DATA_ROOT, batch_path, load_report
 from moran_graphs.plan import load_plan
 from moran_graphs.properties import properties
+from moran_graphs.theory import complete, fixation, formulas
 
 # Set on import, so notebooks that import plots draw in the same style as the saved files.
 sns.set_theme(style="whitegrid", context="notebook", font_scale=1.2)
@@ -273,16 +274,6 @@ def lines(ax, df, x, y, by, cmap="viridis"):
     ax.set(xlabel=LABELS.get(x, x), ylabel=LABELS.get(y, y))
 
 
-def _complete_graph_time(n, r):
-    """Mean Bd fixation time (steps, given fixation) from one mutant on the complete graph of n
-    nodes, exact. Traulsen & Hauert 2009 (Stochastic evolutionary game dynamics), eq. 26, where
-    T-/T+ = 1/r at every mutant count i collapses the inner product to a geometric sum."""
-    i = np.arange(1, n)
-    t_plus = r * i / (r * i + n - i) * (n - i) / (n - 1)  # no self-loops: offspring go to the other n - 1
-    phi = (1 - r ** -i) / (1 - r ** -n)  # fixation probability from i mutants
-    return np.sum(phi / t_plus * (1 - r ** -(n - i)) / (1 - 1 / r))
-
-
 def versus_random(results, directed):
     """One row of panels per graph type against its random cloud: the random graphs with the
     same N, E and r, drawn as their median and interquartile band (the question is whether a
@@ -290,7 +281,8 @@ def versus_random(results, directed):
     fixation probability, fixation time, and random time over the graph's time (above 1 the
     graph fixes faster). A type is drawn only at sizes with a cloud and needs one graph per
     size; what is left out is printed. random_graph is undirected, so for a directed type the
-    cloud matches N and E but not the edge directions."""
+    cloud matches N and E but not the edge directions. Where theory.py has a formula for the
+    type, it is drawn as a thick pale red line behind everything else."""
     if results["r"].nunique() != 1:
         raise ValueError(f"versus_random needs exactly one r value, got {sorted(results['r'].unique())}")
     r = results["r"].iloc[0]
@@ -316,15 +308,23 @@ def versus_random(results, directed):
     for (category, part), (ax_rho, ax_time, ax_ratio) in zip(types, axes):
         n = part["n_nodes"]
         color = COLORS[category]
-        for ax, y in ((ax_time, "steps_mean_given_fixed"), (ax_rho, "rho")):
+        theory = pd.DataFrame([fixation(factory, directed, size, r) for factory, size in zip(part["factory"], n)],
+                              columns=["rho", "steps_mean_given_fixed"], index=part.index)
+        rho_formula, time_formula = formulas(part["factory"].iloc[0], directed)
+        for ax, y, formula in ((ax_time, "steps_mean_given_fixed", time_formula), (ax_rho, "rho", rho_formula)):
             ax.fill_between(n, part[f"{y}_q25"], part[f"{y}_q75"], color=COLORS["Random"], alpha=0.3, lw=0)
             ax.plot(n, part[f"{y}_q50"], "o-", ms=4, color=COLORS["Random"], label="random, same N and E")
             ax.errorbar(n, part[y], yerr=_error(part, y), fmt="o-", ms=5, capsize=2, color=color, label=category,
                         zorder=3)
+            if formula:
+                theory_line, = ax.plot(n, theory[y], color="red", lw=6, alpha=0.3, zorder=1,
+                                       label=f"theory formula: {formula}")
+                if ax is ax_time:  # only the formula here, the other entries are in the rho panel's legend
+                    ax.legend(handles=[theory_line], frameon=False, fontsize=9)
         # Moran's well-mixed formula, the baseline an amplifier beats and a suppressor misses
-        ax_rho.plot(n, (1 - 1 / r) / (1 - r ** -n), "--", color="0.2", lw=1, label="well-mixed")
-        ax_time.plot(n, [_complete_graph_time(size, r) for size in n], "--", color="0.2", lw=1,
-                     label="well-mixed")
+        well_mixed_rho, well_mixed_time = np.array([complete(size, r) for size in n]).T
+        ax_rho.plot(n, well_mixed_rho, "--", color="0.2", lw=1, label="well-mixed")
+        ax_time.plot(n, well_mixed_time, "--", color="0.2", lw=1, label="well-mixed")
         ax_ratio.fill_between(n, part["steps_mean_given_fixed_q25"] / part["steps_mean_given_fixed"],
                               part["steps_mean_given_fixed_q75"] / part["steps_mean_given_fixed"],
                               color=color, alpha=0.3, lw=0)
