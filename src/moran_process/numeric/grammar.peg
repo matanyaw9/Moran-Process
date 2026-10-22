@@ -1,0 +1,36 @@
+Grammar <- (ws Line "\n")* Line? EOF
+
+Line  <- CURLY_L &HasGraph &HasFitness !HasRepeat Items CURLY_R
+Items <- Item (COMMA Item)*
+Item  <- Graph / Fitness / Report / Threads
+
+HasGraph   <- (!"\n" !GRAPH   .)* GRAPH
+HasFitness <- (!"\n" !FITNESS .)* FITNESS
+HasRepeat  <- (!"\n" !GRAPH   .)* GRAPH   (!"\n" !GRAPH   .)* GRAPH
+            \ (!"\n" !FITNESS .)* FITNESS (!"\n" !FITNESS .)* FITNESS
+            \ (!"\n" !REPORT  .)* REPORT  (!"\n" !REPORT  .)* REPORT
+            \ (!"\n" !THREADS .)* THREADS (!"\n" !THREADS .)* THREADS
+
+Graph   <- GRAPH   COLON IntArrArr
+Fitness <- FITNESS COLON FLOAT
+Report  <- REPORT  COLON IntArrArr
+Threads <- THREADS COLON INT
+
+IntArrArr <- BRAKT_L IntArr (COMMA IntArr)* BRAKT_R
+IntArr    <- BRAKT_L INT (COMMA INT)* BRAKT_R
+
+CURLY_L <- "{" ws
+CURLY_R <- "}" ws
+BRAKT_L <- "[" ws
+BRAKT_R <- "]" ws
+COMMA   <- "," ws
+COLON   <- ":" ws
+INT     <- ("0" / [1-9][0-9]*) ws
+FLOAT   <- ("0" / [1-9][0-9]*) ("." [0-9]+)? ([eE] [+-]? [0-9]+)? ws
+GRAPH   <- "\"graph\""   ws
+FITNESS <- "\"fitness\"" ws
+REPORT  <- "\"report\""  ws
+THREADS <- "\"threads\"" ws
+EOF     <- !.
+
+ws <- [\t\r ]*

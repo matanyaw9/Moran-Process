@@ -12,10 +12,8 @@ wheels/
 # Rust build output and the compiled extension
 rust/target/
 src/moran_process/numeric/target/
+src/moran_process/numeric/numeric-solve
 *.so
-
-.vscode/
-.obsidian/
 
 # v1 results and outputs; delete after the Rust reruns
 simulation_data/
