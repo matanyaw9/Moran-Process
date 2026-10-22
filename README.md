@@ -5,6 +5,14 @@ This project is a rewrite of my Moran Process repo. It's a library where one can
 
 In particular I am interested in population graphs that are shaped like Respiratory organs. Could it be that Respiratory Organs have evolved to supress / slow down the fixation of mutations in a population that lives inside them?
 
+## History
+
+This repo started as the Moran-Process project. In October 2026 the code was rewritten from scratch in a separate repo (`moran-graphs`) and merged back here with its full history.
+
+- The old code is at tag `v1-archive`. To get a runnable copy next to this one: `git worktree add ../moran-v1 v1-archive`.
+- Its results (raw simulations, ML models, GA runs, graph zoos) are in `/home/labs/pilpel/matanyaw/moran-v1-data`, outside the repo.
+- `src/moran_process/numeric/` is Hila Friedman's exact solver, kept in its original place.
+
 ## Setup
 
 ```
