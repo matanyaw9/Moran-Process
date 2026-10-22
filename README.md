@@ -11,16 +11,16 @@ This repo started as the Moran-Process project. In October 2026 the code was rew
 
 - The old code is at tag `v1-archive`. To get a runnable copy next to this one: `git worktree add ../moran-v1 v1-archive`.
 - Its results (raw simulations, ML models, GA runs, graph zoos) are in `/home/labs/pilpel/matanyaw/moran-v1-data`, outside the repo.
-- `src/moran_process/numeric/` is Hila Friedman's exact solver, kept in its original place.
+- `rust/exact/` is Hila Friedman's exact solver (moved from `src/moran_process/numeric/`; `git log --follow rust/exact` shows its history).
 
 ## Setup
 
 ```
-uv sync          # on a compute node (`inode`): compiles the Rust engine in rust/
+uv sync          # on a compute node (`inode`): compiles the Rust engine in rust/engine/
 ```
 
 `from moran_graphs import PopulationGraph, simulate` gives the graph factories and the engine.
-`try_simulation.ipynb` shows single runs; `batch.ipynb` writes batch plans and reads their reports.
+`notebooks/try_simulation.ipynb` shows single runs; `batch.ipynb` writes batch plans and reads their reports.
 
 ## Running a batch on WEXAC (LSF)
 
@@ -53,5 +53,5 @@ do not depend on which worker ran it.
 
 ```
 uv run pytest tests         # Python: batch pipeline, seeding, hashing
-cd rust && cargo test       # Rust engine: Moran formula, directed graphs, plain vs null-step skipping
+cd rust/engine && cargo test   # Rust engine: Moran formula, directed graphs, plain vs null-step skipping
 ```

@@ -10,7 +10,6 @@ wheels/
 .venv
 
 # Rust build output and the compiled extension
-rust/target/
-src/moran_process/numeric/target/
-src/moran_process/numeric/numeric-solve
+target/
+rust/exact/numeric-solve
 *.so
