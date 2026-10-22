@@ -1,0 +1,17 @@
+[package]
+name = "numeric"
+version = "0.1.0"
+edition = "2024"
+
+[profile.dev]
+opt-level = 3
+
+[profile.release]
+opt-level = 3
+panic = "abort"
+
+[[bin]]
+name = "numeric-solver"
+path = "src/main.rs"
+
+[dependencies]
