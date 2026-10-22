@@ -1,0 +1,204 @@
+{
+  "schema_version": 1,
+  "batch_name": "2026_08_31-scaling-lung-2",
+  "description": "Mammalian lungs vs edge-matched random trees across n_nodes 15..1023, at a max_steps cap high enough to leave every size uncensored.",
+  "notes": "bla",
+  "zoo_seed": 44,
+  "sim": {
+    "r_values": [
+      1.1
+    ],
+    "n_repeats": 1000000,
+    "n_jobs": 1000,
+    "batch_seed": 44,
+    "engine": "cpp",
+    "queue": "gsla-cpu",
+    "memory": "1GB",
+    "max_steps": 100000000,
+    "post_batch": "all"
+  },
+  "specs": [
+    {
+      "factory": "mammalian_lung_graph",
+      "count": 1,
+      "kwargs": {
+        "branching_factor": 2,
+        "depth": 3,
+        "directed": false
+      }
+    },
+    {
+      "factory": "mammalian_lung_graph",
+      "count": 1,
+      "kwargs": {
+        "branching_factor": 2,
+        "depth": 3,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_connected_graph",
+      "count": 500,
+      "kwargs": {
+        "n_nodes": 15,
+        "n_edges": 14
+      }
+    },
+    {
+      "factory": "mammalian_lung_graph",
+      "count": 1,
+      "kwargs": {
+        "branching_factor": 2,
+        "depth": 4,
+        "directed": false
+      }
+    },
+    {
+      "factory": "mammalian_lung_graph",
+      "count": 1,
+      "kwargs": {
+        "branching_factor": 2,
+        "depth": 4,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_connected_graph",
+      "count": 500,
+      "kwargs": {
+        "n_nodes": 31,
+        "n_edges": 30
+      }
+    },
+    {
+      "factory": "mammalian_lung_graph",
+      "count": 1,
+      "kwargs": {
+        "branching_factor": 2,
+        "depth": 5,
+        "directed": false
+      }
+    },
+    {
+      "factory": "mammalian_lung_graph",
+      "count": 1,
+      "kwargs": {
+        "branching_factor": 2,
+        "depth": 5,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_connected_graph",
+      "count": 500,
+      "kwargs": {
+        "n_nodes": 63,
+        "n_edges": 62
+      }
+    },
+    {
+      "factory": "mammalian_lung_graph",
+      "count": 1,
+      "kwargs": {
+        "branching_factor": 2,
+        "depth": 6,
+        "directed": false
+      }
+    },
+    {
+      "factory": "mammalian_lung_graph",
+      "count": 1,
+      "kwargs": {
+        "branching_factor": 2,
+        "depth": 6,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_connected_graph",
+      "count": 500,
+      "kwargs": {
+        "n_nodes": 127,
+        "n_edges": 126
+      }
+    },
+    {
+      "factory": "mammalian_lung_graph",
+      "count": 1,
+      "kwargs": {
+        "branching_factor": 2,
+        "depth": 7,
+        "directed": false
+      }
+    },
+    {
+      "factory": "mammalian_lung_graph",
+      "count": 1,
+      "kwargs": {
+        "branching_factor": 2,
+        "depth": 7,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_connected_graph",
+      "count": 500,
+      "kwargs": {
+        "n_nodes": 255,
+        "n_edges": 254
+      }
+    },
+    {
+      "factory": "mammalian_lung_graph",
+      "count": 1,
+      "kwargs": {
+        "branching_factor": 2,
+        "depth": 8,
+        "directed": false
+      }
+    },
+    {
+      "factory": "mammalian_lung_graph",
+      "count": 1,
+      "kwargs": {
+        "branching_factor": 2,
+        "depth": 8,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_connected_graph",
+      "count": 500,
+      "kwargs": {
+        "n_nodes": 511,
+        "n_edges": 510
+      }
+    },
+    {
+      "factory": "mammalian_lung_graph",
+      "count": 1,
+      "kwargs": {
+        "branching_factor": 2,
+        "depth": 9,
+        "directed": false
+      }
+    },
+    {
+      "factory": "mammalian_lung_graph",
+      "count": 1,
+      "kwargs": {
+        "branching_factor": 2,
+        "depth": 9,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_connected_graph",
+      "count": 500,
+      "kwargs": {
+        "n_nodes": 1023,
+        "n_edges": 1022
+      }
+    }
+  ]
+}
