@@ -2,10 +2,15 @@
 
     python -m moran_graphs.hpc submit plan.json [--dry-run | --local]
     python -m moran_graphs.hpc status   <batch>
+    python -m moran_graphs.hpc properties <batch>
     python -m moran_graphs.hpc finalize <batch>
     python -m moran_graphs.hpc resume   <batch> [--n-workers K] [--local]
 
-submit (login node, light) -> prepare job -> worker array -> finalize job.
+submit (login node, light) -> prepare job -> worker array + properties job -> finalize job.
+The properties job runs alongside the workers, so slow metrics (betweenness) do not hold
+up the simulations. If prepare fails, LSF kills every job waiting on it (bsub -ti).
+--dry-run builds every graph to catch plan errors before anything is queued; for a
+large plan that takes long enough to need an inode.
 
 Workers pull chunks from one work list. A chunk is claimed by atomically creating
 claims/<chunk_id> (O_EXCL: of two workers, exactly one succeeds), so every chunk runs
@@ -14,8 +19,9 @@ Each chunk has its own seed, so who runs it does not change its numbers.
 
 Batch directory (<batch> is a name under MORAN_GRAPHS_DATA, or a path):
     plan.json, submissions.json   the plan and the LSF job ids of each submission
-    graphs.npz, graphs.parquet    every graph as CSR, and its recipe + properties
+    graphs.npz, graphs.parquet    every graph as CSR, and its recipe and N
     chunks.parquet                the work list, written last by prepare
+    properties.parquet            structural metrics per graph, from the properties job
     claims/, journals/            who claimed what (a journal lets a requeued job redo its own)
     results/<chunk_id>.parquet    summaries + timing of a finished chunk
     runs/<chunk_id>.parquet       every run, only if plan.sim.keep_runs
@@ -40,7 +46,7 @@ import scipy.sparse as sp
 
 from moran_graphs.engine import CENSORED, HIST_BINS, WILD_TYPE, simulate, summarize
 from moran_graphs.plan import build_zoo, describe, load_plan, make_chunks, save_plan
-from moran_graphs.properties import properties
+from moran_graphs.properties import graph_from_W, properties
 
 DATA_ROOT = Path(os.environ.get("MORAN_GRAPHS_DATA", "/home/labs/pilpel/matanyaw/moran-graphs-data"))
 ALIVE = {"PEND", "RUN", "PSUSP", "USUSP", "SSUSP", "WAIT"}  # SSUSP is preempted, not finished
@@ -102,7 +108,9 @@ def _bsub(batch, label, args, queue, memory_mb, array=None, wait=None):
         f'#BSUB -R "rusage[mem={memory_mb}]"',
         f"#BSUB -o {batch}/logs/{label}_%J_%I.out",
         f"#BSUB -e {batch}/logs/{label}_%J_%I.err",
-        *([f'#BSUB -w "{wait}"'] if wait else []),
+        # -ti kills the job as soon as `wait` can never hold (e.g. prepare failed), instead of
+        # leaving it pending forever.
+        *([f'#BSUB -w "{wait}"', "#BSUB -ti"] if wait else []),
         # The venv python directly, not `uv run`: a thousand jobs must not each sync the env.
         f"exec {sys.executable} -u -m moran_graphs.hpc {args}",
     ]
@@ -121,12 +129,14 @@ def _record_submission(batch, **ids):
     path.write_text(json.dumps(subs, indent=2) + "\n")
 
 
-def _submit_workers(batch, plan, n_workers, after=None):
+def _submit_workers(batch, plan, n_workers, prepare=None, properties=None):
     lsf = plan["lsf"]
     workers = _bsub(batch, "worker", f"worker {batch} --n-workers {n_workers}", lsf["queue"],
-                    lsf["memory_mb"], array=n_workers, wait=after)
-    final = _bsub(batch, "finalize", f"finalize {batch}", lsf["queue"], lsf["big_memory_mb"],
-                  wait=f"ended({workers})")  # ended, not done: one failed worker must not block it
+                    lsf["memory_mb"], array=n_workers, wait=f"done({prepare})" if prepare else None)
+    # ended, not done: one failed worker must not block it. done(properties) too, which needs
+    # prepare done, because workers killed after a failed prepare also count as ended.
+    wait = f"ended({workers})" + (f" && done({properties})" if properties else "")
+    final = _bsub(batch, "finalize", f"finalize {batch}", lsf["queue"], lsf["big_memory_mb"], wait=wait)
     return workers, final
 
 
@@ -141,6 +151,7 @@ def _run_local(batch, n_workers, prepare_first=False):
     py = [sys.executable, "-u", "-m", "moran_graphs.hpc"]
     if prepare_first:
         subprocess.run([*py, "prepare", str(batch)], check=True)
+        subprocess.run([*py, "properties", str(batch)], check=True)
     job = f"local{int(time.time())}"
     procs = [
         subprocess.Popen([*py, "worker", str(batch), "--n-workers", str(n_workers)],
@@ -157,10 +168,12 @@ def _run_local(batch, n_workers, prepare_first=False):
 
 def submit(plan_path, dry_run=False, local=False):
     plan = load_plan(plan_path)
-    describe(plan)
-    sys.stdout.flush()  # before job output, which goes to the same terminal
     batch = batch_path(plan["batch_name"])
     if dry_run:
+        # The full check: building the zoo is what raises plan errors, such as too few
+        # distinct random graphs. A real submit leaves the building to the prepare job.
+        describe(plan)
+        print(f"  {len(build_zoo(plan))} distinct graphs")
         print(f"[dry run] would create {batch}")
         return
     if (batch / "plan.json").exists():
@@ -171,33 +184,45 @@ def submit(plan_path, dry_run=False, local=False):
         return _run_local(batch, plan["lsf"]["n_workers"], prepare_first=True)
     lsf = plan["lsf"]
     prep = _bsub(batch, "prepare", f"prepare {batch}", lsf["queue"], lsf["big_memory_mb"])
-    workers, final = _submit_workers(batch, plan, lsf["n_workers"], after=f"done({prep})")
-    _record_submission(batch, prepare=prep, workers=workers, finalize=final, n_workers=lsf["n_workers"])
+    props = _bsub(batch, "properties", f"properties {batch}", lsf["queue"], lsf["big_memory_mb"],
+                  wait=f"done({prep})")
+    workers, final = _submit_workers(batch, plan, lsf["n_workers"], prepare=prep, properties=props)
+    _record_submission(batch, prepare=prep, properties=props, workers=workers, finalize=final,
+                       n_workers=lsf["n_workers"])
 
 
 def prepare(batch):
-    """Builds the graphs, their properties table, and the work list."""
+    """Builds the graphs and the work list. Properties come later, from compute_properties."""
     batch = batch_path(batch)
     plan = load_plan(batch / "plan.json")
     t0 = time.time()
     zoo = build_zoo(plan)
     _log(f"built {len(zoo)} graphs in {time.time() - t0:.1f}s")
-    rows = []
-    for idx, rec in enumerate(zoo):
-        g = rec["graph"]
-        rows.append({
-            "graph_idx": idx, "hash": rec["hash"], "name": g.name, "category": g.category,
-            "factory": plan["specs"][rec["spec_idx"]]["factory"], "spec_idx": rec["spec_idx"],
-            "kwargs": json.dumps(rec["kwargs"]), **properties(g.graph),
-        })
-        if (idx + 1) % 500 == 0:
-            _log(f"properties of {idx + 1}/{len(zoo)} graphs")
+    graphs = pd.DataFrame([{
+        "graph_idx": idx, "hash": rec["hash"], "name": rec["graph"].name, "category": rec["graph"].category,
+        "factory": plan["specs"][rec["spec_idx"]]["factory"], "spec_idx": rec["spec_idx"],
+        "kwargs": json.dumps(rec["kwargs"]), "n_nodes": rec["W"].shape[0],  # make_chunks costs by N
+    } for idx, rec in enumerate(zoo)])
     save_csr(batch / "graphs.npz", [rec["W"] for rec in zoo])
-    graphs = pd.DataFrame(rows)
     _write_parquet(graphs, batch / "graphs.parquet")
     chunks = make_chunks(plan, graphs)
     _write_parquet(chunks, batch / "chunks.parquet")  # last: its existence means "prepared"
     _log(f"{len(chunks)} chunks for {plan['lsf']['n_workers']} workers, done in {time.time() - t0:.1f}s")
+
+
+def compute_properties(batch):
+    """Structural metrics of every graph in graphs.npz, keyed by hash."""
+    batch = batch_path(batch)
+    graphs = pd.read_parquet(batch / "graphs.parquet", columns=["graph_idx", "hash"])
+    z = np.load(batch / "graphs.npz")
+    t0 = time.time()
+    rows = []
+    for idx, h in zip(graphs["graph_idx"], graphs["hash"]):
+        rows.append({"hash": h, **properties(graph_from_W(read_csr(z, idx)))})
+        if (idx + 1) % 500 == 0:
+            _log(f"properties of {idx + 1}/{len(graphs)} graphs")
+    _write_parquet(pd.DataFrame(rows), batch / "properties.parquet")
+    _log(f"properties of {len(graphs)} graphs in {time.time() - t0:.1f}s")
 
 
 def worker(batch, n_workers, index=None):
@@ -273,6 +298,8 @@ def finalize(batch):
     sim = plan["sim"]
     chunks = pd.read_parquet(batch / "chunks.parquet")
     graphs = pd.read_parquet(batch / "graphs.parquet")
+    props = pd.read_parquet(batch / "properties.parquet").drop(columns="n_nodes")  # graphs has it
+    graphs = graphs.merge(props, on="hash", validate="one_to_one")
     report = batch / "report"
     report.mkdir(exist_ok=True)
     have = sorted(int(p.stem) for p in (batch / "results").glob("*.parquet"))
@@ -404,6 +431,19 @@ def _speed_report(batch, t):
     print("\n".join(lines), flush=True)
 
 
+def _duration(seconds):
+    m, s = divmod(int(seconds), 60)
+    h, m = divmod(m, 60)
+    d, h = divmod(h, 24)
+    return f"{d}d {h}h {m:02d}m" if d else f"{h}h {m:02d}m" if h else f"{m}m {s:02d}s"
+
+
+def _bar(done, claimed, n, width=50):
+    """'#' done, '>' claimed but not done, '.' not started. ASCII so `watch` renders it."""
+    n_done, n_claimed = done * width // n, claimed * width // n
+    return "[" + "#" * n_done + ">" * (n_claimed - n_done) + "." * (width - n_claimed) + "]"
+
+
 def status(batch):
     batch = batch_path(batch)
     if not (batch / "chunks.parquet").exists():
@@ -414,11 +454,13 @@ def status(batch):
         claimed = len(os.listdir(batch / "claims")) if (batch / "claims").exists() else 0
         print(f"{batch.name}: {len(done)}/{n} chunks done, {claimed - len(done)} running or orphaned, "
               f"{n - claimed} not started")
+        print(f"  {_bar(len(done), claimed, n)} {len(done) / n:.1%}")
         if done:
-            times = [p.stat().st_mtime for p in done]
-            rate = len(done) / max(time.time() - min(times), 1)
+            elapsed = max(time.time() - min(p.stat().st_mtime for p in done), 1)
             if len(done) < n:
-                print(f"  rough ETA {(n - len(done)) / rate / 3600:.2f} h at the current rate")
+                left = (n - len(done)) * elapsed / len(done)
+                finish = time.strftime("%a %H:%M", time.localtime(time.time() + left))
+                print(f"  rough ETA {_duration(left)}, around {finish} (rate over the last {_duration(elapsed)})")
     subs = batch / "submissions.json"
     if subs.exists():
         ids = [str(v) for s in json.loads(subs.read_text()) for k, v in s.items() if k != "time" and k != "n_workers"]
@@ -472,7 +514,7 @@ def main():
     p.add_argument("plan")
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--local", action="store_true", help="run the whole chain here, no LSF")
-    for cmd in ("prepare", "finalize", "status"):
+    for cmd in ("prepare", "properties", "finalize", "status"):
         sub.add_parser(cmd).add_argument("batch")
     p = sub.add_parser("worker")
     p.add_argument("batch")
@@ -488,6 +530,8 @@ def main():
         sys.exit(submit(a.plan, a.dry_run, a.local) or 0)
     if a.cmd == "prepare":
         prepare(a.batch)
+    elif a.cmd == "properties":
+        compute_properties(a.batch)
     elif a.cmd == "worker":
         worker(a.batch, a.n_workers, a.index)
     elif a.cmd == "finalize":

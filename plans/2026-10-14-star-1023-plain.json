@@ -1,0 +1,34 @@
+{
+  "batch_name": "2026-10-14-star-1023-plain",
+  "description": "star_n1023 rerun without null-step skipping; replaces graph 90 of 2026-10-12-respiratory-size-sweep",
+  "zoo_seed": 5,
+  "batch_seed": 5,
+  "sim": {
+    "update_rule": "Bd",
+    "r_values": [
+      1.1
+    ],
+    "n_repeats": 100000,
+    "max_steps": 10000000000,
+    "keep_runs": false,
+    "chunk_target_steps": 10000000000.0
+  },
+  "lsf": {
+    "n_workers": 50,
+    "queue": "gsla-cpu",
+    "memory_mb": 2000,
+    "big_memory_mb": 8000
+  },
+  "specs": [
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_nodes": 1023
+      }
+    }
+  ]
+}

@@ -20,12 +20,15 @@ Batch data goes to `$MORAN_GRAPHS_DATA` (default `/home/labs/pilpel/matanyaw/mor
 
 1. **Write a plan** in `batch.ipynb` (`make_plan`, `spec`, `describe`, `save_plan`). It saves `plans/<batch>.json`:
    graph recipes, r values, repeats, seeds and LSF settings.
-2. **Submit** from the repo (light, fine on the login node):
+2. **Submit** from the repo:
    ```
-   uv run python -m moran_graphs.hpc submit plans/<batch>.json --dry-run   # check, creates nothing
-   uv run python -m moran_graphs.hpc submit plans/<batch>.json
+   uv run python -m moran_graphs.hpc submit plans/<batch>.json --dry-run   # builds every graph to check the plan, creates nothing (inode for large plans)
+   uv run python -m moran_graphs.hpc submit plans/<batch>.json             # light, fine on the login node
    ```
-   This queues a prepare job (builds graphs, properties, work list), a worker array and a finalize job.
+   This queues a prepare job (builds graphs and the work list), then a worker array and a properties
+   job side by side, then a finalize job. If prepare fails, LSF kills every job after it; read
+   `<batch>/logs/prepare_*.err`. If only properties fails, the simulations still finish: rerun
+   `properties <batch>` (in a job), then `finalize <batch>`.
 3. **Watch:** `uv run python -m moran_graphs.hpc status <batch>` (chunks done, LSF states, rough ETA).
 4. **Recover:** `uv run python -m moran_graphs.hpc resume <batch>` reruns only missing chunks and finalizes;
    `finalize <batch>` rebuilds the report by hand.

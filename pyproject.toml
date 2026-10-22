@@ -16,6 +16,7 @@ dependencies = [
     "plotly>=7.1.0",
     "pyarrow>=25.0.1",
     "scipy>=1.18.1",
+    "seaborn>=0.13.2",
 ]
 
 [build-system]
@@ -34,6 +35,7 @@ cache-keys = [{ file = "pyproject.toml" }, { file = "rust/Cargo.toml" }, { file 
 
 [dependency-groups]
 dev = [
+    "ipykernel>=7.3.0",
     "nbstripout>=0.9.1",
     "pytest>=9.1.1",
 ]
