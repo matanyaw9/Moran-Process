@@ -4,5 +4,8 @@
     "editor.defaultFormatter": "rust-lang.rust-analyzer",
     "editor.formatOnSave": true
   },
-  "rust-analyzer.linkedProjects": ["${workspaceFolder}/rust/Cargo.toml"]
+  "rust-analyzer.linkedProjects": [
+    "${workspaceFolder}/rust/engine/Cargo.toml",
+    "${workspaceFolder}/rust/exact/Cargo.toml"
+  ]
 }

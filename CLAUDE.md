@@ -22,11 +22,12 @@ src/moran_graphs/
   plan.py             # batch plans: JSON recipes, seeding, zoo building, dedup
   hpc.py              # one LSF array submitter + aggregation
   plots.py            # (planned) one function per paper figure, takes a tidy DataFrame
-rust/                 # current Moran simulation engine (pyo3)
+rust/engine/          # current Moran simulation engine (pyo3, built into moran_graphs._engine)
+rust/exact/           # Hila's exact solver for small N: standalone binary, JSON in, JSON out
 ```
-Possible later ports from the old repo (tag `v1-archive`), only when I ask: the C++
-Moran simulation (pybind11) as a faster `simulate()` backend, and the Rust exact
-solver for small N behind `exact()`. Until then, `simulate()` runs on `rust/`.
+Possible later ports, only when I ask: the C++ Moran simulation (pybind11, tag
+`v1-archive`) as a faster `simulate()` backend, and `rust/exact/` behind `exact()`.
+Until then, `simulate()` runs on `rust/engine/`.
 Data lives outside the repo (path from config), never inside it.
 
 ## Core design decisions (flag code that breaks these)
