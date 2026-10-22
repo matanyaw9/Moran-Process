@@ -14,12 +14,3 @@ rust/target/
 src/moran_process/numeric/target/
 src/moran_process/numeric/numeric-solve
 *.so
-
-# v1 results and outputs; delete after the Rust reruns
-simulation_data/
-logs/
-figures/
-images/
-graph_zoos/
-tmp_winning_graphs/
-notebooks/tmp_*.ipynb
