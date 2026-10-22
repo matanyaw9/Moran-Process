@@ -1,8 +1,7 @@
 // inputs: graph, r, (initial_state, times)*,
 // return: (fixation prob, avg fixation time, avg absorption time) X initial_states
 
-
-struct Action {
+struct SimPlan {
     graph: Graph,
     seed: u64,
     r: Vec<f32>,
@@ -24,24 +23,38 @@ struct Graph {
     cuts: Vec<usize>, // length is N-1 (0 is always the first node's), each cell points on the index in edges where the cell's edges start.
 }
 
-fn read_input() -> Result<Action, std::io::Error> {
+fn read_input() -> Result<SimPlan, std::io::Error> {
     let mut input_line = String::new();
     std::io::stdin().read_line(&mut input_line)?;
     todo!()
 }
 
-struct SimResult{   // kept int to give freedome in analyzing it. 
+struct SimResult {
+    // kept int to give freedome in analyzing it.
     fix_count: u64,
     total_steps_fix: u64,
-    total_steps: u64
+    total_steps: u64,
 }
 
-fn do_action(action: &Action)->{
+struct SingleSimResult {
+    fixated: bool,
+    steps: u64,
+}
+
+fn run_plan(action: &SimPlan) -> u8 {
+    todo! {}
+}
+
+fn run_sim(graph: &Graph, r: f32, starting_state: &[u32]) -> SingleSimResult {
+    let mut num_mutants: usize = starting_state.len();
+    
+
+
 
 }
 
 fn main() {
     for _i in 0..199 {
-        println!("Python is superior");
+        println!("We prefer Python");
     }
 }
