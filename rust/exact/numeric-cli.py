@@ -11,7 +11,7 @@ def complete(size: int) -> list[list[int]]:
 
 
 def cycle(size: int) -> list[list[int]]:
-    return [[(i - 1) % size, (i + 1) % size] for i in range(size)]
+    return [list({(i - 1) % size, (i + 1) % size}) for i in range(size)]
 
 
 def star(size: int) -> list[list[int]]:
@@ -40,8 +40,8 @@ def main():
     parser.add_argument("r", type=float, help="mutant fitness")
     parser.add_argument("-j", type=int, help="number of threads to use")
     args = parser.parse_args()
-    if not (0 < args.size < 64):
-        parser.error("graph size must be in range [1, 63]")
+    if not (2 <= args.size <= 63):
+        parser.error("graph size must be in range [2, 63]")
     if not (args.r >= 0.0):
         parser.error("mutant fitness cannot be negative")
 
@@ -79,9 +79,9 @@ def main():
         capture_output=True,
     )
     output = json.loads(completed.stdout.decode())
-    print("prob            time            ctime")
+    print("prob            atime           ftime")
     for line in output:
-        print(f"{line["prob"]: <16}{line["time"]: <16}{line["ctime"]}")
+        print(f"{line["prob"]: <16}{line["atime"]: <16}{line["ftime"]}")
 
 
 if __name__ == "__main__":
