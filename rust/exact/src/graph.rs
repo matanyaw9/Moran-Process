@@ -45,15 +45,14 @@ impl Graph {
     }
 
     /// Runs a single Gauss-Siedel step through all elements in `indexer`'s
-    /// range, entries are updated in an arbitrary order. Does not update the
-    /// very first, or very last entries in the state-space, if they happen to
-    /// be included in `indexer`'s range.
+    /// range, entries are updated in an unspecified order. Does not update the
+    /// very first, or very last entries in the state-space  (i.e. the entries
+    /// that correspond to terminal states), if they happen to be included in
+    /// `indexer`'s range.
     ///
     /// Returns whether any entry was changed significantly.
     pub fn step_division(&self, indexer: &mut Indexer<'_, [f32; 3]>) -> Change {
-        assert!(self.size >= 8);
-
-        let topbits = indexer.div_idx() as u64 * indexer.div_len();
+        let topbits = indexer.topbits();
         let mut weights = [0.0; _];
         {
             let mut s = topbits;
@@ -64,22 +63,21 @@ impl Graph {
             }
         }
 
-        let mut chng = match indexer.div_idx() {
-            0 => Change::Minor,
-            _ => self.update_entries(&weights, indexer, 0),
+        let mut chng = match indexer.first() {
+            false => self.update_entries(&weights, indexer, 0),
+            true => Change::Minor,
         };
-        for i in 1..indexer.div_len() {
+        for i in 1..indexer.len() {
             let bit = i.trailing_zeros() as usize;
             let i = i ^ i >> 1;
-            if indexer.div_idx() == 0xff && i == indexer.div_len() - 1 {
+            if indexer.last() && i == indexer.len() - 1 {
                 std::hint::cold_path();
                 weights.fill(0.0);
                 continue;
             }
             self.adjust_neighbours(&mut weights, topbits | i, bit);
-            match self.update_entries(&weights, indexer, i) {
-                Change::Minor => {}
-                Change::Major => chng = Change::Major,
+            if self.update_entries(&weights, indexer, i) == Change::Major {
+                chng = Change::Major;
             }
         }
         chng
@@ -136,8 +134,8 @@ impl Graph {
         let [prev_p, prev_t, prev_ct] = *indexer.at(idx);
         let new_p = prev_p + OVER_RLX * (sum_p / sum_w - prev_p);
 
-        let norm = self.size as f32
-            + (self.r - 1.0) * (idx.count_ones() + indexer.div_idx().count_ones()) as f32;
+        let norm =
+            self.size as f32 + (self.r - 1.0) * (idx | indexer.topbits()).count_ones() as f32;
 
         sum_t += norm;
         sum_ct += norm * new_p;

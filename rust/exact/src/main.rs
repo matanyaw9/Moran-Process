@@ -89,8 +89,8 @@ fn crunch(g: &Graph, thrds: usize, reports: Option<&[u64]>) -> Vec<Result> {
             let datum = data[i as usize];
             Result {
                 prob: datum[0],
-                time: datum[1],
-                ctime: datum[2] / datum[0],
+                atime: datum[1],
+                ftime: datum[2] / datum[0],
             }
         })
         .collect::<Vec<_>>()
@@ -99,16 +99,16 @@ fn crunch(g: &Graph, thrds: usize, reports: Option<&[u64]>) -> Vec<Result> {
 #[derive(Clone, Copy)]
 struct Result {
     prob: f32,
-    time: f32,
-    ctime: f32,
+    atime: f32,
+    ftime: f32,
 }
 
 impl std::fmt::Display for Result {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "{{\"prob\":{},\"time\":{},\"ctime\":{}}}",
-            self.prob, self.time, self.ctime
+            "{{\"prob\":{},\"atime\":{},\"ftime\":{}}}",
+            self.prob, self.atime, self.ftime
         )
     }
 }
