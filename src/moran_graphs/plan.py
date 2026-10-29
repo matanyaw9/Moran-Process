@@ -12,7 +12,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from moran_graphs.PopulationGraph import PopulationGraph
+from moran_graphs.PopulationGraph import PopulationGraph, graph_size
 from moran_graphs.properties import wl_hash
 
 MAX_SEED_REDRAWS = 100
@@ -130,14 +130,14 @@ def load_plan(path):
 
 
 def describe(plan):
-    """Prints what the plan will run and a rough cost. Builds one graph per spec for N."""
+    """Prints what the plan will run and a rough cost."""
     sim, lsf = plan["sim"], plan["lsf"]
     n_r, reps = len(sim["r_values"]), sim["n_repeats"]
     print(f"Batch plan: {plan['batch_name']}  {plan['description']}")
     print(f"  zoo_seed={plan['zoo_seed']}  batch_seed={plan['batch_seed']}")
     n_graphs = steps = 0
     for i, s in enumerate(plan["specs"]):
-        n = _example(s).graph.number_of_nodes()
+        n, _ = graph_size(s["factory"], **s["kwargs"])
         n_graphs += s["count"]
         steps += s["count"] * n_r * reps * n**2
         kw = ", ".join(f"{k}={v!r}" for k, v in s["kwargs"].items())
@@ -152,14 +152,6 @@ def describe(plan):
     return {"n_graphs": n_graphs, "runs": runs, "cpu_hours": hours}
 
 
-def _example(s):
-    fn = _factory(s["factory"])
-    kwargs = dict(s["kwargs"])
-    if _seedable(fn) and "seed" not in kwargs:
-        kwargs["seed"] = 0
-    return fn(**kwargs)
-
-
 def _random_match_specs(specs):
     """One up_to random_graph spec per (N, E) that specs with random_matches ask for.
 
@@ -172,10 +164,9 @@ def _random_match_specs(specs):
     cloud, skip = {}, {}
     for s in specs:
         if s["random_matches"]:
-            G = _example(s).graph
-            if G.is_directed():
+            if s["kwargs"].get("directed"):
                 raise ValueError(f"{s['factory']}({s['kwargs']}) is directed, random_graph has no directed match")
-            size = (G.number_of_nodes(), G.number_of_edges())
+            size = graph_size(s["factory"], **s["kwargs"])
             cloud[size] = max(cloud.get(size, 0), s["random_matches"])
             skip[size] = skip.get(size, False) or s["skip_null_steps"]
     for s in specs:

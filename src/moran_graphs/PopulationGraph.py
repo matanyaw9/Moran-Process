@@ -1,3 +1,4 @@
+import inspect
 from collections import Counter
 from math import comb
 
@@ -24,14 +25,9 @@ def _bronchiole_diameter(n_major, n_minor, flow_ratio):
     return round(diameter, 9)
 
 
-def _cutoff_for_size(flow_ratio, n_nodes):
-    """The cut-off diameter whose tree has the node count closest to n_nodes.
-
-    The tree keeps every bronchiole with diameter >= cut-off, and C(a + b, a) of them
-    have a major and b minor branchings. Lowering the cut-off past a diameter adds
-    all of those bronchioles at once, so N grows in jumps and n_nodes itself may be
-    unreachable.
-    """
+def _count_by_diameter(flow_ratio):
+    """Number of bronchioles of each diameter: C(a + b, a) of them have a major and
+    b minor branchings."""
     floor = TRACHEA_DIAMETER_MM * 1e-4  # far below any tree size we simulate
     count_by_diameter = Counter()
     n_major = 0
@@ -41,7 +37,17 @@ def _cutoff_for_size(flow_ratio, n_nodes):
             count_by_diameter[diameter] += comb(n_major + n_minor, n_major)
             n_minor += 1
         n_major += 1
+    return count_by_diameter
 
+
+def _cutoff_for_size(flow_ratio, n_nodes):
+    """The cut-off diameter whose tree has the node count closest to n_nodes.
+
+    The tree keeps every bronchiole with diameter >= cut-off. Lowering the cut-off
+    past a diameter adds all bronchioles of that diameter at once, so N grows in
+    jumps and n_nodes itself may be unreachable.
+    """
+    count_by_diameter = _count_by_diameter(flow_ratio)
     total, best_cutoff, best_total = 0, None, None
     for diameter in sorted(count_by_diameter, reverse=True):
         total += count_by_diameter[diameter]
@@ -689,3 +695,43 @@ class PopulationGraph:
     def csr(self):
         """W[i, j] = weight of edge i -> j (1 if unweighted); row i is node i."""
         return nx.to_scipy_sparse_array(self.graph, format="csr")
+
+
+def graph_size(factory: str, **kwargs) -> tuple[int, int]:
+    """(N, E) of PopulationGraph.<factory>(**kwargs), without building it.
+
+    Defaults come from the factory's signature, so they cannot drift; the formulas can,
+    and test_graph_size checks them against built graphs. E counts arcs on directed
+    graphs, as nx does; no factory adds both u -> v and v -> u, so E is the same either way.
+    """
+    bound = inspect.signature(getattr(PopulationGraph, factory)).bind(**kwargs)
+    bound.apply_defaults()
+    a = bound.arguments
+    match factory:
+        case "complete_graph":
+            return a["n_nodes"], comb(a["n_nodes"], 2)
+        case "cycle_graph":
+            return a["n_nodes"], a["n_nodes"]
+        case "line_graph" | "star_graph":
+            return a["n_nodes"], a["n_nodes"] - 1
+        case "grid_graph":
+            w, h = a["width"], a["height"]
+            return w * h, w * (h - 1) + h * (w - 1)
+        case "avian_graph":
+            n, l = a["n_parabronchi"], a["l_parabronchi"]
+            return n * l + 3, n * (l + 1) + 2  # each rod is a path of l + 1 edges, plus the 2-edge loop
+        case "random_graph":
+            return a["n_nodes"], a["n_edges"]
+        case "mammalian_lung_graph":
+            n = sum(a["branching_factor"] ** k for k in range(a["depth"] + 1))
+        case "fish_graph":
+            n = a["n_rods"] * (1 + a["l_rod"] * (1 + a["fillaments"]))
+        case "asymmetric_lung_graph":
+            cutoff = a["cutoff_diameter"]
+            if a["n_nodes"] is not None:
+                cutoff = _cutoff_for_size(a["flow_ratio"], a["n_nodes"])
+            # diameters shrink along every path, so the tree is every bronchiole >= cutoff
+            n = sum(count for d, count in _count_by_diameter(a["flow_ratio"]).items() if d >= cutoff)
+        case _:
+            raise ValueError(f"no size formula for {factory!r}")
+    return n, n - 1  # the last three are trees
