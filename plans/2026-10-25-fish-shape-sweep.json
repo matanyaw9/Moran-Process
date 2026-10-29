@@ -1,0 +1,1937 @@
+{
+  "batch_name": "2026-10-25-fish-shape-sweep",
+  "description": "fish, every n_rods x l_rod x fillaments with N = 2^k, N 16 to 1024, 100 random trees per N",
+  "zoo_seed": 6,
+  "batch_seed": 6,
+  "sim": {
+    "update_rule": "Bd",
+    "r_values": [
+      1.1
+    ],
+    "n_repeats": 100000,
+    "max_steps": 10000000000,
+    "keep_runs": false,
+    "chunk_target_steps": 10000000000.0
+  },
+  "lsf": {
+    "n_workers": 800,
+    "queue": "gsla-cpu",
+    "memory_mb": 2000,
+    "big_memory_mb": 8000
+  },
+  "specs": [
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 1,
+        "l_rod": 1,
+        "fillaments": 14
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 1,
+        "l_rod": 3,
+        "fillaments": 4
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 1,
+        "l_rod": 5,
+        "fillaments": 2
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 1,
+        "l_rod": 15,
+        "fillaments": 0
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 2,
+        "l_rod": 1,
+        "fillaments": 6
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 2,
+        "l_rod": 7,
+        "fillaments": 0
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 4,
+        "l_rod": 1,
+        "fillaments": 2
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 4,
+        "l_rod": 3,
+        "fillaments": 0
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 8,
+        "l_rod": 1,
+        "fillaments": 0
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 16,
+        "n_edges": 15
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 1,
+        "l_rod": 1,
+        "fillaments": 30
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 1,
+        "l_rod": 31,
+        "fillaments": 0
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 2,
+        "l_rod": 1,
+        "fillaments": 14
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 2,
+        "l_rod": 3,
+        "fillaments": 4
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 2,
+        "l_rod": 5,
+        "fillaments": 2
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 2,
+        "l_rod": 15,
+        "fillaments": 0
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 4,
+        "l_rod": 1,
+        "fillaments": 6
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 4,
+        "l_rod": 7,
+        "fillaments": 0
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 8,
+        "l_rod": 1,
+        "fillaments": 2
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 8,
+        "l_rod": 3,
+        "fillaments": 0
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 16,
+        "l_rod": 1,
+        "fillaments": 0
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 32,
+        "n_edges": 31
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 1,
+        "l_rod": 1,
+        "fillaments": 62
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 1,
+        "l_rod": 3,
+        "fillaments": 20
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 1,
+        "l_rod": 7,
+        "fillaments": 8
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 1,
+        "l_rod": 9,
+        "fillaments": 6
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 1,
+        "l_rod": 21,
+        "fillaments": 2
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 1,
+        "l_rod": 63,
+        "fillaments": 0
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 2,
+        "l_rod": 1,
+        "fillaments": 30
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 2,
+        "l_rod": 31,
+        "fillaments": 0
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 4,
+        "l_rod": 1,
+        "fillaments": 14
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 4,
+        "l_rod": 3,
+        "fillaments": 4
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 4,
+        "l_rod": 5,
+        "fillaments": 2
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 4,
+        "l_rod": 15,
+        "fillaments": 0
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 8,
+        "l_rod": 1,
+        "fillaments": 6
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 8,
+        "l_rod": 7,
+        "fillaments": 0
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 16,
+        "l_rod": 1,
+        "fillaments": 2
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 16,
+        "l_rod": 3,
+        "fillaments": 0
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 32,
+        "l_rod": 1,
+        "fillaments": 0
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 64,
+        "n_edges": 63
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 1,
+        "l_rod": 1,
+        "fillaments": 126
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 1,
+        "l_rod": 127,
+        "fillaments": 0
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 2,
+        "l_rod": 1,
+        "fillaments": 62
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 2,
+        "l_rod": 3,
+        "fillaments": 20
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 2,
+        "l_rod": 7,
+        "fillaments": 8
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 2,
+        "l_rod": 9,
+        "fillaments": 6
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 2,
+        "l_rod": 21,
+        "fillaments": 2
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 2,
+        "l_rod": 63,
+        "fillaments": 0
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 4,
+        "l_rod": 1,
+        "fillaments": 30
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 4,
+        "l_rod": 31,
+        "fillaments": 0
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 8,
+        "l_rod": 1,
+        "fillaments": 14
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 8,
+        "l_rod": 3,
+        "fillaments": 4
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 8,
+        "l_rod": 5,
+        "fillaments": 2
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 8,
+        "l_rod": 15,
+        "fillaments": 0
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 16,
+        "l_rod": 1,
+        "fillaments": 6
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 16,
+        "l_rod": 7,
+        "fillaments": 0
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 32,
+        "l_rod": 1,
+        "fillaments": 2
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 32,
+        "l_rod": 3,
+        "fillaments": 0
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 64,
+        "l_rod": 1,
+        "fillaments": 0
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 128,
+        "n_edges": 127
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 1,
+        "l_rod": 1,
+        "fillaments": 254
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 1,
+        "l_rod": 3,
+        "fillaments": 84
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 1,
+        "l_rod": 5,
+        "fillaments": 50
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 1,
+        "l_rod": 15,
+        "fillaments": 16
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 1,
+        "l_rod": 17,
+        "fillaments": 14
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 1,
+        "l_rod": 51,
+        "fillaments": 4
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 1,
+        "l_rod": 85,
+        "fillaments": 2
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 1,
+        "l_rod": 255,
+        "fillaments": 0
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 2,
+        "l_rod": 1,
+        "fillaments": 126
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 2,
+        "l_rod": 127,
+        "fillaments": 0
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 4,
+        "l_rod": 1,
+        "fillaments": 62
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 4,
+        "l_rod": 3,
+        "fillaments": 20
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 4,
+        "l_rod": 7,
+        "fillaments": 8
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 4,
+        "l_rod": 9,
+        "fillaments": 6
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 4,
+        "l_rod": 21,
+        "fillaments": 2
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 4,
+        "l_rod": 63,
+        "fillaments": 0
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 8,
+        "l_rod": 1,
+        "fillaments": 30
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 8,
+        "l_rod": 31,
+        "fillaments": 0
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 16,
+        "l_rod": 1,
+        "fillaments": 14
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 16,
+        "l_rod": 3,
+        "fillaments": 4
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 16,
+        "l_rod": 5,
+        "fillaments": 2
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 16,
+        "l_rod": 15,
+        "fillaments": 0
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 32,
+        "l_rod": 1,
+        "fillaments": 6
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 32,
+        "l_rod": 7,
+        "fillaments": 0
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 64,
+        "l_rod": 1,
+        "fillaments": 2
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 64,
+        "l_rod": 3,
+        "fillaments": 0
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 128,
+        "l_rod": 1,
+        "fillaments": 0
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 256,
+        "n_edges": 255
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 1,
+        "l_rod": 1,
+        "fillaments": 510
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 1,
+        "l_rod": 7,
+        "fillaments": 72
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 1,
+        "l_rod": 73,
+        "fillaments": 6
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 1,
+        "l_rod": 511,
+        "fillaments": 0
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 2,
+        "l_rod": 1,
+        "fillaments": 254
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 2,
+        "l_rod": 3,
+        "fillaments": 84
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 2,
+        "l_rod": 5,
+        "fillaments": 50
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 2,
+        "l_rod": 15,
+        "fillaments": 16
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 2,
+        "l_rod": 17,
+        "fillaments": 14
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 2,
+        "l_rod": 51,
+        "fillaments": 4
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 2,
+        "l_rod": 85,
+        "fillaments": 2
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 2,
+        "l_rod": 255,
+        "fillaments": 0
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 4,
+        "l_rod": 1,
+        "fillaments": 126
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 4,
+        "l_rod": 127,
+        "fillaments": 0
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 8,
+        "l_rod": 1,
+        "fillaments": 62
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 8,
+        "l_rod": 3,
+        "fillaments": 20
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 8,
+        "l_rod": 7,
+        "fillaments": 8
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 8,
+        "l_rod": 9,
+        "fillaments": 6
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 8,
+        "l_rod": 21,
+        "fillaments": 2
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 8,
+        "l_rod": 63,
+        "fillaments": 0
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 16,
+        "l_rod": 1,
+        "fillaments": 30
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 16,
+        "l_rod": 31,
+        "fillaments": 0
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 32,
+        "l_rod": 1,
+        "fillaments": 14
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 32,
+        "l_rod": 3,
+        "fillaments": 4
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 32,
+        "l_rod": 5,
+        "fillaments": 2
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 32,
+        "l_rod": 15,
+        "fillaments": 0
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 64,
+        "l_rod": 1,
+        "fillaments": 6
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 64,
+        "l_rod": 7,
+        "fillaments": 0
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 128,
+        "l_rod": 1,
+        "fillaments": 2
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 128,
+        "l_rod": 3,
+        "fillaments": 0
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 256,
+        "l_rod": 1,
+        "fillaments": 0
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 512,
+        "n_edges": 511
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 1,
+        "l_rod": 1,
+        "fillaments": 1022
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 1,
+        "l_rod": 3,
+        "fillaments": 340
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 1,
+        "l_rod": 11,
+        "fillaments": 92
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 1,
+        "l_rod": 31,
+        "fillaments": 32
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 1,
+        "l_rod": 33,
+        "fillaments": 30
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 1,
+        "l_rod": 93,
+        "fillaments": 10
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 1,
+        "l_rod": 341,
+        "fillaments": 2
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 1,
+        "l_rod": 1023,
+        "fillaments": 0
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 2,
+        "l_rod": 1,
+        "fillaments": 510
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 2,
+        "l_rod": 7,
+        "fillaments": 72
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 2,
+        "l_rod": 73,
+        "fillaments": 6
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 2,
+        "l_rod": 511,
+        "fillaments": 0
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 4,
+        "l_rod": 1,
+        "fillaments": 254
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 4,
+        "l_rod": 3,
+        "fillaments": 84
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 4,
+        "l_rod": 5,
+        "fillaments": 50
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 4,
+        "l_rod": 15,
+        "fillaments": 16
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 4,
+        "l_rod": 17,
+        "fillaments": 14
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 4,
+        "l_rod": 51,
+        "fillaments": 4
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 4,
+        "l_rod": 85,
+        "fillaments": 2
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 4,
+        "l_rod": 255,
+        "fillaments": 0
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 8,
+        "l_rod": 1,
+        "fillaments": 126
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 8,
+        "l_rod": 127,
+        "fillaments": 0
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 16,
+        "l_rod": 1,
+        "fillaments": 62
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 16,
+        "l_rod": 3,
+        "fillaments": 20
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 16,
+        "l_rod": 7,
+        "fillaments": 8
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 16,
+        "l_rod": 9,
+        "fillaments": 6
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 16,
+        "l_rod": 21,
+        "fillaments": 2
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 16,
+        "l_rod": 63,
+        "fillaments": 0
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 32,
+        "l_rod": 1,
+        "fillaments": 30
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 32,
+        "l_rod": 31,
+        "fillaments": 0
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 64,
+        "l_rod": 1,
+        "fillaments": 14
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 64,
+        "l_rod": 3,
+        "fillaments": 4
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 64,
+        "l_rod": 5,
+        "fillaments": 2
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 64,
+        "l_rod": 15,
+        "fillaments": 0
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 128,
+        "l_rod": 1,
+        "fillaments": 6
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 128,
+        "l_rod": 7,
+        "fillaments": 0
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 256,
+        "l_rod": 1,
+        "fillaments": 2
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 256,
+        "l_rod": 3,
+        "fillaments": 0
+      }
+    },
+    {
+      "factory": "fish_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_rods": 512,
+        "l_rod": 1,
+        "fillaments": 0
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 1024,
+        "n_edges": 1023
+      }
+    }
+  ]
+}

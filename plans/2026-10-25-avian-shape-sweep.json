@@ -1,0 +1,1928 @@
+{
+  "batch_name": "2026-10-25-avian-shape-sweep",
+  "description": "avian (+ directed), every power-of-two n_parabronchi x l_parabronchi = 2^k, N 19 to 1027, 100 random matches",
+  "zoo_seed": 5,
+  "batch_seed": 5,
+  "sim": {
+    "update_rule": "Bd",
+    "r_values": [
+      1.1
+    ],
+    "n_repeats": 100000,
+    "max_steps": 10000000000,
+    "keep_runs": false,
+    "chunk_target_steps": 10000000000.0
+  },
+  "lsf": {
+    "n_workers": 300,
+    "queue": "gsla-cpu",
+    "memory_mb": 2000,
+    "big_memory_mb": 8000
+  },
+  "specs": [
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 1,
+        "l_parabronchi": 16
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 1,
+        "l_parabronchi": 16,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 19,
+        "n_edges": 19
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 2,
+        "l_parabronchi": 8
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 2,
+        "l_parabronchi": 8,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 19,
+        "n_edges": 20
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 4,
+        "l_parabronchi": 4
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 4,
+        "l_parabronchi": 4,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 19,
+        "n_edges": 22
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 8,
+        "l_parabronchi": 2
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 8,
+        "l_parabronchi": 2,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 19,
+        "n_edges": 26
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 16,
+        "l_parabronchi": 1
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 16,
+        "l_parabronchi": 1,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 19,
+        "n_edges": 34
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 1,
+        "l_parabronchi": 32
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 1,
+        "l_parabronchi": 32,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 35,
+        "n_edges": 35
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 2,
+        "l_parabronchi": 16
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 2,
+        "l_parabronchi": 16,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 35,
+        "n_edges": 36
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 4,
+        "l_parabronchi": 8
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 4,
+        "l_parabronchi": 8,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 35,
+        "n_edges": 38
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 8,
+        "l_parabronchi": 4
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 8,
+        "l_parabronchi": 4,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 35,
+        "n_edges": 42
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 16,
+        "l_parabronchi": 2
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 16,
+        "l_parabronchi": 2,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 35,
+        "n_edges": 50
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 32,
+        "l_parabronchi": 1
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 32,
+        "l_parabronchi": 1,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 35,
+        "n_edges": 66
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 1,
+        "l_parabronchi": 64
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 1,
+        "l_parabronchi": 64,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 67,
+        "n_edges": 67
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 2,
+        "l_parabronchi": 32
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 2,
+        "l_parabronchi": 32,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 67,
+        "n_edges": 68
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 4,
+        "l_parabronchi": 16
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 4,
+        "l_parabronchi": 16,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 67,
+        "n_edges": 70
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 8,
+        "l_parabronchi": 8
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 8,
+        "l_parabronchi": 8,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 67,
+        "n_edges": 74
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 16,
+        "l_parabronchi": 4
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 16,
+        "l_parabronchi": 4,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 67,
+        "n_edges": 82
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 32,
+        "l_parabronchi": 2
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 32,
+        "l_parabronchi": 2,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 67,
+        "n_edges": 98
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 64,
+        "l_parabronchi": 1
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 64,
+        "l_parabronchi": 1,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 67,
+        "n_edges": 130
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 1,
+        "l_parabronchi": 128
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 1,
+        "l_parabronchi": 128,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 131,
+        "n_edges": 131
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 2,
+        "l_parabronchi": 64
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 2,
+        "l_parabronchi": 64,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 131,
+        "n_edges": 132
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 4,
+        "l_parabronchi": 32
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 4,
+        "l_parabronchi": 32,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 131,
+        "n_edges": 134
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 8,
+        "l_parabronchi": 16
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 8,
+        "l_parabronchi": 16,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 131,
+        "n_edges": 138
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 16,
+        "l_parabronchi": 8
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 16,
+        "l_parabronchi": 8,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 131,
+        "n_edges": 146
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 32,
+        "l_parabronchi": 4
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 32,
+        "l_parabronchi": 4,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 131,
+        "n_edges": 162
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 64,
+        "l_parabronchi": 2
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 64,
+        "l_parabronchi": 2,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 131,
+        "n_edges": 194
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 128,
+        "l_parabronchi": 1
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 128,
+        "l_parabronchi": 1,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 131,
+        "n_edges": 258
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 1,
+        "l_parabronchi": 256
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 1,
+        "l_parabronchi": 256,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 259,
+        "n_edges": 259
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 2,
+        "l_parabronchi": 128
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 2,
+        "l_parabronchi": 128,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 259,
+        "n_edges": 260
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 4,
+        "l_parabronchi": 64
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 4,
+        "l_parabronchi": 64,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 259,
+        "n_edges": 262
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 8,
+        "l_parabronchi": 32
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 8,
+        "l_parabronchi": 32,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 259,
+        "n_edges": 266
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 16,
+        "l_parabronchi": 16
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 16,
+        "l_parabronchi": 16,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 259,
+        "n_edges": 274
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 32,
+        "l_parabronchi": 8
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 32,
+        "l_parabronchi": 8,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 259,
+        "n_edges": 290
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 64,
+        "l_parabronchi": 4
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 64,
+        "l_parabronchi": 4,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 259,
+        "n_edges": 322
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 128,
+        "l_parabronchi": 2
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 128,
+        "l_parabronchi": 2,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 259,
+        "n_edges": 386
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 256,
+        "l_parabronchi": 1
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 256,
+        "l_parabronchi": 1,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 259,
+        "n_edges": 514
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 1,
+        "l_parabronchi": 512
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 1,
+        "l_parabronchi": 512,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 515,
+        "n_edges": 515
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 2,
+        "l_parabronchi": 256
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 2,
+        "l_parabronchi": 256,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 515,
+        "n_edges": 516
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 4,
+        "l_parabronchi": 128
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 4,
+        "l_parabronchi": 128,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 515,
+        "n_edges": 518
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 8,
+        "l_parabronchi": 64
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 8,
+        "l_parabronchi": 64,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 515,
+        "n_edges": 522
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 16,
+        "l_parabronchi": 32
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 16,
+        "l_parabronchi": 32,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 515,
+        "n_edges": 530
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 32,
+        "l_parabronchi": 16
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 32,
+        "l_parabronchi": 16,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 515,
+        "n_edges": 546
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 64,
+        "l_parabronchi": 8
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 64,
+        "l_parabronchi": 8,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 515,
+        "n_edges": 578
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 128,
+        "l_parabronchi": 4
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 128,
+        "l_parabronchi": 4,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 515,
+        "n_edges": 642
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 256,
+        "l_parabronchi": 2
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 256,
+        "l_parabronchi": 2,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 515,
+        "n_edges": 770
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 512,
+        "l_parabronchi": 1
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 512,
+        "l_parabronchi": 1,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 515,
+        "n_edges": 1026
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 1,
+        "l_parabronchi": 1024
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 1,
+        "l_parabronchi": 1024,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 1027,
+        "n_edges": 1027
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 2,
+        "l_parabronchi": 512
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 2,
+        "l_parabronchi": 512,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 1027,
+        "n_edges": 1028
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 4,
+        "l_parabronchi": 256
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 4,
+        "l_parabronchi": 256,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 1027,
+        "n_edges": 1030
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 8,
+        "l_parabronchi": 128
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 8,
+        "l_parabronchi": 128,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 1027,
+        "n_edges": 1034
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 16,
+        "l_parabronchi": 64
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 16,
+        "l_parabronchi": 64,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 1027,
+        "n_edges": 1042
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 32,
+        "l_parabronchi": 32
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 32,
+        "l_parabronchi": 32,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 1027,
+        "n_edges": 1058
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 64,
+        "l_parabronchi": 16
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 64,
+        "l_parabronchi": 16,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 1027,
+        "n_edges": 1090
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 128,
+        "l_parabronchi": 8
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 128,
+        "l_parabronchi": 8,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 1027,
+        "n_edges": 1154
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 256,
+        "l_parabronchi": 4
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 256,
+        "l_parabronchi": 4,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 1027,
+        "n_edges": 1282
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 512,
+        "l_parabronchi": 2
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 512,
+        "l_parabronchi": 2,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 1027,
+        "n_edges": 1538
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 1024,
+        "l_parabronchi": 1
+      }
+    },
+    {
+      "factory": "avian_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_parabronchi": 1024,
+        "l_parabronchi": 1,
+        "directed": true
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 100,
+      "skip_null_steps": true,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 1027,
+        "n_edges": 2050
+      }
+    }
+  ]
+}
