@@ -32,6 +32,7 @@ impl Parser {
             return Ok(None);
         };
         self.line.clear();
+        self.pos = 0;
         buf.read_until(b'\n', &mut self.line).map_err(Error::Io)?;
         match self.line[..] {
             [.., b'\n'] => _ = self.line.pop(),
@@ -55,12 +56,14 @@ impl Parser {
                 self.take(b":")?;
                 self.take(b"[")?;
                 let mut ad = [0; _];
-                for (i, a) in ad.iter_mut().enumerate() {
+                ad[0] = self.int_arr()?;
+                self.take(b",")?;
+                for (i, a) in ad[1..].iter_mut().enumerate() {
                     *a = self.int_arr()?;
                     if self.take(b"]").is_ok() {
                         break;
                     }
-                    if i == 62 {
+                    if i == 61 {
                         return Err(Error::Parse(self.pos));
                     }
                     self.take(b",")?;
