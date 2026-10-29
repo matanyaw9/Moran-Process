@@ -17,8 +17,8 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 import seaborn as sns
+from matplotlib.colors import LogNorm, Normalize
 
-from moran_graphs.engine import HIST_BINS
 from moran_graphs.hpc import DATA_ROOT, batch_path, load_report
 from moran_graphs.plan import load_plan
 from moran_graphs.properties import properties
@@ -274,12 +274,49 @@ def lines(ax, df, x, y, by, cmap="viridis"):
     ax.set(xlabel=LABELS.get(x, x), ylabel=LABELS.get(y, y))
 
 
+def heatmap(ax, df, x, y, by, title, scale):
+    """y on a grid of x (columns) by `by` (rows), one row of df per cell, its value written in
+    it, grey where df has no row. A ratio (`_over_` in its name) gets a diverging scale
+    symmetric around 1, so 1 is white; scale "log" makes x2 and x1/2 equally strong. Cells
+    where the boolean column `<y>_stands_out` is True, if df has one, are written in bold.
+    Returns the grid, so the caller can draw on cells by their labels."""
+    grid = df.pivot(index=by, columns=x, values=y)
+    values = grid.to_numpy()
+    stands_out = f"{y}_stands_out"
+    bold = (df.pivot(index=by, columns=x, values=stands_out).eq(True).to_numpy() if stands_out in df
+            else np.zeros(values.shape, dtype=bool))
+    if "_over_" in y:
+        cmap = "RdBu_r"
+        if scale == "log":
+            extreme = max(np.nanmax(values), 1 / np.nanmin(values))
+            norm = LogNorm(1 / extreme, extreme)
+        else:
+            spread = np.nanmax(np.abs(values - 1))
+            norm = Normalize(1 - spread, 1 + spread)
+    else:
+        cmap, norm = "viridis", LogNorm() if scale == "log" else Normalize()
+    cmap = plt.get_cmap(cmap).with_extremes(bad="0.85")
+    image = ax.imshow(values, origin="lower", aspect="auto", cmap=cmap, norm=norm)
+    for (i, j), value in np.ndenumerate(values):
+        if not np.isnan(value):
+            dark = np.dot(cmap(norm(value))[:3], (0.299, 0.587, 0.114)) < 0.5  # luminance of the cell's color
+            ax.text(j, i, f"{value:.3g}", ha="center", va="center", fontsize=7, color="white" if dark else "black",
+                    fontweight="bold" if bold[i, j] else "normal")
+    ax.grid(False)  # the seaborn theme's grid would cut through the cells
+    ax.set_xticks(range(grid.shape[1]), grid.columns)
+    ax.set_yticks(range(grid.shape[0]), grid.index)
+    ax.set(xlabel=LABELS.get(x, x), ylabel=LABELS.get(by, by), title=title)
+    ax.figure.colorbar(image, ax=ax)
+    return grid
+
+
 def versus_random(results, directed):
     """One row of panels per graph type against its random cloud: the random graphs with the
     same N, E and r, drawn as their median and interquartile band (the question is whether a
     graph falls outside the cloud, so its spread matters, not the SE of its mean). Panels:
-    fixation probability, fixation time, and random time over the graph's time (above 1 the
-    graph fixes faster). A type is drawn only at sizes with a cloud and needs one graph per
+    fixation probability, the graph's fixation probability over random's (above 1 the graph
+    amplifies more than random), fixation time, and the graph's time over random's (above 1
+    the graph fixes slower). A type is drawn only at sizes with a cloud and needs one graph per
     size; what is left out is printed. random_graph is undirected, so for a directed type the
     cloud matches N and E but not the edge directions. Where theory.py has a formula for the
     type, it is drawn as a thick pale red line behind everything else."""
@@ -304,8 +341,8 @@ def versus_random(results, directed):
     if not types:
         raise ValueError(f"no {kind} graph type has random graphs of its N and E")
 
-    fig, axes = plt.subplots(len(types), 3, figsize=(17, 4.6 * len(types)), squeeze=False, layout="constrained")
-    for (category, part), (ax_rho, ax_time, ax_ratio) in zip(types, axes):
+    fig, axes = plt.subplots(len(types), 4, figsize=(22, 4.6 * len(types)), squeeze=False, layout="constrained")
+    for (category, part), (ax_rho, ax_rho_ratio, ax_time, ax_time_ratio) in zip(types, axes):
         n = part["n_nodes"]
         color = COLORS[category]
         theory = pd.DataFrame([fixation(factory, directed, size, r) for factory, size in zip(part["factory"], n)],
@@ -325,18 +362,24 @@ def versus_random(results, directed):
         well_mixed_rho, well_mixed_time = np.array([complete(size, r) for size in n]).T
         ax_rho.plot(n, well_mixed_rho, "--", color="0.2", lw=1, label="well-mixed")
         ax_time.plot(n, well_mixed_time, "--", color="0.2", lw=1, label="well-mixed")
-        ax_ratio.fill_between(n, part["steps_mean_given_fixed_q25"] / part["steps_mean_given_fixed"],
-                              part["steps_mean_given_fixed_q75"] / part["steps_mean_given_fixed"],
-                              color=color, alpha=0.3, lw=0)
-        ax_ratio.plot(n, part["steps_mean_given_fixed_q50"] / part["steps_mean_given_fixed"], "o-", ms=5,
-                      color=color)
-        ax_ratio.axhline(1, color="0.2", ls="--", lw=1)
+        ax_time_ratio.fill_between(n, part["steps_mean_given_fixed"] / part["steps_mean_given_fixed_q75"],
+                                   part["steps_mean_given_fixed"] / part["steps_mean_given_fixed_q25"],
+                                   color=color, alpha=0.3, lw=0)
+        ax_time_ratio.plot(n, part["steps_mean_given_fixed"] / part["steps_mean_given_fixed_q50"], "o-", ms=5,
+                           color=color)
+        ax_rho_ratio.fill_between(n, part["rho"] / part["rho_q75"], part["rho"] / part["rho_q25"],
+                                  color=color, alpha=0.3, lw=0)
+        ax_rho_ratio.plot(n, part["rho"] / part["rho_q50"], "o-", ms=5, color=color)
+        for ax in (ax_time_ratio, ax_rho_ratio):
+            ax.axhline(1, color="0.2", ls="--", lw=1)
         ax_time.set(xscale="log", yscale="log", ylabel=LABELS["steps_mean_given_fixed"],
                     title="fixation time")
         ax_rho.set(xscale="log", ylabel=LABELS["rho"], title=f"{category} ({kind}): fixation probability")
-        ax_ratio.set(xscale="log", yscale="log", ylabel=f"random / {category.lower()} (mean time)",
-                     title="speed-up over random (band: random IQR)")
-        for ax in (ax_rho, ax_time, ax_ratio):
+        ax_time_ratio.set(xscale="log", yscale="log", ylabel=f"{category.lower()} / random (mean time)",
+                          title="slow-down over random (band: random IQR)")
+        ax_rho_ratio.set(xscale="log", ylabel=f"{category.lower()} prob / random prob",
+                         title="amplification over random (band: random IQR)")
+        for ax in (ax_rho, ax_time, ax_time_ratio, ax_rho_ratio):
             ax.set_xlabel("N")
         ax_rho.legend(frameon=False, fontsize=9)
     fig.suptitle(f"Each {kind} graph type against random graphs of the same N and E, r = {r}")
@@ -359,29 +402,6 @@ def property_grid(df, y, properties, n_cols=4):
     return fig
 
 
-def time_distributions(results, hists):
-    """Distribution of fixation time per category, pooling the runs of all its graphs."""
-    # Pooling across r would mix distributions with very different time scales.
-    if results["r"].nunique() != 1:
-        raise ValueError(f"time_distributions needs exactly one r value, got {sorted(results['r'].unique())}")
-    fixed =hists[hists["winner"] == 0].merge(results[["batch", "graph_idx", "r", "category"]],
-                                               on=["batch", "graph_idx", "r"])
-    # Bin k starts at 2**(k/4) - 1 steps (engine.steps_bin). Bin 0 (0 steps) cannot fix and
-    # would put 0 on a log axis.
-    edges = 2.0 ** (np.arange(1, HIST_BINS + 1) / 4) - 1
-    fig, ax = plt.subplots(figsize=(7, 4.5))
-    total = np.zeros(HIST_BINS - 1)
-    for category, part in fixed.groupby("category"):
-        counts = np.vstack(part["steps_hist"].to_numpy()).sum(axis=0)[1:].astype(np.float64)
-        total += counts
-        ax.stairs(counts / counts.sum(), edges, color=COLORS[category], label=f"{category} ({len(part)} graphs)")
-    used = np.flatnonzero(total)
-    ax.set(xscale="log", xlim=(edges[used[0]], edges[used[-1] + 1]),
-           xlabel="fixation time (steps), runs that fixed", ylabel="fraction of runs (4 bins per doubling)")
-    ax.legend(frameon=False)
-    return fig
-
-
 def _save(fig, path):
     """Writes path (a .png, for a quick look) and the same name as .pdf, for the paper."""
     for out in (path, path.with_suffix(".pdf")):
@@ -399,7 +419,7 @@ def main():
     for batch in a.batches:
         print_batch(batch)
         print_run_report(batch)
-    results, hists = load(a.batches)
+    results, _ = load(a.batches)
     out = a.out or DATA_ROOT / "figures" / "+".join(batch_path(b).name for b in a.batches)
     out.mkdir(parents=True, exist_ok=True)
     varying = [p for p in PROPERTIES if results[p].dtype != bool and results[p].nunique() > 1]
@@ -415,9 +435,6 @@ def main():
             fig = property_grid(part, y, varying)
             fig.suptitle(f"r = {r}")
             _save(fig, out / f"{y}_vs_properties_r{r}.png")
-        fig = time_distributions(part, hists)
-        fig.axes[0].set_title(f"r = {r}")
-        _save(fig, out / f"time_distribution_r{r}.png")
 
     if results["r"].nunique() > 1:
         fig, ax = plt.subplots(figsize=(7, 4.5))
