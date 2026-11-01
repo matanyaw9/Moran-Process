@@ -1,6 +1,6 @@
 {
   "batch_name": "2026-10-25-fish-shape-sweep",
-  "description": "fish, every n_rods x l_rod x fillaments with N = 2^k, N 16 to 1024, 100 random trees per N",
+  "description": "fish, every n_rods x l_rod x lamellae with N = 2^k, N 16 to 1024, 100 random trees per N",
   "zoo_seed": 6,
   "batch_seed": 6,
   "sim": {
@@ -29,7 +29,7 @@
       "kwargs": {
         "n_rods": 1,
         "l_rod": 1,
-        "fillaments": 14
+        "lamellae": 14
       }
     },
     {
@@ -41,7 +41,7 @@
       "kwargs": {
         "n_rods": 1,
         "l_rod": 3,
-        "fillaments": 4
+        "lamellae": 4
       }
     },
     {
@@ -53,7 +53,7 @@
       "kwargs": {
         "n_rods": 1,
         "l_rod": 5,
-        "fillaments": 2
+        "lamellae": 2
       }
     },
     {
@@ -65,7 +65,7 @@
       "kwargs": {
         "n_rods": 1,
         "l_rod": 15,
-        "fillaments": 0
+        "lamellae": 0
       }
     },
     {
@@ -77,7 +77,7 @@
       "kwargs": {
         "n_rods": 2,
         "l_rod": 1,
-        "fillaments": 6
+        "lamellae": 6
       }
     },
     {
@@ -89,7 +89,7 @@
       "kwargs": {
         "n_rods": 2,
         "l_rod": 7,
-        "fillaments": 0
+        "lamellae": 0
       }
     },
     {
@@ -101,7 +101,7 @@
       "kwargs": {
         "n_rods": 4,
         "l_rod": 1,
-        "fillaments": 2
+        "lamellae": 2
       }
     },
     {
@@ -113,7 +113,7 @@
       "kwargs": {
         "n_rods": 4,
         "l_rod": 3,
-        "fillaments": 0
+        "lamellae": 0
       }
     },
     {
@@ -125,7 +125,7 @@
       "kwargs": {
         "n_rods": 8,
         "l_rod": 1,
-        "fillaments": 0
+        "lamellae": 0
       }
     },
     {
@@ -148,7 +148,7 @@
       "kwargs": {
         "n_rods": 1,
         "l_rod": 1,
-        "fillaments": 30
+        "lamellae": 30
       }
     },
     {
@@ -160,7 +160,7 @@
       "kwargs": {
         "n_rods": 1,
         "l_rod": 31,
-        "fillaments": 0
+        "lamellae": 0
       }
     },
     {
@@ -172,7 +172,7 @@
       "kwargs": {
         "n_rods": 2,
         "l_rod": 1,
-        "fillaments": 14
+        "lamellae": 14
       }
     },
     {
@@ -184,7 +184,7 @@
       "kwargs": {
         "n_rods": 2,
         "l_rod": 3,
-        "fillaments": 4
+        "lamellae": 4
       }
     },
     {
@@ -196,7 +196,7 @@
       "kwargs": {
         "n_rods": 2,
         "l_rod": 5,
-        "fillaments": 2
+        "lamellae": 2
       }
     },
     {
@@ -208,7 +208,7 @@
       "kwargs": {
         "n_rods": 2,
         "l_rod": 15,
-        "fillaments": 0
+        "lamellae": 0
       }
     },
     {
@@ -220,7 +220,7 @@
       "kwargs": {
         "n_rods": 4,
         "l_rod": 1,
-        "fillaments": 6
+        "lamellae": 6
       }
     },
     {
@@ -232,7 +232,7 @@
       "kwargs": {
         "n_rods": 4,
         "l_rod": 7,
-        "fillaments": 0
+        "lamellae": 0
       }
     },
     {
@@ -244,7 +244,7 @@
       "kwargs": {
         "n_rods": 8,
         "l_rod": 1,
-        "fillaments": 2
+        "lamellae": 2
       }
     },
     {
@@ -256,7 +256,7 @@
       "kwargs": {
         "n_rods": 8,
         "l_rod": 3,
-        "fillaments": 0
+        "lamellae": 0
       }
     },
     {
@@ -268,7 +268,7 @@
       "kwargs": {
         "n_rods": 16,
         "l_rod": 1,
-        "fillaments": 0
+        "lamellae": 0
       }
     },
     {
@@ -291,7 +291,7 @@
       "kwargs": {
         "n_rods": 1,
         "l_rod": 1,
-        "fillaments": 62
+        "lamellae": 62
       }
     },
     {
@@ -303,7 +303,7 @@
       "kwargs": {
         "n_rods": 1,
         "l_rod": 3,
-        "fillaments": 20
+        "lamellae": 20
       }
     },
     {
@@ -315,7 +315,7 @@
       "kwargs": {
         "n_rods": 1,
         "l_rod": 7,
-        "fillaments": 8
+        "lamellae": 8
       }
     },
     {
@@ -327,7 +327,7 @@
       "kwargs": {
         "n_rods": 1,
         "l_rod": 9,
-        "fillaments": 6
+        "lamellae": 6
       }
     },
     {
@@ -339,7 +339,7 @@
       "kwargs": {
         "n_rods": 1,
         "l_rod": 21,
-        "fillaments": 2
+        "lamellae": 2
       }
     },
     {
@@ -351,7 +351,7 @@
       "kwargs": {
         "n_rods": 1,
         "l_rod": 63,
-        "fillaments": 0
+        "lamellae": 0
       }
     },
     {
@@ -363,7 +363,7 @@
       "kwargs": {
         "n_rods": 2,
         "l_rod": 1,
-        "fillaments": 30
+        "lamellae": 30
       }
     },
     {
@@ -375,7 +375,7 @@
       "kwargs": {
         "n_rods": 2,
         "l_rod": 31,
-        "fillaments": 0
+        "lamellae": 0
       }
     },
     {
@@ -387,7 +387,7 @@
       "kwargs": {
         "n_rods": 4,
         "l_rod": 1,
-        "fillaments": 14
+        "lamellae": 14
       }
     },
     {
@@ -399,7 +399,7 @@
       "kwargs": {
         "n_rods": 4,
         "l_rod": 3,
-        "fillaments": 4
+        "lamellae": 4
       }
     },
     {
@@ -411,7 +411,7 @@
       "kwargs": {
         "n_rods": 4,
         "l_rod": 5,
-        "fillaments": 2
+        "lamellae": 2
       }
     },
     {
@@ -423,7 +423,7 @@
       "kwargs": {
         "n_rods": 4,
         "l_rod": 15,
-        "fillaments": 0
+        "lamellae": 0
       }
     },
     {
@@ -435,7 +435,7 @@
       "kwargs": {
         "n_rods": 8,
         "l_rod": 1,
-        "fillaments": 6
+        "lamellae": 6
       }
     },
     {
@@ -447,7 +447,7 @@
       "kwargs": {
         "n_rods": 8,
         "l_rod": 7,
-        "fillaments": 0
+        "lamellae": 0
       }
     },
     {
@@ -459,7 +459,7 @@
       "kwargs": {
         "n_rods": 16,
         "l_rod": 1,
-        "fillaments": 2
+        "lamellae": 2
       }
     },
     {
@@ -471,7 +471,7 @@
       "kwargs": {
         "n_rods": 16,
         "l_rod": 3,
-        "fillaments": 0
+        "lamellae": 0
       }
     },
     {
@@ -483,7 +483,7 @@
       "kwargs": {
         "n_rods": 32,
         "l_rod": 1,
-        "fillaments": 0
+        "lamellae": 0
       }
     },
     {
@@ -506,7 +506,7 @@
       "kwargs": {
         "n_rods": 1,
         "l_rod": 1,
-        "fillaments": 126
+        "lamellae": 126
       }
     },
     {
@@ -518,7 +518,7 @@
       "kwargs": {
         "n_rods": 1,
         "l_rod": 127,
-        "fillaments": 0
+        "lamellae": 0
       }
     },
     {
@@ -530,7 +530,7 @@
       "kwargs": {
         "n_rods": 2,
         "l_rod": 1,
-        "fillaments": 62
+        "lamellae": 62
       }
     },
     {
@@ -542,7 +542,7 @@
       "kwargs": {
         "n_rods": 2,
         "l_rod": 3,
-        "fillaments": 20
+        "lamellae": 20
       }
     },
     {
@@ -554,7 +554,7 @@
       "kwargs": {
         "n_rods": 2,
         "l_rod": 7,
-        "fillaments": 8
+        "lamellae": 8
       }
     },
     {
@@ -566,7 +566,7 @@
       "kwargs": {
         "n_rods": 2,
         "l_rod": 9,
-        "fillaments": 6
+        "lamellae": 6
       }
     },
     {
@@ -578,7 +578,7 @@
       "kwargs": {
         "n_rods": 2,
         "l_rod": 21,
-        "fillaments": 2
+        "lamellae": 2
       }
     },
     {
@@ -590,7 +590,7 @@
       "kwargs": {
         "n_rods": 2,
         "l_rod": 63,
-        "fillaments": 0
+        "lamellae": 0
       }
     },
     {
@@ -602,7 +602,7 @@
       "kwargs": {
         "n_rods": 4,
         "l_rod": 1,
-        "fillaments": 30
+        "lamellae": 30
       }
     },
     {
@@ -614,7 +614,7 @@
       "kwargs": {
         "n_rods": 4,
         "l_rod": 31,
-        "fillaments": 0
+        "lamellae": 0
       }
     },
     {
@@ -626,7 +626,7 @@
       "kwargs": {
         "n_rods": 8,
         "l_rod": 1,
-        "fillaments": 14
+        "lamellae": 14
       }
     },
     {
@@ -638,7 +638,7 @@
       "kwargs": {
         "n_rods": 8,
         "l_rod": 3,
-        "fillaments": 4
+        "lamellae": 4
       }
     },
     {
@@ -650,7 +650,7 @@
       "kwargs": {
         "n_rods": 8,
         "l_rod": 5,
-        "fillaments": 2
+        "lamellae": 2
       }
     },
     {
@@ -662,7 +662,7 @@
       "kwargs": {
         "n_rods": 8,
         "l_rod": 15,
-        "fillaments": 0
+        "lamellae": 0
       }
     },
     {
@@ -674,7 +674,7 @@
       "kwargs": {
         "n_rods": 16,
         "l_rod": 1,
-        "fillaments": 6
+        "lamellae": 6
       }
     },
     {
@@ -686,7 +686,7 @@
       "kwargs": {
         "n_rods": 16,
         "l_rod": 7,
-        "fillaments": 0
+        "lamellae": 0
       }
     },
     {
@@ -698,7 +698,7 @@
       "kwargs": {
         "n_rods": 32,
         "l_rod": 1,
-        "fillaments": 2
+        "lamellae": 2
       }
     },
     {
@@ -710,7 +710,7 @@
       "kwargs": {
         "n_rods": 32,
         "l_rod": 3,
-        "fillaments": 0
+        "lamellae": 0
       }
     },
     {
@@ -722,7 +722,7 @@
       "kwargs": {
         "n_rods": 64,
         "l_rod": 1,
-        "fillaments": 0
+        "lamellae": 0
       }
     },
     {
@@ -745,7 +745,7 @@
       "kwargs": {
         "n_rods": 1,
         "l_rod": 1,
-        "fillaments": 254
+        "lamellae": 254
       }
     },
     {
@@ -757,7 +757,7 @@
       "kwargs": {
         "n_rods": 1,
         "l_rod": 3,
-        "fillaments": 84
+        "lamellae": 84
       }
     },
     {
@@ -769,7 +769,7 @@
       "kwargs": {
         "n_rods": 1,
         "l_rod": 5,
-        "fillaments": 50
+        "lamellae": 50
       }
     },
     {
@@ -781,7 +781,7 @@
       "kwargs": {
         "n_rods": 1,
         "l_rod": 15,
-        "fillaments": 16
+        "lamellae": 16
       }
     },
     {
@@ -793,7 +793,7 @@
       "kwargs": {
         "n_rods": 1,
         "l_rod": 17,
-        "fillaments": 14
+        "lamellae": 14
       }
     },
     {
@@ -805,7 +805,7 @@
       "kwargs": {
         "n_rods": 1,
         "l_rod": 51,
-        "fillaments": 4
+        "lamellae": 4
       }
     },
     {
@@ -817,7 +817,7 @@
       "kwargs": {
         "n_rods": 1,
         "l_rod": 85,
-        "fillaments": 2
+        "lamellae": 2
       }
     },
     {
@@ -829,7 +829,7 @@
       "kwargs": {
         "n_rods": 1,
         "l_rod": 255,
-        "fillaments": 0
+        "lamellae": 0
       }
     },
     {
@@ -841,7 +841,7 @@
       "kwargs": {
         "n_rods": 2,
         "l_rod": 1,
-        "fillaments": 126
+        "lamellae": 126
       }
     },
     {
@@ -853,7 +853,7 @@
       "kwargs": {
         "n_rods": 2,
         "l_rod": 127,
-        "fillaments": 0
+        "lamellae": 0
       }
     },
     {
@@ -865,7 +865,7 @@
       "kwargs": {
         "n_rods": 4,
         "l_rod": 1,
-        "fillaments": 62
+        "lamellae": 62
       }
     },
     {
@@ -877,7 +877,7 @@
       "kwargs": {
         "n_rods": 4,
         "l_rod": 3,
-        "fillaments": 20
+        "lamellae": 20
       }
     },
     {
@@ -889,7 +889,7 @@
       "kwargs": {
         "n_rods": 4,
         "l_rod": 7,
-        "fillaments": 8
+        "lamellae": 8
       }
     },
     {
@@ -901,7 +901,7 @@
       "kwargs": {
         "n_rods": 4,
         "l_rod": 9,
-        "fillaments": 6
+        "lamellae": 6
       }
     },
     {
@@ -913,7 +913,7 @@
       "kwargs": {
         "n_rods": 4,
         "l_rod": 21,
-        "fillaments": 2
+        "lamellae": 2
       }
     },
     {
@@ -925,7 +925,7 @@
       "kwargs": {
         "n_rods": 4,
         "l_rod": 63,
-        "fillaments": 0
+        "lamellae": 0
       }
     },
     {
@@ -937,7 +937,7 @@
       "kwargs": {
         "n_rods": 8,
         "l_rod": 1,
-        "fillaments": 30
+        "lamellae": 30
       }
     },
     {
@@ -949,7 +949,7 @@
       "kwargs": {
         "n_rods": 8,
         "l_rod": 31,
-        "fillaments": 0
+        "lamellae": 0
       }
     },
     {
@@ -961,7 +961,7 @@
       "kwargs": {
         "n_rods": 16,
         "l_rod": 1,
-        "fillaments": 14
+        "lamellae": 14
       }
     },
     {
@@ -973,7 +973,7 @@
       "kwargs": {
         "n_rods": 16,
         "l_rod": 3,
-        "fillaments": 4
+        "lamellae": 4
       }
     },
     {
@@ -985,7 +985,7 @@
       "kwargs": {
         "n_rods": 16,
         "l_rod": 5,
-        "fillaments": 2
+        "lamellae": 2
       }
     },
     {
@@ -997,7 +997,7 @@
       "kwargs": {
         "n_rods": 16,
         "l_rod": 15,
-        "fillaments": 0
+        "lamellae": 0
       }
     },
     {
@@ -1009,7 +1009,7 @@
       "kwargs": {
         "n_rods": 32,
         "l_rod": 1,
-        "fillaments": 6
+        "lamellae": 6
       }
     },
     {
@@ -1021,7 +1021,7 @@
       "kwargs": {
         "n_rods": 32,
         "l_rod": 7,
-        "fillaments": 0
+        "lamellae": 0
       }
     },
     {
@@ -1033,7 +1033,7 @@
       "kwargs": {
         "n_rods": 64,
         "l_rod": 1,
-        "fillaments": 2
+        "lamellae": 2
       }
     },
     {
@@ -1045,7 +1045,7 @@
       "kwargs": {
         "n_rods": 64,
         "l_rod": 3,
-        "fillaments": 0
+        "lamellae": 0
       }
     },
     {
@@ -1057,7 +1057,7 @@
       "kwargs": {
         "n_rods": 128,
         "l_rod": 1,
-        "fillaments": 0
+        "lamellae": 0
       }
     },
     {
@@ -1080,7 +1080,7 @@
       "kwargs": {
         "n_rods": 1,
         "l_rod": 1,
-        "fillaments": 510
+        "lamellae": 510
       }
     },
     {
@@ -1092,7 +1092,7 @@
       "kwargs": {
         "n_rods": 1,
         "l_rod": 7,
-        "fillaments": 72
+        "lamellae": 72
       }
     },
     {
@@ -1104,7 +1104,7 @@
       "kwargs": {
         "n_rods": 1,
         "l_rod": 73,
-        "fillaments": 6
+        "lamellae": 6
       }
     },
     {
@@ -1116,7 +1116,7 @@
       "kwargs": {
         "n_rods": 1,
         "l_rod": 511,
-        "fillaments": 0
+        "lamellae": 0
       }
     },
     {
@@ -1128,7 +1128,7 @@
       "kwargs": {
         "n_rods": 2,
         "l_rod": 1,
-        "fillaments": 254
+        "lamellae": 254
       }
     },
     {
@@ -1140,7 +1140,7 @@
       "kwargs": {
         "n_rods": 2,
         "l_rod": 3,
-        "fillaments": 84
+        "lamellae": 84
       }
     },
     {
@@ -1152,7 +1152,7 @@
       "kwargs": {
         "n_rods": 2,
         "l_rod": 5,
-        "fillaments": 50
+        "lamellae": 50
       }
     },
     {
@@ -1164,7 +1164,7 @@
       "kwargs": {
         "n_rods": 2,
         "l_rod": 15,
-        "fillaments": 16
+        "lamellae": 16
       }
     },
     {
@@ -1176,7 +1176,7 @@
       "kwargs": {
         "n_rods": 2,
         "l_rod": 17,
-        "fillaments": 14
+        "lamellae": 14
       }
     },
     {
@@ -1188,7 +1188,7 @@
       "kwargs": {
         "n_rods": 2,
         "l_rod": 51,
-        "fillaments": 4
+        "lamellae": 4
       }
     },
     {
@@ -1200,7 +1200,7 @@
       "kwargs": {
         "n_rods": 2,
         "l_rod": 85,
-        "fillaments": 2
+        "lamellae": 2
       }
     },
     {
@@ -1212,7 +1212,7 @@
       "kwargs": {
         "n_rods": 2,
         "l_rod": 255,
-        "fillaments": 0
+        "lamellae": 0
       }
     },
     {
@@ -1224,7 +1224,7 @@
       "kwargs": {
         "n_rods": 4,
         "l_rod": 1,
-        "fillaments": 126
+        "lamellae": 126
       }
     },
     {
@@ -1236,7 +1236,7 @@
       "kwargs": {
         "n_rods": 4,
         "l_rod": 127,
-        "fillaments": 0
+        "lamellae": 0
       }
     },
     {
@@ -1248,7 +1248,7 @@
       "kwargs": {
         "n_rods": 8,
         "l_rod": 1,
-        "fillaments": 62
+        "lamellae": 62
       }
     },
     {
@@ -1260,7 +1260,7 @@
       "kwargs": {
         "n_rods": 8,
         "l_rod": 3,
-        "fillaments": 20
+        "lamellae": 20
       }
     },
     {
@@ -1272,7 +1272,7 @@
       "kwargs": {
         "n_rods": 8,
         "l_rod": 7,
-        "fillaments": 8
+        "lamellae": 8
       }
     },
     {
@@ -1284,7 +1284,7 @@
       "kwargs": {
         "n_rods": 8,
         "l_rod": 9,
-        "fillaments": 6
+        "lamellae": 6
       }
     },
     {
@@ -1296,7 +1296,7 @@
       "kwargs": {
         "n_rods": 8,
         "l_rod": 21,
-        "fillaments": 2
+        "lamellae": 2
       }
     },
     {
@@ -1308,7 +1308,7 @@
       "kwargs": {
         "n_rods": 8,
         "l_rod": 63,
-        "fillaments": 0
+        "lamellae": 0
       }
     },
     {
@@ -1320,7 +1320,7 @@
       "kwargs": {
         "n_rods": 16,
         "l_rod": 1,
-        "fillaments": 30
+        "lamellae": 30
       }
     },
     {
@@ -1332,7 +1332,7 @@
       "kwargs": {
         "n_rods": 16,
         "l_rod": 31,
-        "fillaments": 0
+        "lamellae": 0
       }
     },
     {
@@ -1344,7 +1344,7 @@
       "kwargs": {
         "n_rods": 32,
         "l_rod": 1,
-        "fillaments": 14
+        "lamellae": 14
       }
     },
     {
@@ -1356,7 +1356,7 @@
       "kwargs": {
         "n_rods": 32,
         "l_rod": 3,
-        "fillaments": 4
+        "lamellae": 4
       }
     },
     {
@@ -1368,7 +1368,7 @@
       "kwargs": {
         "n_rods": 32,
         "l_rod": 5,
-        "fillaments": 2
+        "lamellae": 2
       }
     },
     {
@@ -1380,7 +1380,7 @@
       "kwargs": {
         "n_rods": 32,
         "l_rod": 15,
-        "fillaments": 0
+        "lamellae": 0
       }
     },
     {
@@ -1392,7 +1392,7 @@
       "kwargs": {
         "n_rods": 64,
         "l_rod": 1,
-        "fillaments": 6
+        "lamellae": 6
       }
     },
     {
@@ -1404,7 +1404,7 @@
       "kwargs": {
         "n_rods": 64,
         "l_rod": 7,
-        "fillaments": 0
+        "lamellae": 0
       }
     },
     {
@@ -1416,7 +1416,7 @@
       "kwargs": {
         "n_rods": 128,
         "l_rod": 1,
-        "fillaments": 2
+        "lamellae": 2
       }
     },
     {
@@ -1428,7 +1428,7 @@
       "kwargs": {
         "n_rods": 128,
         "l_rod": 3,
-        "fillaments": 0
+        "lamellae": 0
       }
     },
     {
@@ -1440,7 +1440,7 @@
       "kwargs": {
         "n_rods": 256,
         "l_rod": 1,
-        "fillaments": 0
+        "lamellae": 0
       }
     },
     {
@@ -1463,7 +1463,7 @@
       "kwargs": {
         "n_rods": 1,
         "l_rod": 1,
-        "fillaments": 1022
+        "lamellae": 1022
       }
     },
     {
@@ -1475,7 +1475,7 @@
       "kwargs": {
         "n_rods": 1,
         "l_rod": 3,
-        "fillaments": 340
+        "lamellae": 340
       }
     },
     {
@@ -1487,7 +1487,7 @@
       "kwargs": {
         "n_rods": 1,
         "l_rod": 11,
-        "fillaments": 92
+        "lamellae": 92
       }
     },
     {
@@ -1499,7 +1499,7 @@
       "kwargs": {
         "n_rods": 1,
         "l_rod": 31,
-        "fillaments": 32
+        "lamellae": 32
       }
     },
     {
@@ -1511,7 +1511,7 @@
       "kwargs": {
         "n_rods": 1,
         "l_rod": 33,
-        "fillaments": 30
+        "lamellae": 30
       }
     },
     {
@@ -1523,7 +1523,7 @@
       "kwargs": {
         "n_rods": 1,
         "l_rod": 93,
-        "fillaments": 10
+        "lamellae": 10
       }
     },
     {
@@ -1535,7 +1535,7 @@
       "kwargs": {
         "n_rods": 1,
         "l_rod": 341,
-        "fillaments": 2
+        "lamellae": 2
       }
     },
     {
@@ -1547,7 +1547,7 @@
       "kwargs": {
         "n_rods": 1,
         "l_rod": 1023,
-        "fillaments": 0
+        "lamellae": 0
       }
     },
     {
@@ -1559,7 +1559,7 @@
       "kwargs": {
         "n_rods": 2,
         "l_rod": 1,
-        "fillaments": 510
+        "lamellae": 510
       }
     },
     {
@@ -1571,7 +1571,7 @@
       "kwargs": {
         "n_rods": 2,
         "l_rod": 7,
-        "fillaments": 72
+        "lamellae": 72
       }
     },
     {
@@ -1583,7 +1583,7 @@
       "kwargs": {
         "n_rods": 2,
         "l_rod": 73,
-        "fillaments": 6
+        "lamellae": 6
       }
     },
     {
@@ -1595,7 +1595,7 @@
       "kwargs": {
         "n_rods": 2,
         "l_rod": 511,
-        "fillaments": 0
+        "lamellae": 0
       }
     },
     {
@@ -1607,7 +1607,7 @@
       "kwargs": {
         "n_rods": 4,
         "l_rod": 1,
-        "fillaments": 254
+        "lamellae": 254
       }
     },
     {
@@ -1619,7 +1619,7 @@
       "kwargs": {
         "n_rods": 4,
         "l_rod": 3,
-        "fillaments": 84
+        "lamellae": 84
       }
     },
     {
@@ -1631,7 +1631,7 @@
       "kwargs": {
         "n_rods": 4,
         "l_rod": 5,
-        "fillaments": 50
+        "lamellae": 50
       }
     },
     {
@@ -1643,7 +1643,7 @@
       "kwargs": {
         "n_rods": 4,
         "l_rod": 15,
-        "fillaments": 16
+        "lamellae": 16
       }
     },
     {
@@ -1655,7 +1655,7 @@
       "kwargs": {
         "n_rods": 4,
         "l_rod": 17,
-        "fillaments": 14
+        "lamellae": 14
       }
     },
     {
@@ -1667,7 +1667,7 @@
       "kwargs": {
         "n_rods": 4,
         "l_rod": 51,
-        "fillaments": 4
+        "lamellae": 4
       }
     },
     {
@@ -1679,7 +1679,7 @@
       "kwargs": {
         "n_rods": 4,
         "l_rod": 85,
-        "fillaments": 2
+        "lamellae": 2
       }
     },
     {
@@ -1691,7 +1691,7 @@
       "kwargs": {
         "n_rods": 4,
         "l_rod": 255,
-        "fillaments": 0
+        "lamellae": 0
       }
     },
     {
@@ -1703,7 +1703,7 @@
       "kwargs": {
         "n_rods": 8,
         "l_rod": 1,
-        "fillaments": 126
+        "lamellae": 126
       }
     },
     {
@@ -1715,7 +1715,7 @@
       "kwargs": {
         "n_rods": 8,
         "l_rod": 127,
-        "fillaments": 0
+        "lamellae": 0
       }
     },
     {
@@ -1727,7 +1727,7 @@
       "kwargs": {
         "n_rods": 16,
         "l_rod": 1,
-        "fillaments": 62
+        "lamellae": 62
       }
     },
     {
@@ -1739,7 +1739,7 @@
       "kwargs": {
         "n_rods": 16,
         "l_rod": 3,
-        "fillaments": 20
+        "lamellae": 20
       }
     },
     {
@@ -1751,7 +1751,7 @@
       "kwargs": {
         "n_rods": 16,
         "l_rod": 7,
-        "fillaments": 8
+        "lamellae": 8
       }
     },
     {
@@ -1763,7 +1763,7 @@
       "kwargs": {
         "n_rods": 16,
         "l_rod": 9,
-        "fillaments": 6
+        "lamellae": 6
       }
     },
     {
@@ -1775,7 +1775,7 @@
       "kwargs": {
         "n_rods": 16,
         "l_rod": 21,
-        "fillaments": 2
+        "lamellae": 2
       }
     },
     {
@@ -1787,7 +1787,7 @@
       "kwargs": {
         "n_rods": 16,
         "l_rod": 63,
-        "fillaments": 0
+        "lamellae": 0
       }
     },
     {
@@ -1799,7 +1799,7 @@
       "kwargs": {
         "n_rods": 32,
         "l_rod": 1,
-        "fillaments": 30
+        "lamellae": 30
       }
     },
     {
@@ -1811,7 +1811,7 @@
       "kwargs": {
         "n_rods": 32,
         "l_rod": 31,
-        "fillaments": 0
+        "lamellae": 0
       }
     },
     {
@@ -1823,7 +1823,7 @@
       "kwargs": {
         "n_rods": 64,
         "l_rod": 1,
-        "fillaments": 14
+        "lamellae": 14
       }
     },
     {
@@ -1835,7 +1835,7 @@
       "kwargs": {
         "n_rods": 64,
         "l_rod": 3,
-        "fillaments": 4
+        "lamellae": 4
       }
     },
     {
@@ -1847,7 +1847,7 @@
       "kwargs": {
         "n_rods": 64,
         "l_rod": 5,
-        "fillaments": 2
+        "lamellae": 2
       }
     },
     {
@@ -1859,7 +1859,7 @@
       "kwargs": {
         "n_rods": 64,
         "l_rod": 15,
-        "fillaments": 0
+        "lamellae": 0
       }
     },
     {
@@ -1871,7 +1871,7 @@
       "kwargs": {
         "n_rods": 128,
         "l_rod": 1,
-        "fillaments": 6
+        "lamellae": 6
       }
     },
     {
@@ -1883,7 +1883,7 @@
       "kwargs": {
         "n_rods": 128,
         "l_rod": 7,
-        "fillaments": 0
+        "lamellae": 0
       }
     },
     {
@@ -1895,7 +1895,7 @@
       "kwargs": {
         "n_rods": 256,
         "l_rod": 1,
-        "fillaments": 2
+        "lamellae": 2
       }
     },
     {
@@ -1907,7 +1907,7 @@
       "kwargs": {
         "n_rods": 256,
         "l_rod": 3,
-        "fillaments": 0
+        "lamellae": 0
       }
     },
     {
@@ -1919,7 +1919,7 @@
       "kwargs": {
         "n_rods": 512,
         "l_rod": 1,
-        "fillaments": 0
+        "lamellae": 0
       }
     },
     {

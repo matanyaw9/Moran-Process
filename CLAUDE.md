@@ -9,7 +9,7 @@ When I ask for code, follow "Writing code" below.
 ## Research question
 Do respiratory topologies (mammalian lungs, including asymmetric and mouse variants;
 avian lungs; fish gills) act as evolutionary amplifiers or suppressors of selection,
-compared to random graphs of the same size? Metrics: fixation probability (rho) and
+compared to random graphs of the same size? Metrics: fixation probability (`fixation_prob`) and
 fixation time, as a function of the selection coefficient r, under Birth-death (Bd) and
 death-Birth (dB) updating. Paper draft due mid-November 2026.
 
@@ -50,7 +50,7 @@ Data lives outside the repo (path from config), never inside it.
   notebooks. A reader raises if its file is missing; it never computes silently.
 
 ## Correctness checklist (highest priority in review)
-- **Statistics**: rho and time must match the archived v1 engine within Monte Carlo
+- **Statistics**: fixation probability and mean fixation time must match the archived v1 engine within Monte Carlo
   error on the validation graphs (complete, cycle, star, one lung, one random).
   The exact solver must match simulation on the same graphs, including directed ones.
 - **Censoring**: a run that hits `max_steps` is recorded as `censored=True`, never as

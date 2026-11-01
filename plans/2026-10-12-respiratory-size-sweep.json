@@ -157,7 +157,7 @@
       "kwargs": {
         "n_rods": 1,
         "l_rod": 3,
-        "fillaments": 4
+        "lamellae": 4
       }
     },
     {
@@ -170,7 +170,7 @@
         "directed": true,
         "n_rods": 1,
         "l_rod": 3,
-        "fillaments": 4
+        "lamellae": 4
       }
     },
     {
@@ -310,7 +310,7 @@
       "kwargs": {
         "n_rods": 1,
         "l_rod": 3,
-        "fillaments": 10
+        "lamellae": 10
       }
     },
     {
@@ -323,7 +323,7 @@
         "directed": true,
         "n_rods": 1,
         "l_rod": 3,
-        "fillaments": 10
+        "lamellae": 10
       }
     },
     {
@@ -463,7 +463,7 @@
       "kwargs": {
         "n_rods": 2,
         "l_rod": 3,
-        "fillaments": 10
+        "lamellae": 10
       }
     },
     {
@@ -476,7 +476,7 @@
         "directed": true,
         "n_rods": 2,
         "l_rod": 3,
-        "fillaments": 10
+        "lamellae": 10
       }
     },
     {
@@ -616,7 +616,7 @@
       "kwargs": {
         "n_rods": 4,
         "l_rod": 3,
-        "fillaments": 10
+        "lamellae": 10
       }
     },
     {
@@ -629,7 +629,7 @@
         "directed": true,
         "n_rods": 4,
         "l_rod": 3,
-        "fillaments": 10
+        "lamellae": 10
       }
     },
     {
@@ -769,7 +769,7 @@
       "kwargs": {
         "n_rods": 8,
         "l_rod": 3,
-        "fillaments": 10
+        "lamellae": 10
       }
     },
     {
@@ -782,7 +782,7 @@
         "directed": true,
         "n_rods": 8,
         "l_rod": 3,
-        "fillaments": 10
+        "lamellae": 10
       }
     },
     {
@@ -922,7 +922,7 @@
       "kwargs": {
         "n_rods": 15,
         "l_rod": 3,
-        "fillaments": 10
+        "lamellae": 10
       }
     },
     {
@@ -935,7 +935,7 @@
         "directed": true,
         "n_rods": 15,
         "l_rod": 3,
-        "fillaments": 10
+        "lamellae": 10
       }
     },
     {
@@ -1075,7 +1075,7 @@
       "kwargs": {
         "n_rods": 30,
         "l_rod": 3,
-        "fillaments": 10
+        "lamellae": 10
       }
     },
     {
@@ -1088,7 +1088,7 @@
         "directed": true,
         "n_rods": 30,
         "l_rod": 3,
-        "fillaments": 10
+        "lamellae": 10
       }
     },
     {

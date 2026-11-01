@@ -30,12 +30,12 @@ sns.set_theme(style="whitegrid", context="notebook", font_scale=1.2)
 plt.rcParams["pdf.fonttype"] = 42
 
 # The moran-process colors, so figures from both repos match. Asymmetric lung is new: a
-# lighter brown from the Mammalian palette.
+# lighter brown from the mammalian lung palette.
 COLORS = {
-    "Mammalian": "#8C510A",
+    "Mammalian lung": "#8C510A",
     "Asymmetric lung": "#D8B365",
-    "Avian": "#2E7D32",
-    "Fish": "#084182",
+    "Avian lung": "#2E7D32",
+    "Fish gill": "#084182",
     "Random": "#A09E9E",
     "Complete": "#000000",
     "Cycle": "#5C6BC0",
@@ -46,15 +46,15 @@ COLORS = {
 BACKGROUND = ("Random",)  # drawn as a faint cloud, every other category on top with CIs
 PROPERTIES = list(properties(nx.path_graph(3)))
 LABELS = {
-    "rho": "fixation probability",
-    "steps_mean_given_fixed": "mean fixation time (steps), given fixation",
-    "steps_sd_given_fixed": "sd of fixation time (steps), given fixation",
-    "rho_minus_random": "fixation probability minus matched random mean",
-    "steps_mean_given_fixed_minus_random": "mean fixation time minus matched random mean (steps)",
+    "fixation_prob": "fixation probability",
+    "mean_fixation_time": "mean fixation time (steps), given fixation",
+    "fixation_time_sd": "sd of fixation time (steps), given fixation",
+    "fixation_prob_over_random": "fixation probability / mean random",
+    "mean_fixation_time_over_random": "mean fixation time / mean random",
     "n_nodes": "N",
     "n_edges": "E",
 }
-MATCHED_METRICS = ("rho", "steps_mean_given_fixed")  # compared with random graphs of the same N, E and r
+MATCHED_METRICS = ("fixation_prob", "mean_fixation_time")  # compared with random graphs of the same N, E and r
 HOVER = ("n_nodes", "n_edges", "r", "batch", "kwargs")  # shown under the graph's name, in this order
 # matplotlib marker -> the same shape in plotly, so both scatter functions agree
 MARKERS = {"o": "circle", "s": "square", "^": "triangle-up", "D": "diamond", "v": "triangle-down", "P": "cross",
@@ -144,8 +144,8 @@ def print_run_report(batch):
 
 
 def load(batches):
-    """results and histograms of every batch, with a `batch` column and the differences from
-    matched random graphs (see _minus_random). Raises if a batch has not been finalized."""
+    """results and histograms of every batch, with a `batch` column and the comparison with
+    matched random graphs (see _versus_random). Raises if a batch has not been finalized."""
     results, hists = [], []
     for batch in batches:
         report = load_report(batch)
@@ -156,19 +156,25 @@ def load(batches):
     repeated = results.groupby(["hash", "r"])["batch"].nunique().gt(1).sum()
     if repeated:
         print(f"{repeated} (graph, r) cells appear in more than one batch, each is drawn once per batch")
-    return _minus_random(results), pd.concat(hists, ignore_index=True)
+    return _versus_random(results), pd.concat(hists, ignore_index=True)
 
 
-def _minus_random(results):
-    """Adds <metric>_minus_random: the metric minus its mean over the random graphs with the
-    same N, E and r (in any loaded batch), and n_random_matches, how many there are. NaN
-    where there are none. A random graph gets its own distance from that mean."""
+def _versus_random(results):
+    """Compares each graph with the random graphs of the same N, E and r (in any loaded
+    batch). Adds, per metric: <metric>_random_mean, <metric>_random_lo/_hi (their 2.5 and
+    97.5 percentiles), <metric>_over_random (the graph over that mean) and
+    <metric>_stands_out (outside the middle 95%); and n_random_matches. NaN (stands_out
+    False) where there are no matches. A random graph is compared with its own cloud."""
     size = ["n_nodes", "n_edges", "r"]
-    random = results[results["category"] == "Random"].groupby(size)
-    matched = random[list(MATCHED_METRICS)].mean().join(random.size().rename("n_random_matches"))
-    results = results.join(matched, on=size, rsuffix="_random_mean")
+    random = results[results["category"] == "Random"].groupby(size)[list(MATCHED_METRICS)]
+    cloud = pd.concat({"mean": random.mean(), "lo": random.quantile(0.025), "hi": random.quantile(0.975)}, axis=1)
+    cloud.columns = [f"{metric}_random_{stat}" for stat, metric in cloud.columns]
+    cloud["n_random_matches"] = random.size()
+    results = results.join(cloud, on=size)
     for metric in MATCHED_METRICS:
-        results[f"{metric}_minus_random"] = results[metric] - results.pop(f"{metric}_random_mean")
+        results[f"{metric}_over_random"] = results[metric] / results[f"{metric}_random_mean"]
+        results[f"{metric}_stands_out"] = ((results[metric] < results[f"{metric}_random_lo"])
+                                           | (results[metric] > results[f"{metric}_random_hi"]))
     results["n_random_matches"] = results["n_random_matches"].fillna(0).astype(int)
     return results
 
@@ -177,8 +183,8 @@ def _error(df, col):
     """Error bar of a column as [below, above]: its 95% interval if the report has one, else None."""
     if f"{col}_lo" in df:
         return [df[col] - df[f"{col}_lo"], df[f"{col}_hi"] - df[col]]
-    se = col.replace("_mean_", "_se_")
-    return [1.96 * df[se]] * 2 if se != col and se in df else None
+    se = f"{col}_se"
+    return [1.96 * df[se]] * 2 if se in df else None
 
 
 def scatter(ax, df, x, y, marker_by=None):
@@ -249,14 +255,15 @@ def hover_scatter(df, x, y, hover=HOVER, marker_by=None):
 
 def sweep(ax, df, category, kwarg, y):
     """y of one category's graphs against a kwarg of their recipe, colored by N (a sweep
-    can change it). At each graph's x, a grey bar spans its random matches: the random
-    graphs with the same N and E, min to max. Returns the points, for a colorbar."""
+    can change it). At each graph's x, a grey bar spans the middle 95% of its random
+    matches: the random graphs with the same N, E and r. Returns the points, for a colorbar."""
+    size = ["n_nodes", "n_edges", "r"]
     graphs = df[df["category"] == category]
     x = graphs["kwargs"].map(lambda kwargs: json.loads(kwargs)[kwarg])
-    random = df[df["category"] == "Random"].groupby(["n_nodes", "n_edges"])[y].agg(["min", "max"])
-    matched = graphs.join(random, on=["n_nodes", "n_edges"])
-    ax.vlines(x, matched["min"], matched["max"], color=COLORS["Random"], lw=5, alpha=0.6,
-              label="random, same N and E")
+    random = df[df["category"] == "Random"].groupby(size)[y].quantile([0.025, 0.975]).unstack()
+    matched = graphs.join(random, on=size)
+    ax.vlines(x, matched[0.025], matched[0.975], color=COLORS["Random"], lw=5, alpha=0.6,
+              label="random, same N and E (middle 95%)")
     ax.errorbar(x, graphs[y], yerr=_error(graphs, y), fmt="none", ecolor="0.4", capsize=2)
     points = ax.scatter(x, graphs[y], c=graphs["n_nodes"], cmap="viridis", s=30, zorder=3, label=category)
     ax.set(xlabel=kwarg, ylabel=LABELS.get(y, y))
@@ -278,11 +285,12 @@ def heatmap(ax, df, x, y, by, title, scale):
     """y on a grid of x (columns) by `by` (rows), one row of df per cell, its value written in
     it, grey where df has no row. A ratio (`_over_` in its name) gets a diverging scale
     symmetric around 1, so 1 is white; scale "log" makes x2 and x1/2 equally strong. Cells
-    where the boolean column `<y>_stands_out` is True, if df has one, are written in bold.
-    Returns the grid, so the caller can draw on cells by their labels."""
+    whose graph stands out from its random cloud (`<metric>_stands_out` from load(), for y
+    a metric or its _over_random) are written in bold. Returns the grid, so the caller can
+    draw on cells by their labels."""
     grid = df.pivot(index=by, columns=x, values=y)
     values = grid.to_numpy()
-    stands_out = f"{y}_stands_out"
+    stands_out = f"{y.removesuffix('_over_random')}_stands_out"
     bold = (df.pivot(index=by, columns=x, values=stands_out).eq(True).to_numpy() if stands_out in df
             else np.zeros(values.shape, dtype=bool))
     if "_over_" in y:
@@ -312,24 +320,20 @@ def heatmap(ax, df, x, y, by, title, scale):
 
 def versus_random(results, directed):
     """One row of panels per graph type against its random cloud: the random graphs with the
-    same N, E and r, drawn as their median and interquartile band (the question is whether a
+    same N, E and r, drawn as their mean and middle 95% band (the question is whether a
     graph falls outside the cloud, so its spread matters, not the SE of its mean). Panels:
-    fixation probability, the graph's fixation probability over random's (above 1 the graph
-    amplifies more than random), fixation time, and the graph's time over random's (above 1
-    the graph fixes slower). A type is drawn only at sizes with a cloud and needs one graph per
-    size; what is left out is printed. random_graph is undirected, so for a directed type the
-    cloud matches N and E but not the edge directions. Where theory.py has a formula for the
-    type, it is drawn as a thick pale red line behind everything else."""
+    fixation probability, the graph's fixation probability over the random mean, mean
+    fixation time, and the graph's time over the random mean (above 1 the graph fixes
+    slower). Takes results from load(). A type is drawn only at sizes with a cloud and needs
+    one graph per size; what is left out is printed. random_graph is undirected, so for a
+    directed type the cloud matches N and E but not the edge directions. Where theory.py has
+    a formula for the type, it is drawn as a thick pale red line behind everything else."""
     if results["r"].nunique() != 1:
         raise ValueError(f"versus_random needs exactly one r value, got {sorted(results['r'].unique())}")
     r = results["r"].iloc[0]
     kind = "directed" if directed else "undirected"
-    size = ["n_nodes", "n_edges"]
-    random = results[results["category"] == "Random"]
-    cloud = random.groupby(size)[["rho", "steps_mean_given_fixed"]].quantile([0.25, 0.5, 0.75]).unstack()
-    cloud.columns = [f"{metric}_q{round(q * 100)}" for metric, q in cloud.columns]
     graphs = results[(results["category"] != "Random") & (results["is_directed"] == directed)]
-    matched = graphs.join(cloud, on=size, how="inner")
+    matched = graphs[graphs["n_random_matches"] > 0]
     for name in sorted(set(graphs["name"]) - set(matched["name"])):
         print(f"  no random graphs with its N and E, not drawn: {name}")
     types = []
@@ -342,47 +346,43 @@ def versus_random(results, directed):
         raise ValueError(f"no {kind} graph type has random graphs of its N and E")
 
     fig, axes = plt.subplots(len(types), 4, figsize=(22, 4.6 * len(types)), squeeze=False, layout="constrained")
-    for (category, part), (ax_rho, ax_rho_ratio, ax_time, ax_time_ratio) in zip(types, axes):
+    for (category, part), (ax_prob, ax_prob_ratio, ax_time, ax_time_ratio) in zip(types, axes):
         n = part["n_nodes"]
         color = COLORS[category]
         theory = pd.DataFrame([fixation(factory, directed, size, r) for factory, size in zip(part["factory"], n)],
-                              columns=["rho", "steps_mean_given_fixed"], index=part.index)
-        rho_formula, time_formula = formulas(part["factory"].iloc[0], directed)
-        for ax, y, formula in ((ax_time, "steps_mean_given_fixed", time_formula), (ax_rho, "rho", rho_formula)):
-            ax.fill_between(n, part[f"{y}_q25"], part[f"{y}_q75"], color=COLORS["Random"], alpha=0.3, lw=0)
-            ax.plot(n, part[f"{y}_q50"], "o-", ms=4, color=COLORS["Random"], label="random, same N and E")
+                              columns=list(MATCHED_METRICS), index=part.index)
+        prob_formula, time_formula = formulas(part["factory"].iloc[0], directed)
+        for ax, y, formula in ((ax_time, "mean_fixation_time", time_formula),
+                               (ax_prob, "fixation_prob", prob_formula)):
+            ax.fill_between(n, part[f"{y}_random_lo"], part[f"{y}_random_hi"], color=COLORS["Random"], alpha=0.3,
+                            lw=0)
+            ax.plot(n, part[f"{y}_random_mean"], "o-", ms=4, color=COLORS["Random"], label="random, same N and E")
             ax.errorbar(n, part[y], yerr=_error(part, y), fmt="o-", ms=5, capsize=2, color=color, label=category,
                         zorder=3)
             if formula:
                 theory_line, = ax.plot(n, theory[y], color="red", lw=6, alpha=0.3, zorder=1,
                                        label=f"theory formula: {formula}")
-                if ax is ax_time:  # only the formula here, the other entries are in the rho panel's legend
+                if ax is ax_time:  # only the formula here, the other entries are in the probability panel's legend
                     ax.legend(handles=[theory_line], frameon=False, fontsize=9)
         # Moran's well-mixed formula, the baseline an amplifier beats and a suppressor misses
-        well_mixed_rho, well_mixed_time = np.array([complete(size, r) for size in n]).T
-        ax_rho.plot(n, well_mixed_rho, "--", color="0.2", lw=1, label="well-mixed")
+        well_mixed_prob, well_mixed_time = np.array([complete(size, r) for size in n]).T
+        ax_prob.plot(n, well_mixed_prob, "--", color="0.2", lw=1, label="well-mixed")
         ax_time.plot(n, well_mixed_time, "--", color="0.2", lw=1, label="well-mixed")
-        ax_time_ratio.fill_between(n, part["steps_mean_given_fixed"] / part["steps_mean_given_fixed_q75"],
-                                   part["steps_mean_given_fixed"] / part["steps_mean_given_fixed_q25"],
-                                   color=color, alpha=0.3, lw=0)
-        ax_time_ratio.plot(n, part["steps_mean_given_fixed"] / part["steps_mean_given_fixed_q50"], "o-", ms=5,
-                           color=color)
-        ax_rho_ratio.fill_between(n, part["rho"] / part["rho_q75"], part["rho"] / part["rho_q25"],
-                                  color=color, alpha=0.3, lw=0)
-        ax_rho_ratio.plot(n, part["rho"] / part["rho_q50"], "o-", ms=5, color=color)
-        for ax in (ax_time_ratio, ax_rho_ratio):
+        for ax, y in ((ax_prob_ratio, "fixation_prob"), (ax_time_ratio, "mean_fixation_time")):
+            # the graph over the cloud's 97.5% and 2.5% points: where the band excludes 1, it stands out
+            ax.fill_between(n, part[y] / part[f"{y}_random_hi"], part[y] / part[f"{y}_random_lo"], color=color,
+                            alpha=0.3, lw=0)
+            ax.plot(n, part[f"{y}_over_random"], "o-", ms=5, color=color)
             ax.axhline(1, color="0.2", ls="--", lw=1)
-        ax_time.set(xscale="log", yscale="log", ylabel=LABELS["steps_mean_given_fixed"],
-                    title="fixation time")
-        ax_rho.set(xscale="log", ylabel=LABELS["rho"], title=f"{category} ({kind}): fixation probability")
-        ax_time_ratio.set(xscale="log", yscale="log", ylabel=f"{category.lower()} / random (mean time)",
-                          title="slow-down over random (band: random IQR)")
-        ax_rho_ratio.set(xscale="log", ylabel=f"{category.lower()} prob / random prob",
-                         title="amplification over random (band: random IQR)")
-        for ax in (ax_rho, ax_time, ax_time_ratio, ax_rho_ratio):
+            ax.set(xscale="log", ylabel=LABELS[f"{y}_over_random"])
+        ax_time.set(xscale="log", yscale="log", ylabel=LABELS["mean_fixation_time"], title="mean fixation time")
+        ax_prob.set(xscale="log", ylabel=LABELS["fixation_prob"], title=f"{category} ({kind}): fixation probability")
+        ax_time_ratio.set(yscale="log", title="mean fixation time / random")
+        ax_prob_ratio.set(title="fixation probability / random")
+        for ax in (ax_prob, ax_time, ax_time_ratio, ax_prob_ratio):
             ax.set_xlabel("N")
-        ax_rho.legend(frameon=False, fontsize=9)
-    fig.suptitle(f"Each {kind} graph type against random graphs of the same N and E, r = {r}")
+        ax_prob.legend(frameon=False, fontsize=9)
+    fig.suptitle(f"Each {kind} graph type against random graphs of the same N and E (bands: their middle 95%), r = {r}")
     return fig
 
 
@@ -426,21 +426,21 @@ def main():
 
     for r, part in results.groupby("r"):
         fig, (ax_joint, ax_spread) = plt.subplots(1, 2, figsize=(12, 4.5))
-        scatter(ax_joint, part, "steps_mean_given_fixed", "rho")
-        scatter(ax_spread, part, "steps_mean_given_fixed", "steps_sd_given_fixed")
+        scatter(ax_joint, part, "mean_fixation_time", "fixation_prob")
+        scatter(ax_spread, part, "mean_fixation_time", "fixation_time_sd")
         ax_joint.legend(frameon=False)
         fig.suptitle(f"r = {r}")
-        _save(fig, out / f"rho_vs_time_r{r}.png")
-        for y in ("rho", "steps_mean_given_fixed"):
+        _save(fig, out / f"fixation_prob_vs_time_r{r}.png")
+        for y in ("fixation_prob", "mean_fixation_time"):
             fig = property_grid(part, y, varying)
             fig.suptitle(f"r = {r}")
             _save(fig, out / f"{y}_vs_properties_r{r}.png")
 
     if results["r"].nunique() > 1:
         fig, ax = plt.subplots(figsize=(7, 4.5))
-        scatter(ax, results, "r", "rho")
+        scatter(ax, results, "r", "fixation_prob")
         ax.legend(frameon=False)
-        _save(fig, out / "rho_vs_r.png")
+        _save(fig, out / "fixation_prob_vs_r.png")
 
 
 if __name__ == "__main__":

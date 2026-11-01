@@ -60,7 +60,7 @@
       "kwargs": {
         "n_rods": 3,
         "l_rod": 3,
-        "fillaments": 2
+        "lamellae": 2
       }
     }
   ]

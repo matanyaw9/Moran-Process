@@ -221,7 +221,7 @@ class PopulationGraph:
         return cls(
             G,
             name=name,
-            category="Mammalian",
+            category="Mammalian lung",
         )
 
     @classmethod
@@ -356,7 +356,7 @@ class PopulationGraph:
         return cls(
             G,
             name,
-            category="Avian",
+            category="Avian lung",
         )
 
     @classmethod
@@ -364,25 +364,25 @@ class PopulationGraph:
         cls,
         n_rods: int,
         l_rod: int,
-        fillaments: int = 2,
+        lamellae: int = 2,
         directed: bool = False,
         name="fish",
     )-> "PopulationGraph":
         """Generates a 'Comb' structure: Vertical arch, horizontal filaments.
 
         Each of the n_rods gill filaments hangs off the vertical arch as a chain of
-        l_rod center nodes, and every center node carries `fillaments` lamellae
+        l_rod center nodes, and every center node carries `lamellae` lamellae (leaf nodes)
         split between its two sides (the upper side takes the extra one when the
-        count is odd). fillaments=2 is the original one-up-one-down comb, so the
+        count is odd). lamellae=2 is the original one-up-one-down comb, so the
         default reproduces graphs built before this parameter existed, wl_hash
         included; only an explicit value creates a new topology.
 
-        N = n_rods * (1 + l_rod * (1 + fillaments))
+        N = n_rods * (1 + l_rod * (1 + lamellae))
 
         Args:
             n_rods (int): Number of filaments along the arch.
             l_rod (int): Center nodes per filament.
-            fillaments (int): Lamellae per center node, TOTAL across both sides.
+            lamellae (int): Lamellae per center node, TOTAL across both sides.
             directed (bool): If True, returns a DiGraph flowing out from the root,
                 the middle arch node (main_{(n_rods - 1) // 2}): along the arch
                 away from the root, main -> filament tip, and filament node ->
@@ -392,8 +392,8 @@ class PopulationGraph:
         pos = {}
 
         main_rod_x = 0
-        n_up = (fillaments + 1) // 2  # odd counts put the extra lamella on top
-        n_down = fillaments // 2
+        n_up = (lamellae + 1) // 2  # odd counts put the extra lamella on top
+        n_down = lamellae // 2
 
         # Lamellae fan out from their center node instead of stacking on one
         # vertical line. They all attach to that single node, so drawn colinear
@@ -465,11 +465,11 @@ class PopulationGraph:
         nx.set_node_attributes(G, pos, "pos")
         G = nx.convert_node_labels_to_integers(G)
         prefix = "directed_fish" if directed else "fish"
-        name = f"{prefix}_r{n_rods}_l{l_rod}_f{fillaments}"
+        name = f"{prefix}_r{n_rods}_l{l_rod}_f{lamellae}"
         return cls(
             G,
             name,
-            category="Fish",
+            category="Fish gill",
         )
 
     # TODO ensure this is correctly uniformly random. 
@@ -725,7 +725,7 @@ def graph_size(factory: str, **kwargs) -> tuple[int, int]:
         case "mammalian_lung_graph":
             n = sum(a["branching_factor"] ** k for k in range(a["depth"] + 1))
         case "fish_graph":
-            n = a["n_rods"] * (1 + a["l_rod"] * (1 + a["fillaments"]))
+            n = a["n_rods"] * (1 + a["l_rod"] * (1 + a["lamellae"]))
         case "asymmetric_lung_graph":
             cutoff = a["cutoff_diameter"]
             if a["n_nodes"] is not None:

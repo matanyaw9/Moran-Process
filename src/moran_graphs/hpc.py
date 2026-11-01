@@ -356,7 +356,7 @@ def finalize(batch):
 
 
 def _aggregate(res, graphs):
-    """One row per (graph, r): rho with a Wilson 95% interval, and mean/sd of steps and
+    """One row per (graph, r): fixation_prob with a Wilson 95% interval, and mean/sd of steps and
     n_changes conditional on the outcome, merged across chunks exactly (Chan et al.)."""
     key = ["graph_idx", "r", "winner"]
     g = res.assign(s_sum=res["count"] * res["steps_mean"], c_sum=res["count"] * res["changes_mean"])
@@ -382,17 +382,20 @@ def _aggregate(res, graphs):
         part = wide[wide.winner == code].set_index(["graph_idx", "r"])
         cells = cells.join(part["count"].rename(f"n_{label}"), on=["graph_idx", "r"])
         if label != "censored":
-            for col in ("steps_mean", "steps_sd", "changes_mean", "changes_sd"):
-                cells = cells.join(part[col].rename(f"{col}_given_{label}"), on=["graph_idx", "r"])
+            # times are means over the runs with this outcome only, e.g. conditional on fixation
+            outcome = "fixation" if label == "fixed" else "extinction"
+            names = {"steps_mean": f"mean_{outcome}_time", "steps_sd": f"{outcome}_time_sd",
+                     "changes_mean": f"changes_mean_given_{label}", "changes_sd": f"changes_sd_given_{label}"}
+            cells = cells.join(part[list(names)].rename(columns=names), on=["graph_idx", "r"])
     for col in ("n_fixed", "n_extinct", "n_censored"):
         cells[col] = cells[col].fillna(0).astype(np.int64)
     n, z = cells["n"], 1.96
     p = cells["n_fixed"] / n
-    cells["rho"] = p  # over all runs; censored runs count as not fixed, see n_censored
+    cells["fixation_prob"] = p  # over all runs; censored runs count as not fixed, see n_censored
     centre = (p + z**2 / (2 * n)) / (1 + z**2 / n)
     half = z / (1 + z**2 / n) * np.sqrt(p * (1 - p) / n + z**2 / (4 * n**2))
-    cells["rho_lo"], cells["rho_hi"] = centre - half, centre + half
-    cells["steps_se_given_fixed"] = cells["steps_sd_given_fixed"] / np.sqrt(cells["n_fixed"])
+    cells["fixation_prob_lo"], cells["fixation_prob_hi"] = centre - half, centre + half
+    cells["mean_fixation_time_se"] = cells["fixation_time_sd"] / np.sqrt(cells["n_fixed"])
     return cells.merge(graphs, on="graph_idx"), hists
 
 
