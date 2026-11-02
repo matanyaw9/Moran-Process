@@ -1,0 +1,75 @@
+{
+  "batch_name": "2026-11-02-precision-test",
+  "description": "pilot for testing stage_two_plan",
+  "zoo_seed": 7,
+  "batch_seed": 7,
+  "sim": {
+    "update_rule": "Bd",
+    "r_values": [
+      1.1
+    ],
+    "n_repeats": 10000,
+    "max_steps": 10000000000,
+    "keep_runs": false,
+    "chunk_target_steps": 10000000000.0
+  },
+  "lsf": {
+    "n_workers": 10,
+    "queue": "gsla-cpu",
+    "memory_mb": 2000,
+    "big_memory_mb": 8000
+  },
+  "specs": [
+    {
+      "factory": "complete_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_nodes": 31
+      }
+    },
+    {
+      "factory": "cycle_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_nodes": 31
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "n_nodes": 31
+      }
+    },
+    {
+      "factory": "mammalian_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "depth": 4
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 10,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 31,
+        "n_edges": 30
+      }
+    }
+  ]
+}

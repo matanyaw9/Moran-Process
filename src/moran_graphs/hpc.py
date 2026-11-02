@@ -45,7 +45,7 @@ import pandas as pd
 import scipy.sparse as sp
 
 from moran_graphs.engine import CENSORED, HIST_BINS, WILD_TYPE, simulate, summarize
-from moran_graphs.plan import build_zoo, describe, load_plan, make_chunks, save_plan
+from moran_graphs.plan import build_zoo, describe, load_plan, make_chunks, repeats_label, repeats_per_cell, save_plan
 from moran_graphs.properties import graph_from_W, properties
 
 DATA_ROOT = Path(os.environ.get("MORAN_GRAPHS_DATA", "/home/labs/pilpel/matanyaw/moran-graphs-data"))
@@ -323,10 +323,12 @@ def finalize(batch):
           f"{len(tmp)} partial result files, from jobs killed while writing", level="WARN")
 
     if have:
-        per_cell = res.groupby(["graph_idx", "r"])["count"].sum()
-        wrong = per_cell[per_cell != sim["n_repeats"]]
-        check(wrong.empty, "repeats", f"every (graph, r) has {sim['n_repeats']:,} runs",
-              f"{len(wrong)} (graph, r) cells do not have {sim['n_repeats']:,} runs")
+        per_cell = res.groupby(["graph_idx", "r"])["count"].sum().rename("count")
+        expected = repeats_per_cell(sim, graphs).set_index(["graph_idx", "r"])["n_repeats"]
+        wrong = expected.to_frame().join(per_cell)
+        wrong = wrong[wrong["count"] != wrong["n_repeats"]]
+        check(wrong.empty, "repeats", f"every (graph, r) has its planned runs ({repeats_label(sim)})",
+              f"{len(wrong)} (graph, r) cells do not have their planned runs ({repeats_label(sim)})")
         check(res["hash"].isin(graphs["hash"]).all(), "hashes", "every result joins graphs.parquet",
               "results with a hash missing from graphs.parquet")
         n_cens = int(res.loc[res.winner == CENSORED, "count"].sum())

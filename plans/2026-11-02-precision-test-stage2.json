@@ -1,0 +1,147 @@
+{
+  "batch_name": "2026-11-02-precision-test-stage2",
+  "description": "stage two of 2026-11-02-precision-test: n per cell for a 95% relative half-width of 2.0% (2.0% for random graphs)",
+  "zoo_seed": 7,
+  "batch_seed": 8,
+  "sim": {
+    "update_rule": "Bd",
+    "r_values": [
+      1.1
+    ],
+    "n_repeats": [
+      [
+        "4e5dcddc1efcdbabd7dded32c7017f62",
+        1.1,
+        95000
+      ],
+      [
+        "8af9fa92b85f7b7c2e727f69e8b4d9a0",
+        1.1,
+        91000
+      ],
+      [
+        "d5ea9252ce3ed7dafef97de24537ec8f",
+        1.1,
+        50000
+      ],
+      [
+        "8930697f2d93d4b53c61cfcce1af3ad2",
+        1.1,
+        66000
+      ],
+      [
+        "12d6c5cc8a7c14bd94c4b8d9b45c0f01",
+        1.1,
+        77000
+      ],
+      [
+        "ed3e096243fe2340153d02e688ea8e00",
+        1.1,
+        80000
+      ],
+      [
+        "a8ab4bb6cf7b187877ff541e562d858c",
+        1.1,
+        73000
+      ],
+      [
+        "c5c77e5479e998f73a478e14666a963e",
+        1.1,
+        69000
+      ],
+      [
+        "a8c00623d75df1893710232833483667",
+        1.1,
+        71000
+      ],
+      [
+        "4b5052543d6c72c36b7855aae96005bc",
+        1.1,
+        71000
+      ],
+      [
+        "4f310fb9a95d8be95ab4a192006f0b63",
+        1.1,
+        75000
+      ],
+      [
+        "70af78f3e2b063291cf825350ddb02d2",
+        1.1,
+        75000
+      ],
+      [
+        "8a32aabc7cf340c9d288a7a350e07a73",
+        1.1,
+        70000
+      ],
+      [
+        "4b8ca524778d0aba434ee41ab23a6dd1",
+        1.1,
+        73000
+      ]
+    ],
+    "max_steps": 10000000000,
+    "keep_runs": false,
+    "chunk_target_steps": 10000000000.0
+  },
+  "lsf": {
+    "n_workers": 10,
+    "queue": "gsla-cpu",
+    "memory_mb": 2000,
+    "big_memory_mb": 8000
+  },
+  "specs": [
+    {
+      "factory": "complete_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_nodes": 31
+      }
+    },
+    {
+      "factory": "cycle_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": false,
+      "kwargs": {
+        "n_nodes": 31
+      }
+    },
+    {
+      "factory": "star_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "n_nodes": 31
+      }
+    },
+    {
+      "factory": "mammalian_lung_graph",
+      "count": 1,
+      "skip_null_steps": false,
+      "random_matches": 10,
+      "up_to": false,
+      "kwargs": {
+        "depth": 4
+      }
+    },
+    {
+      "factory": "random_graph",
+      "count": 10,
+      "skip_null_steps": false,
+      "random_matches": 0,
+      "up_to": true,
+      "kwargs": {
+        "n_nodes": 31,
+        "n_edges": 30
+      }
+    }
+  ],
+  "pilot": "2026-11-02-precision-test"
+}

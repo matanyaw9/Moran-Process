@@ -18,6 +18,8 @@ from moran_graphs.properties import wl_hash
 MAX_SEED_REDRAWS = 100
 NOT_FACTORIES = {"sample_random_graphs"}  # a classmethod, but it returns a list
 STEPS_PER_SECOND = 9e7  # plain Bd on a lung, for rough cost estimates only
+Z95 = 1.96
+HALF_WIDTH_TARGET = 0.02  # 95% relative CI half-width that stage two sizes n for
 
 
 def factories():
@@ -115,6 +117,61 @@ def make_plan(
     }
 
 
+def stage_two_plan(pilot_plan, pilot_results, batch_name, batch_seed, target=HALF_WIDTH_TARGET,
+                   random_target=HALF_WIDTH_TARGET):
+    """The pilot's graphs again (same specs and zoo_seed) with a fresh batch_seed, and
+    n_repeats per (hash, r) sized from the pilot: a 95% relative CI half-width of at most
+    `target` on both fixation_prob and mean_fixation_time (`random_target` for random
+    graphs: lower it to make the reference band less noisy). The pilot only sizes n; its
+    runs are not pooled.
+
+    pilot_results is the pilot's report results table. Normal approximation, with p the
+    fixation probability and CV the coefficient of variation of the fixation time:
+    half-width / p = 1.96 sqrt((1 - p) / (n p)), and half-width / mean time =
+    1.96 CV / sqrt(n p), since the mean time is over the n p fixed runs only.
+    """
+    if batch_seed == pilot_plan["batch_seed"]:
+        raise ValueError("batch_seed equals the pilot's: the runs would not be fresh")
+    if (pilot_results["n_fixed"] == 0).any():
+        raise ValueError("pilot cells with no fixation cannot size n: rerun the pilot with more repeats")
+    p = pilot_results["fixation_prob"]
+    cv = pilot_results["fixation_time_sd"] / pilot_results["mean_fixation_time"]
+    eps = np.where(pilot_results["factory"] == "random_graph", random_target, target)
+    n = (Z95 / eps) ** 2 * np.maximum(1 - p, cv**2) / p
+    n = np.ceil(n / 1000).astype(np.int64) * 1000
+    plan = json.loads(json.dumps(pilot_plan))  # deep copy
+    plan["batch_name"], plan["batch_seed"] = batch_name, int(batch_seed)
+    plan["pilot"] = pilot_plan["batch_name"]  # plots.pilot_agreement compares the two
+    plan["description"] = (f"stage two of {pilot_plan['batch_name']}: n per cell for a 95% relative half-width"
+                           f" of {target:.1%} ({random_target:.1%} for random graphs)")
+    plan["sim"]["n_repeats"] = [[h, float(r), int(k)] for h, r, k in zip(pilot_results["hash"], pilot_results["r"], n)]
+    hours = (pilot_results["n_nodes"].astype(float) ** 2 * n).sum() / STEPS_PER_SECOND / 3600
+    print(f"{len(n):,} cells, {n.sum():,} runs (n per cell {n.min():,} to {n.max():,}), rough cost"
+          f" {hours:,.1f} CPU hours (N^2 steps per run, can be off 10x)")
+    return plan
+
+
+def repeats_per_cell(sim, graphs):
+    """graphs (graph_idx, hash) x r_values with each cell's n_repeats: the plan's one number,
+    or its [hash, r, n] table (a stage-two plan)."""
+    cells = graphs[["graph_idx", "hash"]].merge(pd.DataFrame({"r": sim["r_values"]}), how="cross")
+    if isinstance(sim["n_repeats"], int):
+        return cells.assign(n_repeats=sim["n_repeats"])
+    table = pd.DataFrame(sim["n_repeats"], columns=["hash", "r", "n_repeats"])
+    cells = cells.merge(table, on=["hash", "r"], how="left")
+    if cells["n_repeats"].isna().any():
+        raise ValueError(f"{cells['n_repeats'].isna().sum()} (graph, r) cells have no n_repeats in the plan's table")
+    return cells.astype({"n_repeats": np.int64})
+
+
+def repeats_label(sim):
+    reps = sim["n_repeats"]
+    if isinstance(reps, int):
+        return f"{reps:,} repeats"
+    n = [k for _, _, k in reps]
+    return f"{min(n):,} to {max(n):,} repeats per cell ({sum(n):,} runs)"
+
+
 def save_plan(plan, path):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -135,6 +192,10 @@ def describe(plan):
     n_r, reps = len(sim["r_values"]), sim["n_repeats"]
     print(f"Batch plan: {plan['batch_name']}  {plan['description']}")
     print(f"  zoo_seed={plan['zoo_seed']}  batch_seed={plan['batch_seed']}")
+    if not isinstance(reps, int):
+        # the table is keyed by graph hash, which only building the zoo gives; stage_two_plan prints the cost
+        print(f"  {len(plan['specs'])} specs, {repeats_label(sim)}")
+        return {"n_graphs": None, "runs": sum(k for _, _, k in reps), "cpu_hours": None}
     n_graphs = steps = 0
     for i, s in enumerate(plan["specs"]):
         n, _ = graph_size(s["factory"], **s["kwargs"])
@@ -234,21 +295,19 @@ def make_chunks(plan, graphs):
     workers start on the slowest work and the short chunks fill the end.
     """
     sim = plan["sim"]
-    reps = sim["n_repeats"]
     skip = {i: s["skip_null_steps"] for i, s in enumerate(plan["specs"])}
-    graphs = graphs.sort_values(["n_nodes", "graph_idx"], ascending=[False, True])
-    total = (graphs["n_nodes"].astype(float) ** 2).sum() * reps * len(sim["r_values"])
+    cells = repeats_per_cell(sim, graphs).merge(graphs[["graph_idx", "n_nodes", "spec_idx"]], on="graph_idx")
+    cells = cells.sort_values(["n_nodes", "graph_idx"], ascending=[False, True], kind="stable")  # r order kept
+    total = (cells["n_nodes"].astype(float) ** 2 * cells["n_repeats"]).sum()
     target = min(sim["chunk_target_steps"], total / (4 * plan["lsf"]["n_workers"]))
 
     rows = []
-    for g in graphs.itertuples():
-        runs = int(np.clip(target // g.n_nodes**2, 1, reps))
-        k = -(-reps // runs)  # chunks per cell, sizes differing by at most one run
-        base, extra = divmod(reps, k)
-        sizes = [base + 1] * extra + [base] * (k - extra)
-        for r in sim["r_values"]:
-            for n_runs in sizes:
-                rows.append((g.graph_idx, g.hash, r, n_runs, skip[g.spec_idx]))
+    for c in cells.itertuples():
+        runs = int(np.clip(target // c.n_nodes**2, 1, c.n_repeats))
+        k = -(-c.n_repeats // runs)  # chunks per cell, sizes differing by at most one run
+        base, extra = divmod(c.n_repeats, k)
+        for n_runs in [base + 1] * extra + [base] * (k - extra):
+            rows.append((c.graph_idx, c.hash, c.r, n_runs, skip[c.spec_idx]))
     chunks = pd.DataFrame(rows, columns=["graph_idx", "hash", "r", "n_runs", "skip_null_steps"])
     seeds = np.random.SeedSequence(plan["batch_seed"]).spawn(len(chunks))
     chunks["seed"] = np.array([s.generate_state(1, np.uint64)[0] for s in seeds], dtype=np.uint64)

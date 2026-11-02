@@ -20,7 +20,7 @@ import seaborn as sns
 from matplotlib.colors import LogNorm, Normalize
 
 from moran_graphs.hpc import DATA_ROOT, batch_path, load_report
-from moran_graphs.plan import load_plan
+from moran_graphs.plan import HALF_WIDTH_TARGET, Z95, load_plan, repeats_label
 from moran_graphs.properties import properties
 from moran_graphs.theory import complete, fixation, formulas
 
@@ -73,7 +73,7 @@ def print_batch(batch):
         jobs = ", ".join(f"{k} {v}" for k, v in sub.items() if k not in ("time", "n_workers"))
         print(f"  submitted {time.strftime('%Y-%m-%d %H:%M', time.localtime(sub['time']))}: "
               f"{sub['n_workers']} workers on {lsf['queue']} ({jobs})")
-    print(f"  {sim['update_rule']} updating, r = {sim['r_values']}, {sim['n_repeats']:,} repeats, "
+    print(f"  {sim['update_rule']} updating, r = {sim['r_values']}, {repeats_label(sim)}, "
           f"max_steps {sim['max_steps']:,}, keep_runs {sim['keep_runs']}")
     print(f"  zoo_seed {plan['zoo_seed']}, batch_seed {plan['batch_seed']}")
     for i, spec in enumerate(plan["specs"]):
@@ -402,6 +402,150 @@ def property_grid(df, y, properties, n_cols=4):
     return fig
 
 
+def precision(results, target=HALF_WIDTH_TARGET):
+    """How well each (graph, r) cell is measured, against N. Top row, fixation probability:
+    runs, fixed runs (they set the precision of both metrics), SE, and the relative 95% CI
+    half-width (Wilson). Bottom row, fixation time given fixation: CV and sd of one run's
+    time, SE of the mean (sd / sqrt(fixed runs)), and its relative 95% half-width. The
+    dashed line is the half-width stage_two_plan sizes n for."""
+    p = results["fixation_prob"]
+    df = results.assign(
+        fixation_prob_se=np.sqrt(p * (1 - p) / results["n"]),
+        fixation_prob_rel_half_width=(results["fixation_prob_hi"] - results["fixation_prob_lo"]) / (2 * p),
+        fixation_time_cv=results["fixation_time_sd"] / results["mean_fixation_time"],
+        mean_fixation_time_rel_half_width=Z95 * results["mean_fixation_time_se"] / results["mean_fixation_time"],
+    )
+    panels = [
+        [("n", "runs"), ("n_fixed", "fixed runs"), ("fixation_prob_se", "SE of fixation probability"),
+         ("fixation_prob_rel_half_width", "95% CI half-width / fixation probability")],
+        [("fixation_time_cv", "CV of fixation time (sd / mean)"), ("fixation_time_sd", LABELS["fixation_time_sd"]),
+         ("mean_fixation_time_se", "SE of mean fixation time (steps)"),
+         ("mean_fixation_time_rel_half_width", "95% CI half-width / mean fixation time")],
+    ]
+    marker_by = "r" if df["r"].nunique() > 1 else None
+    fig, axes = plt.subplots(2, 4, figsize=(20, 8.5), layout="constrained")
+    for row_axes, row in zip(axes, panels):
+        for ax, (y, label) in zip(row_axes, row):
+            scatter(ax, df, "n_nodes", y, marker_by)
+            ax.set_ylabel(label)
+            if y.endswith("_rel_half_width"):
+                ax.axhline(target, color="red", ls="--", lw=1)
+    for ax in axes[1, 1:3]:
+        ax.set_yscale("log")  # times, the only log axes
+    fig.legend(*axes[0, 0].get_legend_handles_labels(), loc="outside lower center",
+               ncols=df["category"].nunique() + (df["r"].nunique() if marker_by else 0), frameon=False)
+    fig.suptitle(f"Monte Carlo precision per (graph, r); dashed: target half-width {target:.0%}")
+    return fig
+
+
+def _density(hists):
+    """Pooled fixation-time histogram of some cells as (steps, density), density peaking at 1.
+    Bin k of engine.steps_bin spans log2(steps + 1) in [k/4, (k+1)/4): equal widths on a
+    log axis, so counts are already densities there."""
+    counts = np.vstack(hists.to_numpy()).sum(axis=0).astype(float)
+    k = np.flatnonzero(counts)
+    k = np.arange(k[0], k[-1] + 1)
+    return 2 ** ((k + 0.5) / 4), counts[k] / counts[k].max()
+
+
+def time_violins(results, hists, r, rows=None):
+    """Fixation-time distribution (given fixation) at one r: a row per graph type, or per
+    value of the column `rows` (e.g. flow_ratio, added from the recipe), and a split violin
+    per N, the graphs on the left and their random cloud (same N and E, all graphs pooled)
+    on the right. Drawn from the binned histograms, so no runs need to be kept. Each half
+    is scaled to its own peak, so compare shapes and positions, not widths. The text is the
+    median CV (sd / mean) of the graphs on each side, which sets how many fixed runs a
+    precise mean needs. Several graphs of one row and N (a shape sweep) are pooled: filter
+    results to one per N first. Each row has its own N axis, so rows of different sizes
+    stay compact."""
+    results = results[results["r"] == r]
+    fixed = hists[(hists["r"] == r) & (hists["winner"] == 0)].set_index(["batch", "graph_idx"])["steps_hist"]
+    cv = results["fixation_time_sd"] / results["mean_fixation_time"]
+    random = results[results["category"] == "Random"]
+    graphs = results[(results["category"] != "Random") & (results["n_random_matches"] > 0)]
+    groups = list(graphs.groupby([rows] if rows else ["category", "is_directed"]))  # keys are tuples either way
+    if not groups:
+        raise ValueError(f"no graphs with random graphs of their N and E at r = {r}")
+    width = max(part["n_nodes"].nunique() for _, part in groups)
+    fig, axes = plt.subplots(len(groups), 1, figsize=(max(8, 1.1 * width), 3.2 * len(groups)), squeeze=False,
+                             sharey=True, layout="constrained")  # one time scale, so rows compare
+    for ax, (key, part) in zip(axes[:, 0], groups):
+        category = part["category"].iloc[0]
+        for x, (n, at_n) in enumerate(part.groupby("n_nodes")):
+            cloud = random[random["n_nodes"].eq(n) & random["n_edges"].isin(at_n["n_edges"])]
+            for side, cells, color in ((-1, at_n, COLORS[category]), (1, cloud, COLORS["Random"])):
+                steps, density = _density(fixed.loc[list(zip(cells["batch"], cells["graph_idx"]))])
+                ax.fill_betweenx(steps, x, x + side * 0.42 * density, color=color, alpha=0.8, lw=0)
+                ax.text(x + side * 0.22, 0.02, f"{cv[cells.index].median():.2f}", transform=ax.get_xaxis_transform(),
+                        ha="center", fontsize=8, color="0.3")
+        label = f"{rows} = {key[0]}" if rows else f"{category}{' (directed)' if key[1] else ''}"
+        ax.set_xticks(range(part["n_nodes"].nunique()), sorted(part["n_nodes"].unique()))
+        ax.set_xlim(-0.6, width - 0.4)
+        ax.set(yscale="log", ylabel="fixation time (steps)", title=f"{label}, left; random, same N and E, right")
+    axes[-1, 0].set_xlabel("N (numbers at the bottom: median CV of fixation time)")
+    fig.suptitle(f"Fixation time given fixation, r = {r}")
+    return fig
+
+
+def pilot_agreement(results):
+    """Stage two against its pilot: for each (graph, r) cell, the two independent estimates
+    as z = (stage two - pilot) / sqrt(SE_pilot^2 + SE_stage_two^2), per metric. If the engine,
+    the seeding and the SEs are right, z is standard normal: about 5% of cells beyond 1.96.
+    Takes stage-two results; the pilot is the one named in each batch's plan. Returns None
+    when no loaded batch has a pilot."""
+    pilots = {b: load_plan(batch_path(b) / "plan.json").get("pilot") for b in results["batch"].unique()}
+    stage_two = results[results["batch"].map(pilots).notna()]
+    if stage_two.empty:
+        print("no stage-two batch loaded (no pilot in any plan.json), pilot_agreement draws nothing")
+        return None
+    pilot = pd.concat([load_report(p)["results"] for p in set(pilots.values()) - {None}])
+    both = stage_two.merge(pilot, on=["hash", "r"], suffixes=("", "_pilot"), validate="one_to_one")
+    for suffix in ("", "_pilot"):
+        p = both[f"fixation_prob{suffix}"]
+        both[f"fixation_prob_se{suffix}"] = np.sqrt(p * (1 - p) / both[f"n{suffix}"])
+    fig, axes = plt.subplots(2, 2, figsize=(13, 8.5), layout="constrained")
+    grid = np.linspace(-5, 5, 201)
+    for (ax_n, ax_hist), metric in zip(axes, MATCHED_METRICS):
+        z = ((both[metric] - both[f"{metric}_pilot"])
+             / np.sqrt(both[f"{metric}_se"] ** 2 + both[f"{metric}_se_pilot"] ** 2))
+        scatter(ax_n, both.assign(z=z), "n_nodes", "z")
+        for line in (-Z95, Z95):
+            ax_n.axhline(line, color="0.2", ls="--", lw=1)
+        ax_n.set_ylabel(f"z, {LABELS[metric]}")
+        ax_hist.hist(z, bins=40, density=True, color="0.6")
+        ax_hist.plot(grid, np.exp(-grid**2 / 2) / np.sqrt(2 * np.pi), color="red", label="standard normal")
+        ax_hist.set(xlabel=f"z, {LABELS[metric]}", ylabel="density",
+                    title=f"{(z.abs() > Z95).mean():.1%} of {len(z)} cells beyond 1.96 (5% expected)")
+        ax_hist.legend(frameon=False)
+    fig.suptitle("Stage two against its pilot: independent estimates of the same cells")
+    return fig
+
+
+def random_noise_share(results):
+    """For each random cloud (same N, E and r): the share of the spread between its graphs
+    that is Monte Carlo noise, the mean squared SE over the observed variance. Near 0 the
+    middle-95% band measures structure; near 1 it is mostly noise (the stage-two target
+    for random graphs sets it)."""
+    random = results[results["category"] == "Random"]
+    p = random["fixation_prob"]
+    random = random.assign(fixation_prob_var=p * (1 - p) / random["n"],
+                           mean_fixation_time_var=random["mean_fixation_time_se"] ** 2)
+    clouds = random.groupby(["n_nodes", "n_edges", "r"])
+    share = pd.DataFrame({metric: clouds[f"{metric}_var"].mean() / clouds[metric].var()
+                          for metric in MATCHED_METRICS}).reset_index()
+    fig, axes = plt.subplots(1, 2, figsize=(13, 4.5), layout="constrained")
+    markers = _markers(share, "r")
+    for ax, metric in zip(axes, MATCHED_METRICS):
+        for r, part in share.groupby("r"):
+            ax.scatter(part["n_nodes"], part[metric], marker=markers[r], color="0.3", label=f"r = {r}")
+        ax.axhline(1, color="red", ls="--", lw=1)
+        ax.set(xlabel="N", ylabel="Monte Carlo variance / observed variance", ylim=(0, None),
+               title=f"{LABELS[metric]}: median {share[metric].median():.2f}")
+    axes[0].legend(frameon=False)
+    fig.suptitle("Random clouds: how much of the spread between random graphs is simulation noise")
+    return fig
+
+
 def _save(fig, path):
     """Writes path (a .png, for a quick look) and the same name as .pdf, for the paper."""
     for out in (path, path.with_suffix(".pdf")):
@@ -424,6 +568,7 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
     varying = [p for p in PROPERTIES if results[p].dtype != bool and results[p].nunique() > 1]
 
+    _save(precision(results), out / "precision.png")
     for r, part in results.groupby("r"):
         fig, (ax_joint, ax_spread) = plt.subplots(1, 2, figsize=(12, 4.5))
         scatter(ax_joint, part, "mean_fixation_time", "fixation_prob")
