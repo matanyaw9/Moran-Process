@@ -67,6 +67,9 @@ Data lives outside the repo (path from config), never inside it.
 - SSUSP is not a terminal state; short-queue jobs get preempted and restart from scratch.
 - Pipe bsub scripts on stdin; command strings get re-evaluated and mangled.
 - Never fuse result shards into one Parquet file (polars u32 row limit); scan as a glob.
+- Never change `src/` (edit, checkout, merge, stash) while `bjobs` shows a batch: the
+  package is an editable install, so every job that has not started yet imports the
+  working tree as it is at its start. Work on other branches in a `git worktree`.
 
 ## Style rules
 - Keep it simple. Flag over-engineering: unneeded classes, config layers, compatibility
